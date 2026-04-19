@@ -1,0 +1,76 @@
+[project]
+name = "livestudio"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Zaxpris",email = "zaxpris@qq.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "websockets>=15.0.1,<16.0.0",
+    "aiohttp>=3.11.16,<4.0.0",
+    "pydantic>=2.11.3,<3.0.0",
+    "fastapi>=0.115.12,<0.116.0",
+    "uvicorn>=0.34.2,<0.35.0",
+    "loguru>=0.7.3,<0.8.0",
+    "json5>=0.12.0,<0.13.0",
+    "httpx>=0.27.0,<0.28.0",
+]
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["livestudio"]
+
+[tool.black]
+line-length = 128
+
+[tool.ruff]
+extend-exclude = []
+ignore = [
+    "E402",
+    "E501",
+    "E722",
+    "B008",
+    "B905",
+    "F401",
+    "TID252",
+    "TRY002",
+    "TRY003",
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    "RUF006",
+    "RUF012",
+    "RUF100",
+    "PGH003",
+    "N801",
+    "A003",
+]
+select = [
+    "F",
+    "E",
+    "I",
+    "B",
+    "A",
+    "COM",
+    "C4",
+    "ISC",
+    "PIE",
+    "PYI",
+    "Q",
+    "RSE",
+    "RET",
+    "SLF",
+    "SIM",
+    "TID",
+    "ARG",
+    "PTH",
+    "PGH",
+    "TRY",
+    "RUF",
+]
