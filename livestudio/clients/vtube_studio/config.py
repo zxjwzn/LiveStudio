@@ -37,6 +37,11 @@ class VTubeStudioConfig(BaseModel):
     api_version: str = Field(default="1.0", description="固定 API 版本。")
     connect_timeout: float = Field(default=10.0, gt=0, description="建立 WebSocket 连接超时秒数。")
     request_timeout: float = Field(default=10.0, gt=0, description="单次请求等待响应超时秒数。")
+    discovery_timeout: float = Field(default=5.0, gt=0, description="UDP discovery 等待超时秒数。")
+    discovery_port: int = Field(default=47779, ge=1, le=65535, description="VTube Studio UDP 广播端口。")
+    udp_buffer_size: int = Field(default=65536, ge=1024, le=1048576, description="UDP discovery 接收缓冲区大小。")
+    event_queue_size: int = Field(default=128, ge=1, le=4096, description="每类事件队列缓存大小。")
+    auto_resubscribe: bool = Field(default=True, description="重新认证成功后是否自动恢复事件订阅。")
     user_agent: str = Field(default="LiveStudio/0.1.0", description="连接时附带的 User-Agent。")
 
     @property

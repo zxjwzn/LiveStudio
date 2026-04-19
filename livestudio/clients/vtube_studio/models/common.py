@@ -18,6 +18,20 @@ class ModelPosition(VTSBaseModel):
     size: float = Field(description="模型大小，文档通常使用 -100 到 100。")
 
 
+class Vector2(VTSBaseModel):
+    """二维坐标。"""
+
+    x: float = Field(description="X 坐标。")
+    y: float = Field(description="Y 坐标。")
+
+
+class WindowSize(VTSBaseModel):
+    """窗口像素尺寸。"""
+
+    x: int = Field(description="窗口宽度，像素。")
+    y: int = Field(description="窗口高度，像素。")
+
+
 class AvailableModel(VTSBaseModel):
     """可用模型摘要。"""
 
@@ -211,6 +225,18 @@ class PinInfo(VTSBaseModel):
     vertex_weight1: float = Field(alias="vertexWeight1", description="顶点 1 权重。")
     vertex_weight2: float = Field(alias="vertexWeight2", description="顶点 2 权重。")
     vertex_weight3: float = Field(alias="vertexWeight3", description="顶点 3 权重。")
+
+
+class ArtMeshHitInfo(PinInfo):
+    """命中的 ArtMesh 详细信息。"""
+
+
+class ArtMeshHit(VTSBaseModel):
+    """一次模型点击命中的 ArtMesh 信息。"""
+
+    art_mesh_order: int = Field(alias="artMeshOrder", description="在命中点处的 ArtMesh 层级顺序，0 为最上层。")
+    is_masked: bool = Field(alias="isMasked", description="该 ArtMesh 是否被遮罩。")
+    hit_info: ArtMeshHitInfo = Field(alias="hitInfo", description="ArtMesh 命中详情与重心坐标。")
 
 
 class PostProcessingValue(VTSBaseModel):

@@ -7,6 +7,8 @@ from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .models import (
     ColorTintRequest,
     ColorTintRequestData,
+    EventSubscriptionRequest,
+    EventSubscriptionRequestData,
     HotkeysInCurrentModelRequest,
     HotkeysInCurrentModelRequestData,
     ItemListRequest,
@@ -15,6 +17,10 @@ from .models import (
     MoveModelRequestData,
     ParameterCreationRequest,
     ParameterCreationRequestData,
+    PermissionRequest,
+    PermissionRequestData,
+    TestEvent,
+    TestEventConfig,
 )
 from .models.common import ArtMeshMatcher, ColorTint
 from .service import VTubeStudioService
@@ -143,3 +149,51 @@ async def example_tint_model() -> int:
         ),
     )
     return response.data.matched_art_meshes
+
+
+async def example_get_permissions() -> list[str]:
+    """获取当前已授予权限列表。"""
+
+    service = await build_service()
+    response = await service.get_permissions()
+    return [permission.name for permission in response.data.permissions if permission.granted]
+
+
+async def example_request_permission(permission_name: str) -> bool | None:
+    """申请指定权限。"""
+
+    service = await build_service()
+    response = await service.request_permission(
+        PermissionRequest(
+            data=PermissionRequestData(requestedPermission=permission_name),
+        ),
+    )
+    return response.data.grant_success
+
+
+async def example_subscribe_test_event() -> int:
+    """订阅测试事件并等待一条回调。"""
+
+    service = await build_service()
+    listener = service.create_event_listener("TestEvent")
+    await service.subscribe_event(
+        EventSubscriptionRequest(
+            data=EventSubscriptionRequestData(
+                eventName="TestEvent",
+                subscribe=True,
+                config=TestEventConfig(testMessageForEvent="hello"),
+            ),
+        ),
+    )
+    event = TestEvent.model_validate((await listener.next_event(timeout=10.0)).model_dump(by_alias=True))
+    service.remove_event_listener(listener)
+    await service.unsubscribe_event("TestEvent")
+    return event.data.counter
+
+
+async def example_discover_vtube_studio_port() -> int:
+    """通过 UDP discovery 获取当前 API 端口。"""
+
+    service = await build_service()
+    broadcast = await service.discover_api()
+    return broadcast.data.port

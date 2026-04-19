@@ -29,3 +29,15 @@ class APIError(VTubeStudioError):
 
 class AuthenticationError(VTubeStudioError):
     """鉴权失败。"""
+
+
+class PermissionDeniedError(VTubeStudioError):
+    """插件未获得所需权限。"""
+
+
+class EventDispatchError(VTubeStudioError):
+    """事件回调分发失败。"""
+
+
+class DiscoveryError(VTubeStudioError):
+    """UDP discovery 监听或解析失败。"""

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
-from typing import Any, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar, cast
 
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
@@ -14,6 +16,7 @@ from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .errors import (
     APIError,
     AuthenticationError,
+    EventDispatchError,
     ResponseError,
     VTubeStudioConnectionError,
 )
@@ -36,6 +39,10 @@ from .models import (
     ColorTintResponse,
     CurrentModelRequest,
     CurrentModelResponse,
+    EventSubscriptionConfig,
+    EventSubscriptionRequest,
+    EventSubscriptionRequestData,
+    EventSubscriptionResponse,
     ExpressionActivationRequest,
     ExpressionActivationResponse,
     ExpressionStateRequest,
@@ -80,6 +87,8 @@ from .models import (
     ParameterDeletionResponse,
     ParameterValueRequest,
     ParameterValueResponse,
+    PermissionRequest,
+    PermissionResponse,
     PostProcessingListRequest,
     PostProcessingListResponse,
     PostProcessingUpdateRequest,
@@ -91,6 +100,7 @@ from .models import (
     StatisticsRequest,
     StatisticsResponse,
     VTSAPIErrorEnvelope,
+    VTSEventEnvelope,
     VTSFolderInfoRequest,
     VTSFolderInfoResponse,
     VTSRequestEnvelope,
@@ -98,6 +108,7 @@ from .models import (
 )
 
 ResponseT = TypeVar("ResponseT", bound=VTSResponseEnvelope[Any])
+EventHandler = Callable[[VTSEventEnvelope], Awaitable[None] | None]
 
 
 class VTubeStudioClient:
@@ -108,12 +119,16 @@ class VTubeStudioClient:
         self.plugin_info = plugin_info
         self._connection: ClientConnection | None = None
         self._lock = asyncio.Lock()
+        self._pending_requests: dict[str, asyncio.Future[str]] = {}
+        self._reader_task: asyncio.Task[None] | None = None
+        self._event_handlers: dict[str, list[EventHandler]] = {}
+        self._event_subscriptions: dict[str, EventSubscriptionRequest] = {}
 
     @property
     def is_connected(self) -> bool:
         """当前是否已建立 WebSocket 连接。"""
 
-        return self._connection is not None
+        return self._connection is not None and self._reader_task is not None and not self._reader_task.done()
 
     async def connect(self) -> None:
         """建立到 VTube Studio 的 WebSocket 连接。"""
@@ -132,6 +147,7 @@ class VTubeStudioClient:
                 ),
                 timeout=self.config.connect_timeout,
             )
+            self._reader_task = asyncio.create_task(self._reader_loop())
         except (OSError, TimeoutError, WebSocketException) as exc:
             self._connection = None
             raise VTubeStudioConnectionError(f"无法连接到 {self.config.websocket_url}") from exc
@@ -140,14 +156,23 @@ class VTubeStudioClient:
         """关闭 WebSocket 连接。"""
 
         connection = self._connection
+        reader_task = self._reader_task
         self._connection = None
+        self._reader_task = None
         if connection is None:
             return
+
+        if reader_task is not None:
+            reader_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await reader_task
 
         try:
             await connection.close()
         except WebSocketException as exc:
             raise VTubeStudioConnectionError("关闭 VTube Studio 连接失败") from exc
+        finally:
+            self._fail_pending_requests(VTubeStudioConnectionError("VTube Studio 连接已关闭"))
 
     async def request_token(self) -> str:
         """请求插件认证令牌。"""
@@ -175,29 +200,110 @@ class VTubeStudioClient:
         response = await self.send_request(request, AuthenticationResponse)
         if not response.data.authenticated:
             raise AuthenticationError(response.data.reason)
+        if self.config.auto_resubscribe and self._event_subscriptions:
+            for subscription_request in self._event_subscriptions.values():
+                await self.send_request(subscription_request, EventSubscriptionResponse)
         return True
 
     async def send_request(self, request: VTSRequestEnvelope[Any], response_model: type[ResponseT]) -> ResponseT:
         """发送请求并解析响应。"""
 
+        future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
         async with self._lock:
             connection = self._connection
             if connection is None:
                 raise VTubeStudioConnectionError("尚未建立到 VTube Studio 的连接")
 
             payload = json.dumps(request.to_payload(), ensure_ascii=False)
+            self._pending_requests[request.request_id] = future
             try:
                 await connection.send(payload)
-                raw_response = await asyncio.wait_for(connection.recv(), timeout=self.config.request_timeout)
-            except TimeoutError as exc:
-                raise ResponseError(f"等待 {request.message_type} 响应超时") from exc
             except ConnectionClosed as exc:
+                self._pending_requests.pop(request.request_id, None)
                 self._connection = None
                 raise VTubeStudioConnectionError("VTube Studio 连接已关闭") from exc
             except WebSocketException as exc:
+                self._pending_requests.pop(request.request_id, None)
                 raise ResponseError("发送或接收 VTube Studio 消息失败") from exc
 
+        try:
+            raw_response = await asyncio.wait_for(future, timeout=self.config.request_timeout)
+        except TimeoutError as exc:
+            self._pending_requests.pop(request.request_id, None)
+            raise ResponseError(f"等待 {request.message_type} 响应超时") from exc
+
         return self._parse_response(raw_response, request.request_id, response_model)
+
+    async def _reader_loop(self) -> None:
+        """后台读取所有消息，并按 requestID 或事件类型路由。"""
+
+        connection = self._connection
+        if connection is None:
+            return
+
+        try:
+            async for raw_message in connection:
+                if not isinstance(raw_message, str):
+                    continue
+                await self._route_message(raw_message)
+        except asyncio.CancelledError:
+            raise
+        except ConnectionClosed:
+            self._connection = None
+        except WebSocketException as exc:
+            self._connection = None
+            self._fail_pending_requests(ResponseError("后台接收 VTube Studio 消息失败"))
+            raise VTubeStudioConnectionError("后台接收 VTube Studio 消息失败") from exc
+        except EventDispatchError:
+            pass
+        finally:
+            self._fail_pending_requests(VTubeStudioConnectionError("VTube Studio 连接已关闭"))
+
+    async def _route_message(self, raw_message: str) -> None:
+        """路由收到的文本消息。"""
+
+        try:
+            payload = json.loads(raw_message)
+        except json.JSONDecodeError:
+            return
+
+        request_id = payload.get("requestID")
+        if isinstance(request_id, str) and request_id in self._pending_requests:
+            future = self._pending_requests.pop(request_id)
+            if not future.done():
+                future.set_result(raw_message)
+            return
+
+        message_type = payload.get("messageType")
+        if not isinstance(message_type, str):
+            return
+        await self._dispatch_event(message_type, raw_message)
+
+    async def _dispatch_event(self, message_type: str, raw_message: str) -> None:
+        """分发事件到已注册监听器。"""
+
+        handlers = self._event_handlers.get(message_type, [])
+        if not handlers:
+            return
+
+        try:
+            envelope = VTSEventEnvelope.model_validate_json(raw_message)
+        except ValidationError as exc:
+            raise EventDispatchError(f"无法解析事件 {message_type}") from exc
+
+        for handler in list(handlers):
+            result = handler(envelope)
+            if asyncio.iscoroutine(result):
+                await cast(Awaitable[None], result)
+
+    def _fail_pending_requests(self, error: Exception) -> None:
+        """使所有挂起请求失败。"""
+
+        pending_requests = list(self._pending_requests.values())
+        self._pending_requests.clear()
+        for future in pending_requests:
+            if not future.done():
+                future.set_exception(error)
 
     def _parse_response(self, raw_response: Any, request_id: str, response_model: type[ResponseT]) -> ResponseT:
         """解析 JSON 响应并处理 APIError。"""
@@ -233,11 +339,60 @@ class VTubeStudioClient:
         except ValidationError as exc:
             raise ResponseError(f"响应无法解析为 {response_model.__name__}") from exc
 
+    def add_event_handler(self, event_name: str, handler: EventHandler) -> None:
+        """注册事件回调。"""
+
+        self._event_handlers.setdefault(event_name, []).append(handler)
+
+    def remove_event_handler(self, event_name: str, handler: EventHandler) -> None:
+        """移除事件回调。"""
+
+        handlers = self._event_handlers.get(event_name)
+        if handlers is None:
+            return
+        with contextlib.suppress(ValueError):
+            handlers.remove(handler)
+        if not handlers:
+            self._event_handlers.pop(event_name, None)
+
+    async def request_permission(self, request: PermissionRequest) -> PermissionResponse:
+        """请求或查询插件权限。"""
+
+        return await self.send_request(request, PermissionResponse)
+
+    async def subscribe_event(self, request: EventSubscriptionRequest) -> EventSubscriptionResponse:
+        """订阅事件。"""
+
+        response = await self.send_request(request, EventSubscriptionResponse)
+        event_name = request.data.event_name
+        if request.data.subscribe and event_name:
+            self._event_subscriptions[event_name] = request
+        elif event_name:
+            self._event_subscriptions.pop(event_name, None)
+        else:
+            self._event_subscriptions.clear()
+        return response
+
+    async def unsubscribe_event(self, event_name: str | None = None) -> EventSubscriptionResponse:
+        """退订指定事件或全部事件。"""
+
+        request = EventSubscriptionRequest(
+            data=EventSubscriptionRequestData(
+                eventName=event_name,
+                subscribe=False,
+                config=EventSubscriptionConfig(),
+            ),
+        )
+        return await self.subscribe_event(request)
+
     async def get_api_state(self) -> APIStateResponse:
         return await self.send_request(APIStateRequest(), APIStateResponse)
 
     async def get_statistics(self) -> StatisticsResponse:
         return await self.send_request(StatisticsRequest(), StatisticsResponse)
+
+    async def get_permissions(self) -> PermissionResponse:
+        return await self.request_permission(PermissionRequest())
 
     async def get_folder_info(self) -> VTSFolderInfoResponse:
         return await self.send_request(VTSFolderInfoRequest(), VTSFolderInfoResponse)

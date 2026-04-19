@@ -7,12 +7,9 @@ import contextlib
 from loguru import logger
 
 from .client import VTubeStudioClient
-from .errors import (
-    APIError,
-    AuthenticationError,
-    ResponseError,
-    VTubeStudioConnectionError,
-)
+from .discovery import VTubeStudioDiscovery
+from .event_listener import VTSEventListener
+from .event_manager import ListenerHandler, VTSEventManager
 from .models import (
     APIStateResponse,
     ArtMeshListResponse,
@@ -21,6 +18,8 @@ from .models import (
     ColorTintRequest,
     ColorTintResponse,
     CurrentModelResponse,
+    EventSubscriptionRequest,
+    EventSubscriptionResponse,
     ExpressionActivationRequest,
     ExpressionActivationResponse,
     ExpressionStateRequest,
@@ -61,6 +60,8 @@ from .models import (
     ParameterDeletionResponse,
     ParameterValueRequest,
     ParameterValueResponse,
+    PermissionRequest,
+    PermissionResponse,
     PostProcessingListRequest,
     PostProcessingListResponse,
     PostProcessingUpdateRequest,
@@ -70,6 +71,7 @@ from .models import (
     SetCurrentModelPhysicsResponse,
     StatisticsResponse,
     VTSFolderInfoResponse,
+    VTubeStudioAPIStateBroadcast,
 )
 
 
@@ -78,6 +80,8 @@ class VTubeStudioService:
 
     def __init__(self, client: VTubeStudioClient) -> None:
         self.client = client
+        self.events = VTSEventManager(client, client.config.event_queue_size)
+        self.discovery = VTubeStudioDiscovery(client.config)
 
     async def connect_and_authenticate(self, authentication_token: str | None = None) -> bool:
         """连接到 VTube Studio 并执行认证流程。
@@ -126,6 +130,16 @@ class VTubeStudioService:
         """获取运行时统计信息。"""
 
         return await self.client.get_statistics()
+
+    async def get_permissions(self) -> PermissionResponse:
+        """查询当前插件权限状态。"""
+
+        return await self.client.get_permissions()
+
+    async def request_permission(self, request: PermissionRequest) -> PermissionResponse:
+        """向用户申请指定权限。"""
+
+        return await self.client.request_permission(request)
 
     async def get_folder_info(self) -> VTSFolderInfoResponse:
         """获取 VTS 关键目录名称。"""
@@ -281,3 +295,50 @@ class VTubeStudioService:
         """更新后处理配置。"""
 
         return await self.client.update_post_processing(request)
+
+    async def subscribe_event(self, request: EventSubscriptionRequest) -> EventSubscriptionResponse:
+        """订阅事件。"""
+
+        return await self.events.subscribe(request)
+
+    async def unsubscribe_event(self, event_name: str | None = None) -> EventSubscriptionResponse:
+        """退订事件。"""
+
+        return await self.events.unsubscribe(event_name)
+
+    def add_event_handler(self, event_name: str, handler: ListenerHandler) -> None:
+        """添加事件回调。"""
+
+        self.events.add_handler(event_name, handler)
+
+    def remove_event_handler(self, event_name: str, handler: ListenerHandler) -> None:
+        """移除事件回调。"""
+
+        self.events.remove_handler(event_name, handler)
+
+    def create_event_listener(self, event_name: str) -> VTSEventListener:
+        """创建队列型事件监听器。"""
+
+        return self.events.create_listener(event_name)
+
+    def remove_event_listener(self, listener: VTSEventListener) -> None:
+        """移除队列型事件监听器。"""
+
+        self.events.remove_listener(listener)
+
+    async def discover_api(self, timeout: float | None = None) -> VTubeStudioAPIStateBroadcast:
+        """等待一条 UDP 广播。"""
+
+        return await self.discovery.discover_once(timeout)
+
+    async def listen_for_api(
+        self,
+        timeout: float | None = None,
+        max_messages: int | None = None,
+    ) -> list[VTubeStudioAPIStateBroadcast]:
+        """监听一组 UDP 广播并返回结果。"""
+
+        broadcasts: list[VTubeStudioAPIStateBroadcast] = []
+        async for broadcast in self.discovery.listen(timeout=timeout, max_messages=max_messages):
+            broadcasts.append(broadcast)
+        return broadcasts

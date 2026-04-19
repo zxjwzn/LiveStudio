@@ -64,6 +64,12 @@ class VTSEmptyData(VTSBaseModel):
     """空数据载荷。"""
 
 
+class VTSFlexibleData(BaseModel):
+    """允许保留未知字段的数据载荷。"""
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+
 class VTSAPIErrorData(VTSBaseModel):
     """VTS `APIError` 响应的数据负载。"""
 
