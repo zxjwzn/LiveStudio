@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from livestudio import Easing
+from livestudio.log import logger
 from livestudio.services.vtubestudio import VTubeStudio
 
 
@@ -26,8 +27,8 @@ async def main() -> None:
 
         service.tween.start()
 
-        print("[OK] 已连接并认证 VTS")
-        print(f"[OK] 开始测试参数: {parameter_name}")
+        logger.info("[OK] 已连接并认证 VTS")
+        logger.info(f"[OK] 开始测试参数: {parameter_name}")
 
         await service.tween.tween(
             parameter_name=parameter_name,

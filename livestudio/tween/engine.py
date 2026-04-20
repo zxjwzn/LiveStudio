@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable, Iterable
 
-from loguru import logger
+from livestudio.log import logger
 
 from .easing import EASING_REGISTRY, Easing, EasingFunction
 from .models import ActiveTween, ControlledParameterState, TweenMode, TweenRequest
@@ -37,6 +37,12 @@ class ParameterTweenEngine:
         """返回当前受控参数"""
 
         return dict(self._controlled_params)
+
+    @property
+    def active_parameters(self) -> tuple[str, ...]:
+        """返回当前存在活动缓动的参数名。"""
+
+        return tuple(self._active_tweens)
 
     @property
     def is_running(self) -> bool:
@@ -142,6 +148,22 @@ class ParameterTweenEngine:
             active = self._active_tweens.pop(parameter_name, None)
             if active is not None:
                 task_to_cancel = active.task
+
+        if task_to_cancel is not None:
+            task_to_cancel.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task_to_cancel
+
+    async def cancel(self, parameter_name: str, *, release: bool = False) -> None:
+        """取消某个参数的活动缓动，并可选择是否释放控制权。"""
+
+        task_to_cancel: asyncio.Task[None] | None = None
+        async with self._lock:
+            active = self._active_tweens.pop(parameter_name, None)
+            if active is not None:
+                task_to_cancel = active.task
+            if release:
+                self._controlled_params.pop(parameter_name, None)
 
         if task_to_cancel is not None:
             task_to_cancel.cancel()

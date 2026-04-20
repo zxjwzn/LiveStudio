@@ -6,9 +6,8 @@ import contextlib
 from collections.abc import Iterable
 from pathlib import Path
 
-from loguru import logger
-
 from livestudio.config import ConfigManager
+from livestudio.log import logger
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine, TweenMode
 
 from ..clients.vtube_studio.client import VTubeStudioClient
