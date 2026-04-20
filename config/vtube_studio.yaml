@@ -1,8 +1,0 @@
-host: 127.0.0.1
-port: 8001
-authentication_token: 4399c72afaebdbcf47f0efdb014cb3c49f860ed49f0c79d08eecfdde1b1e47dd
-connect_timeout: 10.0
-request_timeout: 10.0
-discovery_timeout: 5.0
-discovery_port: 47779
-auto_resubscribe: true
