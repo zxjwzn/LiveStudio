@@ -91,7 +91,7 @@ class VTubeStudio:
         config_path: str | Path | None = None,
         *,
         config_manager: ConfigManager[VTubeStudioConfig] | None = None,
-        tween_keep_alive_interval: float = 0.1,
+        tween_keep_alive_interval: float = 0.5,
         tween_default_fps: int = 60,
     ) -> None:
         self.config_manager = config_manager or ConfigManager(
@@ -108,8 +108,8 @@ class VTubeStudio:
         )
 
     @property
-    def config(self):
-        """返回稳定配置代理。"""
+    def config(self) -> VTubeStudioConfig:
+        """返回最新配置快照。"""
 
         return self.config_manager.config
 

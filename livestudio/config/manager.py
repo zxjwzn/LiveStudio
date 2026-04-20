@@ -12,7 +12,6 @@ from pydantic import BaseModel, ValidationError
 
 from .errors import ConfigLoadError, ConfigValidationError
 from .models import ConfigChangeEvent, ConfigSource, FileVersion
-from .proxy import ConfigProxy
 from .store import ConfigStore
 
 ConfigT = TypeVar("ConfigT", bound=BaseModel)
@@ -29,7 +28,6 @@ class ConfigManager(Generic[ConfigT]):
         *,
         store: ConfigStore | None = None,
         auto_create: bool = True,
-        enable_write_through_proxy: bool = True,
     ) -> None:
         self._model_type = model_type
         self._path = Path(path)
@@ -39,17 +37,12 @@ class ConfigManager(Generic[ConfigT]):
         self._subscribers: list[ConfigSubscriber[ConfigT]] = []
         self._current = model_type()
         self._last_written_version: FileVersion | None = None
-        update_hook = self._update_from_proxy if enable_write_through_proxy else None
-        self._config_proxy = ConfigProxy(
-            self.get_snapshot,
-            update_hook=update_hook,
-        )
 
     @property
-    def config(self) -> ConfigProxy[ConfigT]:
-        """返回稳定的配置代理，便于直接通过属性访问。"""
+    def config(self) -> ConfigT:
+        """返回最新的已校验配置快照。"""
 
-        return self._config_proxy
+        return self._current
 
     @property
     def path(self) -> Path:
@@ -100,6 +93,13 @@ class ConfigManager(Generic[ConfigT]):
         async with self._lock:
             self._persist_snapshot(self._current)
 
+    def update(self, **changes: Any) -> ConfigT:
+        """显式更新配置快照。"""
+
+        old_config, new_config = self._apply_changes(changes)
+        self._schedule_notify(old_config, new_config, source="memory")
+        return new_config
+
     def subscribe(self, callback: ConfigSubscriber[ConfigT]) -> None:
         """注册配置校验通过后的变更回调。"""
 
@@ -136,14 +136,6 @@ class ConfigManager(Generic[ConfigT]):
             return self._model_type.model_validate(merged_data)
         except ValidationError as exc:
             raise ConfigValidationError("配置更新校验失败") from exc
-
-    def _update_from_proxy(self, key: str, _value: Any) -> None:
-        field_names = self._model_type.model_fields.keys()
-        if key not in field_names:
-            raise AttributeError(f"未知配置字段: {key}")
-
-        old_config, new_config = self._apply_changes({key: _value})
-        self._schedule_notify(old_config, new_config, source="memory")
 
     def _schedule_notify(
         self,

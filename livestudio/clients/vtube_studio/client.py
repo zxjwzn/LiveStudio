@@ -12,8 +12,6 @@ from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
-from livestudio.config import ConfigProxy
-
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .errors import (
     APIError,
@@ -118,7 +116,7 @@ class VTubeStudioClient:
 
     def __init__(
         self,
-        config: VTubeStudioConfig | ConfigProxy[VTubeStudioConfig],
+        config: VTubeStudioConfig,
         plugin_info: VTubeStudioPluginInfo,
     ) -> None:
         self.config = config

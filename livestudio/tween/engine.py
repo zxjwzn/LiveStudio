@@ -21,7 +21,7 @@ class ParameterTweenEngine:
         self,
         sender: ParameterSender,
         *,
-        keep_alive_interval: float = 0.4,
+        keep_alive_interval: float = 0.5,
         default_fps: int = 60,
     ) -> None:
         self._sender = sender

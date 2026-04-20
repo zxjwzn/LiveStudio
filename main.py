@@ -13,38 +13,44 @@ async def main() -> None:
 
     try:
         await service.client.connect()
-        authentication_token = await service.request_authentication_token()
+        authentication_token = service.config.authentication_token
+
+        if authentication_token is None:
+            authentication_token = await service.request_authentication_token()
+            service.config.authentication_token = authentication_token
+            await service.config_manager.save()
+
         authenticated = await service.client.authenticate(authentication_token)
         if not authenticated:
             raise RuntimeError("VTube Studio 认证失败")
 
         service.tween.start()
 
-        print(f"[OK] 已连接并认证 VTS，token: {authentication_token}")
+        print("[OK] 已连接并认证 VTS")
         print(f"[OK] 开始测试参数: {parameter_name}")
 
         await service.tween.tween(
             parameter_name=parameter_name,
             start_value=0.0,
             end_value=15.0,
-            duration=1,
-            easing=Easing.linear,
+            duration=0.3,
+            easing=Easing.out_sine,
             keep_alive=False,
         )
         await service.tween.tween(
             parameter_name=parameter_name,
             start_value=15.0,
             end_value=-15.0,
-            duration=1,
-            easing=Easing.linear,
+            duration=0.3,
+            easing=Easing.out_sine,
             keep_alive=False,
         )
         await service.tween.tween(
             parameter_name=parameter_name,
             start_value=-15.0,
             end_value=0.0,
-            duration=0.5,
-            easing=Easing.linear,
+            duration=0.3,
+            easing=Easing.out_sine,
             keep_alive=False,
         )
 

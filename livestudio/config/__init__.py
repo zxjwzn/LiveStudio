@@ -9,7 +9,6 @@ from .errors import (
 )
 from .manager import ConfigManager, ConfigSubscriber
 from .models import ConfigChangeEvent, ConfigSource, FileVersion
-from .proxy import ConfigProxy
 from .store import ConfigStore
 
 __all__ = [
@@ -18,7 +17,6 @@ __all__ = [
     "ConfigFormatError",
     "ConfigLoadError",
     "ConfigManager",
-    "ConfigProxy",
     "ConfigSaveError",
     "ConfigSource",
     "ConfigStore",
