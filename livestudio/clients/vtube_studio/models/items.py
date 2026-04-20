@@ -1,4 +1,4 @@
-"""Item and post-processing related request/response models."""
+"""与道具和后处理相关的请求/响应模型。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Queue-based event listener primitives for VTube Studio events."""
+"""用于 VTube Studio 事件的基于队列的监听器基础组件。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""VTube Studio exception hierarchy."""
+"""VTube Studio 异常层级定义。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Async VTube Studio API client library."""
+"""异步 VTube Studio API 客户端库。"""
 
 from .client import VTubeStudioClient
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
@@ -15,7 +15,7 @@ from .errors import (
 )
 from .event_listener import VTSEventListener
 from .event_manager import ListenerHandler, VTSEventManager
-from .examples import build_service
+from .examples import build_config_manager, build_service
 from .service import VTubeStudioService
 
 __all__ = [
@@ -35,5 +35,6 @@ __all__ = [
     "VTubeStudioError",
     "VTubeStudioPluginInfo",
     "VTubeStudioService",
+    "build_config_manager",
     "build_service",
 ]

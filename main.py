@@ -68,66 +68,88 @@ async def main() -> None:
 
     async def move_model() -> None:
         await service.move_model(
-            MoveModelRequest(
-                data=MoveModelRequestData(
-                    timeInSeconds=0.2,
-                    valuesAreRelativeToModel=False,
-                    positionX=0.0,
-                    positionY=0.35,
-                    rotation=0.0,
-                    size=-20.0,
-                ),
+            MoveModelRequest.model_validate(
+                {
+                    "data": MoveModelRequestData.model_validate(
+                        {
+                            "time_in_seconds": 0.2,
+                            "values_are_relative_to_model": False,
+                            "position_x": 0.0,
+                            "position_y": 0.35,
+                            "rotation": 0.0,
+                            "size": -20.0,
+                        },
+                    ),
+                },
             ),
         )
 
     async def list_hotkeys() -> list[str]:
         response = await service.get_hotkeys(
-            HotkeysInCurrentModelRequest(data=HotkeysInCurrentModelRequestData()),
+            HotkeysInCurrentModelRequest.model_validate(
+                {"data": HotkeysInCurrentModelRequestData.model_validate({})},
+            ),
         )
         return [hotkey.name for hotkey in response.data.available_hotkeys]
 
     async def create_custom_parameter() -> str:
         response = await service.create_parameter(
-            ParameterCreationRequest(
-                data=ParameterCreationRequestData(
-                    parameterName="MoodLevel",
-                    explanation="用于控制开心程度的自定义参数。",
-                    min=0.0,
-                    max=1.0,
-                    defaultValue=0.0,
-                ),
+            ParameterCreationRequest.model_validate(
+                {
+                    "data": ParameterCreationRequestData.model_validate(
+                        {
+                            "parameter_name": "MoodLevel",
+                            "explanation": "用于控制开心程度的自定义参数。",
+                            "min": 0.0,
+                            "max": 1.0,
+                            "default_value": 0.0,
+                        },
+                    ),
+                },
             ),
         )
         return response.data.parameter_name
 
     async def list_scene_items() -> int:
         response = await service.get_items(
-            ItemListRequest(
-                data=ItemListRequestData(
-                    includeAvailableSpots=False,
-                    includeItemInstancesInScene=True,
-                    includeAvailableItemFiles=False,
-                ),
+            ItemListRequest.model_validate(
+                {
+                    "data": ItemListRequestData.model_validate(
+                        {
+                            "include_available_spots": False,
+                            "include_item_instances_in_scene": True,
+                            "include_available_item_files": False,
+                        },
+                    ),
+                },
             ),
         )
         return response.data.items_in_scene_count
 
     async def tint_model() -> int:
         response = await service.tint_art_meshes(
-            ColorTintRequest(
-                data=ColorTintRequestData(
-                    colorTint=ColorTint(
-                        colorR=255,
-                        colorG=180,
-                        colorB=120,
-                        colorA=255,
-                        mixWithSceneLightingColor=1.0,
+            ColorTintRequest.model_validate(
+                {
+                    "data": ColorTintRequestData.model_validate(
+                        {
+                            "color_tint": ColorTint.model_validate(
+                                {
+                                    "colorR": 255,
+                                    "colorG": 180,
+                                    "colorB": 120,
+                                    "colorA": 255,
+                                    "mixWithSceneLightingColor": 1.0,
+                                },
+                            ),
+                            "art_mesh_matcher": ArtMeshMatcher.model_validate(
+                                {
+                                    "tintAll": False,
+                                    "nameContains": ["eye"],
+                                },
+                            ),
+                        },
                     ),
-                    artMeshMatcher=ArtMeshMatcher(
-                        tintAll=False,
-                        nameContains=["eye"],
-                    ),
-                ),
+                },
             ),
         )
         return response.data.matched_art_meshes
@@ -148,12 +170,18 @@ async def main() -> None:
         listener = service.create_event_listener("TestEvent")
         try:
             await service.subscribe_event(
-                EventSubscriptionRequest(
-                    data=EventSubscriptionRequestData(
-                        eventName="TestEvent",
-                        subscribe=True,
-                        config=TestEventConfig(testMessageForEvent="hello"),
-                    ),
+                EventSubscriptionRequest.model_validate(
+                    {
+                        "data": EventSubscriptionRequestData.model_validate(
+                            {
+                                "event_name": "TestEvent",
+                                "subscribe": True,
+                                "config": TestEventConfig.model_validate(
+                                    {"testMessageForEvent": "hello"},
+                                ),
+                            },
+                        ),
+                    },
                 ),
             )
             event = TestEvent.model_validate((await listener.next_event(timeout=10.0)).model_dump(by_alias=True))
@@ -178,7 +206,7 @@ async def main() -> None:
         for name, func in authenticated_examples:
             await _run_example(name, func)
     finally:
-        await service.client.disconnect()
+        await service.close()
 
 
 if __name__ == "__main__":

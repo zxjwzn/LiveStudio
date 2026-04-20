@@ -1,4 +1,4 @@
-"""Shared domain models used by multiple VTube Studio API requests."""
+"""多个 VTube Studio API 请求共用的领域模型。"""
 
 from __future__ import annotations
 

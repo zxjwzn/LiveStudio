@@ -1,4 +1,4 @@
-"""Parameter and physics related request/response models."""
+"""与参数和物理相关的请求/响应模型。"""
 
 from __future__ import annotations
 

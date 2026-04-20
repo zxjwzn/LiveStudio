@@ -1,0 +1,311 @@
+"""参数缓动引擎。"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from collections.abc import Awaitable, Callable, Iterable
+
+from loguru import logger
+
+from .easing import EASING_REGISTRY, Easing, EasingFunction
+from .models import ActiveTween, ControlledParameterState, TweenMode, TweenRequest
+
+ParameterSender = Callable[[Iterable[ControlledParameterState], TweenMode], Awaitable[None]]
+
+
+class ParameterTweenEngine:
+    """以确定性的缓动时序驱动参数值变化。"""
+
+    def __init__(
+        self,
+        sender: ParameterSender,
+        *,
+        keep_alive_interval: float = 0.8,
+        default_fps: int = 60,
+    ) -> None:
+        self._sender = sender
+        self._keep_alive_interval = keep_alive_interval
+        self._default_fps = default_fps
+        self._lock = asyncio.Lock()
+        self._controlled_params: dict[str, ControlledParameterState] = {}
+        self._active_tweens: dict[str, ActiveTween] = {}
+        self._keep_alive_task: asyncio.Task[None] | None = None
+
+    @property
+    def controlled_params(self) -> dict[str, ControlledParameterState]:
+        """返回当前受控参数状态的浅拷贝。"""
+
+        return dict(self._controlled_params)
+
+    @property
+    def is_running(self) -> bool:
+        """保活循环当前是否处于活动状态。"""
+
+        return self._keep_alive_task is not None and not self._keep_alive_task.done()
+
+    def start(self) -> None:
+        """启动保活循环。"""
+
+        if self.is_running:
+            logger.warning("缓动引擎保活任务已在运行")
+            return
+        self._keep_alive_task = asyncio.create_task(self._keep_alive_loop())
+        logger.info("缓动引擎已启动")
+
+    async def stop(self) -> None:
+        """停止保活，并取消所有活动中的缓动任务。"""
+
+        task = self._keep_alive_task
+        self._keep_alive_task = None
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        async with self._lock:
+            active_tasks = [active.task for active in self._active_tweens.values()]
+            self._active_tweens.clear()
+
+        for active_task in active_tasks:
+            active_task.cancel()
+
+        for active_task in active_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await active_task
+
+        logger.info("缓动引擎已停止")
+
+    async def close(self) -> None:
+        """`stop` 的别名，用于保持生命周期接口一致。"""
+
+        await self.stop()
+
+    async def set_value(
+        self,
+        parameter_name: str,
+        value: float,
+        *,
+        mode: TweenMode = "set",
+        priority: int = 0,
+        keep_alive: bool = True,
+    ) -> None:
+        """立即设置参数值，并可选地持续保持其控制权。"""
+
+        await self.tween(
+            parameter_name=parameter_name,
+            end_value=value,
+            duration=0.0,
+            easing=Easing.linear,
+            mode=mode,
+            priority=priority,
+            keep_alive=keep_alive,
+        )
+
+    async def tween(
+        self,
+        parameter_name: str,
+        end_value: float,
+        duration: float,
+        easing: str | EasingFunction,
+        *,
+        start_value: float | None = None,
+        mode: TweenMode = "set",
+        fps: int | None = None,
+        priority: int = 0,
+        keep_alive: bool = True,
+    ) -> None:
+        """使用固定采样与绝对时间对齐方式执行缓动。"""
+
+        easing_function = self._resolve_easing(easing)
+        tween_request = TweenRequest(
+            parameter_name=parameter_name,
+            end_value=end_value,
+            duration=duration,
+            easing_function=easing_function,
+            start_value=start_value,
+            mode=mode,
+            fps=fps or self._default_fps,
+            priority=priority,
+            keep_alive=keep_alive,
+        )
+        task = asyncio.create_task(self._run_tween(tween_request))
+        await task
+
+    async def release(self, parameter_name: str) -> None:
+        """释放某个参数的控制权，并在需要时取消其缓动任务。"""
+
+        task_to_cancel: asyncio.Task[None] | None = None
+        async with self._lock:
+            self._controlled_params.pop(parameter_name, None)
+            active = self._active_tweens.pop(parameter_name, None)
+            if active is not None:
+                task_to_cancel = active.task
+
+        if task_to_cancel is not None:
+            task_to_cancel.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task_to_cancel
+
+    async def release_all(self) -> None:
+        """释放所有受控参数。"""
+
+        async with self._lock:
+            parameter_names = tuple(self._controlled_params.keys())
+
+        for parameter_name in parameter_names:
+            await self.release(parameter_name)
+
+    def _resolve_easing(self, easing: str | EasingFunction) -> EasingFunction:
+        if callable(easing):
+            return easing
+        if easing not in EASING_REGISTRY:
+            raise ValueError(f"未知缓动函数: {easing}")
+        return EASING_REGISTRY[easing]
+
+    async def _run_tween(self, request: TweenRequest) -> None:
+        current_task = asyncio.current_task()
+        if current_task is None:
+            logger.error("无法获取当前缓动任务")
+            return
+
+        if request.start_value is None:
+            async with self._lock:
+                current_state = self._controlled_params.get(request.parameter_name)
+                start_value = current_state.value if current_state is not None else 0.0
+        else:
+            start_value = request.start_value
+
+        if request.duration <= 0 or start_value == request.end_value:
+            await self._apply_immediate_value(current_task, request, start_value)
+            return
+
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
+        steps = max(1, int(request.duration * request.fps))
+        interval = request.duration / steps
+
+        async with self._lock:
+            existing = self._active_tweens.get(request.parameter_name)
+            if existing is not None and request.priority <= existing.priority:
+                logger.debug(
+                    "参数 {} 的缓动被拒绝，当前优先级 {} >= 新优先级 {}",
+                    request.parameter_name,
+                    existing.priority,
+                    request.priority,
+                )
+                return
+            self._active_tweens[request.parameter_name] = ActiveTween(
+                task=current_task,
+                priority=request.priority,
+                mode=request.mode,
+                keep_alive=request.keep_alive,
+            )
+
+        try:
+            for step in range(steps):
+                t = (step + 1) / steps
+                value = start_value + (request.end_value - start_value) * request.easing_function(t)
+                should_send = False
+
+                async with self._lock:
+                    active = self._active_tweens.get(request.parameter_name)
+                    if active is not None and active.task is current_task:
+                        self._controlled_params[request.parameter_name] = ControlledParameterState(
+                            name=request.parameter_name,
+                            value=value,
+                            mode=request.mode,
+                            keep_alive=request.keep_alive,
+                        )
+                        should_send = True
+
+                if should_send:
+                    await self._send_parameter_values(
+                        [
+                            ControlledParameterState(
+                                name=request.parameter_name,
+                                value=value,
+                                mode=request.mode,
+                                keep_alive=request.keep_alive,
+                            ),
+                        ],
+                    )
+
+                now = loop.time()
+                next_time = start_time + (step + 1) * interval
+                sleep_time = next_time - now
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+        except asyncio.CancelledError:
+            logger.debug("参数 {} 的缓动任务被取消", request.parameter_name)
+            raise
+        finally:
+            async with self._lock:
+                active = self._active_tweens.get(request.parameter_name)
+                if active is not None and active.task is current_task:
+                    del self._active_tweens[request.parameter_name]
+
+    async def _apply_immediate_value(
+        self,
+        current_task: asyncio.Task[None],
+        request: TweenRequest,
+        start_value: float,
+    ) -> None:
+        _ = start_value
+        async with self._lock:
+            existing = self._active_tweens.get(request.parameter_name)
+            if existing is not None and request.priority <= existing.priority:
+                logger.debug(
+                    "参数 {} 的即时设置被拒绝，当前优先级 {} >= 新优先级 {}",
+                    request.parameter_name,
+                    existing.priority,
+                    request.priority,
+                )
+                return
+
+            self._active_tweens[request.parameter_name] = ActiveTween(
+                task=current_task,
+                priority=request.priority,
+                mode=request.mode,
+                keep_alive=request.keep_alive,
+            )
+            self._controlled_params[request.parameter_name] = ControlledParameterState(
+                name=request.parameter_name,
+                value=request.end_value,
+                mode=request.mode,
+                keep_alive=request.keep_alive,
+            )
+
+        try:
+            await self._send_parameter_values([self._controlled_params[request.parameter_name]])
+        finally:
+            async with self._lock:
+                active = self._active_tweens.get(request.parameter_name)
+                if active is not None and active.task is current_task:
+                    del self._active_tweens[request.parameter_name]
+
+    async def _keep_alive_loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self._keep_alive_interval)
+                async with self._lock:
+                    states_to_send = [
+                        state
+                        for parameter_name, state in self._controlled_params.items()
+                        if state.keep_alive and parameter_name not in self._active_tweens
+                    ]
+
+                if not states_to_send:
+                    continue
+
+                await self._send_parameter_values(states_to_send)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("缓动引擎保活循环出错")
+
+    async def _send_parameter_values(self, states: Iterable[ControlledParameterState]) -> None:
+        parameter_states = list(states)
+        if not parameter_states:
+            return
+        await self._sender(parameter_states, parameter_states[0].mode)

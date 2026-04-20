@@ -1,4 +1,4 @@
-"""High-level event subscription manager for VTube Studio."""
+"""VTube Studio 的高层事件订阅管理器。"""
 
 from __future__ import annotations
 

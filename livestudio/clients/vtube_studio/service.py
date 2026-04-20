@@ -1,4 +1,4 @@
-"""High level VTube Studio service facade."""
+"""高层 VTube Studio 服务门面。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,10 @@ import contextlib
 
 from loguru import logger
 
+from livestudio.config import ConfigManager
+
 from .client import VTubeStudioClient
+from .config import VTubeStudioConfig
 from .discovery import VTubeStudioDiscovery
 from .event_listener import VTSEventListener
 from .event_manager import ListenerHandler, VTSEventManager
@@ -78,10 +81,22 @@ from .models import (
 class VTubeStudioService:
     """对外暴露稳定业务接口的服务层。"""
 
-    def __init__(self, client: VTubeStudioClient) -> None:
+    def __init__(
+        self,
+        client: VTubeStudioClient,
+        config_manager: ConfigManager[VTubeStudioConfig] | None = None,
+    ) -> None:
         self.client = client
+        self.config_manager = config_manager
         self.events = VTSEventManager(client, client.config.event_queue_size)
         self.discovery = VTubeStudioDiscovery(client.config)
+
+    async def close(self) -> None:
+        """释放该服务持有的后台资源。"""
+
+        if self.config_manager is not None:
+            await self.config_manager.save()
+        await self.client.disconnect()
 
     async def connect_and_authenticate(self, authentication_token: str | None = None) -> bool:
         """连接到 VTube Studio 并执行认证流程。

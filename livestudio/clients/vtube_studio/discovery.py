@@ -1,4 +1,4 @@
-"""UDP discovery helpers for VTube Studio API broadcasts."""
+"""用于处理 VTube Studio API 广播的 UDP 发现辅助工具。"""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from collections.abc import AsyncIterator
 
 from pydantic import ValidationError
 
+from livestudio.config import ConfigProxy
+
 from .config import VTubeStudioConfig
 from .errors import DiscoveryError
 from .models import VTubeStudioAPIStateBroadcast
@@ -16,7 +18,7 @@ from .models import VTubeStudioAPIStateBroadcast
 class VTubeStudioDiscovery:
     """监听 VTube Studio 的 UDP 广播。"""
 
-    def __init__(self, config: VTubeStudioConfig) -> None:
+    def __init__(self, config: VTubeStudioConfig | ConfigProxy[VTubeStudioConfig]) -> None:
         self._config = config
 
     async def discover_once(self, timeout: float | None = None) -> VTubeStudioAPIStateBroadcast:

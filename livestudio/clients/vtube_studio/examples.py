@@ -1,6 +1,10 @@
-"""Example usage snippets for the async VTube Studio client library."""
+"""异步 VTube Studio 客户端库的示例用法片段。"""
 
 from __future__ import annotations
+
+from pathlib import Path
+
+from livestudio.config import ConfigManager
 
 from .client import VTubeStudioClient
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
@@ -26,22 +30,30 @@ from .models.common import ArtMeshMatcher, ColorTint
 from .service import VTubeStudioService
 
 
-async def build_service() -> VTubeStudioService:
+def build_config_manager(config_path: str | Path | None = None) -> ConfigManager[VTubeStudioConfig]:
+    """为 VTube Studio 设置创建配置管理器。"""
+
+    resolved_path = Path(config_path) if config_path is not None else Path("config") / "vtube_studio.yaml"
+    return ConfigManager(VTubeStudioConfig, resolved_path)
+
+
+async def build_service(config_path: str | Path | None = None) -> VTubeStudioService:
     """构建服务实例。
 
     使用说明：
     1. 将 `plugin_name` 和 `plugin_developer` 替换为你的插件信息。
-    2. 如果用户修改了 VTube Studio 端口，请同步修改 `port`。
+    2. 首次运行会在本地自动生成配置文件。
     3. 先调用 `request_authentication_token()` 获取令牌，再保存并复用。
     """
 
-    config = VTubeStudioConfig(port=8001)
+    config_manager = build_config_manager(config_path)
+    await config_manager.load()
     plugin_info = VTubeStudioPluginInfo(
         plugin_name="LiveStudio",
         plugin_developer="Zaxpris",
     )
-    client = VTubeStudioClient(config=config, plugin_info=plugin_info)
-    return VTubeStudioService(client)
+    client = VTubeStudioClient(config=config_manager.config, plugin_info=plugin_info)
+    return VTubeStudioService(client, config_manager=config_manager)
 
 
 async def example_connect_and_authenticate(authentication_token: str) -> bool:

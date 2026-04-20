@@ -1,4 +1,4 @@
-"""Permissions API request/response models."""
+"""权限 API 请求/响应模型。"""
 
 from __future__ import annotations
 

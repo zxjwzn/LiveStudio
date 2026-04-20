@@ -1,4 +1,4 @@
-"""General information request/response models."""
+"""通用信息请求/响应模型。"""
 
 from __future__ import annotations
 

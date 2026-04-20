@@ -1,4 +1,4 @@
-"""Shared Pydantic base models for the VTube Studio API."""
+"""VTube Studio API 共用的 Pydantic 基础模型。"""
 
 from __future__ import annotations
 

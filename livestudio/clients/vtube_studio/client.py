@@ -1,4 +1,4 @@
-"""Async WebSocket client for the VTube Studio public API."""
+"""用于 VTube Studio 公共 API 的异步 WebSocket 客户端。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from typing import Any, TypeVar, cast
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
+
+from livestudio.config import ConfigProxy
 
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .errors import (
@@ -114,7 +116,11 @@ EventHandler = Callable[[VTSEventEnvelope], Awaitable[None] | None]
 class VTubeStudioClient:
     """基于 WebSocket 的异步 VTube Studio API 客户端。"""
 
-    def __init__(self, config: VTubeStudioConfig, plugin_info: VTubeStudioPluginInfo) -> None:
+    def __init__(
+        self,
+        config: VTubeStudioConfig | ConfigProxy[VTubeStudioConfig],
+        plugin_info: VTubeStudioPluginInfo,
+    ) -> None:
         self.config = config
         self.plugin_info = plugin_info
         self._connection: ClientConnection | None = None

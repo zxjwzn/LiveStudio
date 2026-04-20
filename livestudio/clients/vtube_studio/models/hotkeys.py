@@ -1,4 +1,4 @@
-"""Hotkey and expression related request/response models."""
+"""与热键和表达式相关的请求/响应模型。"""
 
 from __future__ import annotations
 

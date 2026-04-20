@@ -1,4 +1,4 @@
-"""Model related VTube Studio request/response models."""
+"""与模型相关的 VTube Studio 请求/响应模型。"""
 
 from __future__ import annotations
 

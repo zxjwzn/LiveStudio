@@ -1,4 +1,4 @@
-"""Event subscription and event payload models for VTube Studio."""
+"""VTube Studio 的事件订阅与事件载荷模型。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,13 @@ from typing import Literal
 
 from pydantic import Field
 
-from .base import VTSBaseModel, VTSEmptyData, VTSFlexibleData, VTSRequestEnvelope, VTSResponseEnvelope
+from .base import (
+    VTSBaseModel,
+    VTSEmptyData,
+    VTSFlexibleData,
+    VTSRequestEnvelope,
+    VTSResponseEnvelope,
+)
 from .common import ArtMeshHit, ModelPosition, Vector2, WindowSize
 
 EventName = Literal[

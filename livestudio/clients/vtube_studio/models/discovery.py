@@ -1,4 +1,4 @@
-"""UDP discovery models for VTube Studio API broadcasts."""
+"""用于 VTube Studio API 广播的 UDP 发现模型。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""VTube Studio client configuration models."""
+"""VTube Studio 客户端配置模型。"""
 
 from __future__ import annotations
 
