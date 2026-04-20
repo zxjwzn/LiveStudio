@@ -21,7 +21,7 @@ class ParameterTweenEngine:
         self,
         sender: ParameterSender,
         *,
-        keep_alive_interval: float = 0.8,
+        keep_alive_interval: float = 0.4,
         default_fps: int = 60,
     ) -> None:
         self._sender = sender
@@ -34,18 +34,18 @@ class ParameterTweenEngine:
 
     @property
     def controlled_params(self) -> dict[str, ControlledParameterState]:
-        """返回当前受控参数状态的浅拷贝。"""
+        """返回当前受控参数"""
 
         return dict(self._controlled_params)
 
     @property
     def is_running(self) -> bool:
-        """保活循环当前是否处于活动状态。"""
+        """保活循环当前是否处于活动状态"""
 
         return self._keep_alive_task is not None and not self._keep_alive_task.done()
 
     def start(self) -> None:
-        """启动保活循环。"""
+        """启动保活循环"""
 
         if self.is_running:
             logger.warning("缓动引擎保活任务已在运行")
@@ -66,6 +66,7 @@ class ParameterTweenEngine:
         async with self._lock:
             active_tasks = [active.task for active in self._active_tweens.values()]
             self._active_tweens.clear()
+            self._controlled_params.clear()
 
         for active_task in active_tasks:
             active_task.cancel()
@@ -204,7 +205,14 @@ class ParameterTweenEngine:
 
         try:
             for step in range(steps):
-                t = (step + 1) / steps
+                target_time = start_time + (step + 1) * interval
+                now = loop.time()
+                sleep_time = target_time - now
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+
+                elapsed = min(request.duration, max(0.0, loop.time() - start_time))
+                t = min(1.0, elapsed / request.duration)
                 value = start_value + (request.end_value - start_value) * request.easing_function(t)
                 should_send = False
 
@@ -230,12 +238,6 @@ class ParameterTweenEngine:
                             ),
                         ],
                     )
-
-                now = loop.time()
-                next_time = start_time + (step + 1) * interval
-                sleep_time = next_time - now
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
         except asyncio.CancelledError:
             logger.debug("参数 {} 的缓动任务被取消", request.parameter_name)
             raise
@@ -286,8 +288,16 @@ class ParameterTweenEngine:
 
     async def _keep_alive_loop(self) -> None:
         try:
+            loop = asyncio.get_running_loop()
+            start_time = loop.time()
+            tick = 0
             while True:
-                await asyncio.sleep(self._keep_alive_interval)
+                tick += 1
+                next_time = start_time + tick * self._keep_alive_interval
+                sleep_time = next_time - loop.time()
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+
                 async with self._lock:
                     states_to_send = [
                         state

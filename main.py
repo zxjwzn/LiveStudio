@@ -26,28 +26,27 @@ async def main() -> None:
         await service.tween.tween(
             parameter_name=parameter_name,
             start_value=0.0,
-            end_value=30.0,
+            end_value=15.0,
             duration=1,
             easing=Easing.linear,
-            keep_alive=True,
+            keep_alive=False,
         )
         await service.tween.tween(
             parameter_name=parameter_name,
-            start_value=30.0,
-            end_value=-30.0,
+            start_value=15.0,
+            end_value=-15.0,
             duration=1,
             easing=Easing.linear,
-            keep_alive=True,
+            keep_alive=False,
         )
         await service.tween.tween(
             parameter_name=parameter_name,
-            start_value=-30.0,
+            start_value=-15.0,
             end_value=0.0,
             duration=0.5,
             easing=Easing.linear,
-            keep_alive=True,
+            keep_alive=False,
         )
-        await asyncio.sleep(1.0)
 
         await service.tween.release(parameter_name)
         print("[OK] tween 测试完成")
