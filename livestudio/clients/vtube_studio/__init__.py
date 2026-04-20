@@ -1,6 +1,6 @@
 """异步 VTube Studio API 客户端库。"""
 
-from .client import VTubeStudioClient
+from ...services.vtubestudio import VTubeStudio
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .discovery import VTubeStudioDiscovery
 from .errors import (
@@ -15,8 +15,6 @@ from .errors import (
 )
 from .event_listener import VTSEventListener
 from .event_manager import ListenerHandler, VTSEventManager
-from .examples import build_config_manager, build_service
-from .service import VTubeStudioService
 
 __all__ = [
     "APIError",
@@ -28,13 +26,10 @@ __all__ = [
     "ResponseError",
     "VTSEventListener",
     "VTSEventManager",
-    "VTubeStudioClient",
+    "VTubeStudio",
     "VTubeStudioConfig",
     "VTubeStudioConnectionError",
     "VTubeStudioDiscovery",
     "VTubeStudioError",
     "VTubeStudioPluginInfo",
-    "VTubeStudioService",
-    "build_config_manager",
-    "build_service",
 ]

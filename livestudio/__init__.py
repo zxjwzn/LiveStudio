@@ -1,11 +1,10 @@
 """LiveStudio 包。"""
 
-from .services import ManagedVTubeStudioService, build_managed_vtube_studio_service
+from .clients.vtube_studio import VTubeStudio
 from .tween import Easing, ParameterTweenEngine
 
 __all__ = [
-	"Easing",
-	"ManagedVTubeStudioService",
-	"ParameterTweenEngine",
-	"build_managed_vtube_studio_service",
+    "Easing",
+    "ParameterTweenEngine",
+    "VTubeStudio",
 ]

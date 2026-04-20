@@ -1,0 +1,15 @@
+plugin:
+  plugin_name: LiveStudio
+  plugin_developer: Zaxpris
+host: 127.0.0.1
+port: 8001
+api_name: VTubeStudioPublicAPI
+api_version: '1.0'
+connect_timeout: 10.0
+request_timeout: 10.0
+discovery_timeout: 5.0
+discovery_port: 47779
+udp_buffer_size: 65536
+event_queue_size: 128
+auto_resubscribe: true
+user_agent: LiveStudio/0.1.0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -37,10 +38,7 @@ class ConfigStore:
 
         try:
             file_format = self.detect_format(path)
-            if file_format == "json":
-                data = json5.loads(text)
-            else:
-                data = yaml.safe_load(text)
+            data = json5.loads(text) if file_format == "json" else yaml.safe_load(text)
         except (ValueError, yaml.YAMLError) as exc:
             raise ConfigFormatError(f"配置文件格式错误: {path}") from exc
 
@@ -66,10 +64,8 @@ class ConfigStore:
             raise ConfigSaveError(f"写入配置文件失败: {path}") from exc
         finally:
             if temp_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     temp_path.unlink()
-                except OSError:
-                    pass
 
     def get_version(self, path: Path) -> FileVersion | None:
         try:

@@ -31,6 +31,14 @@ class VTubeStudioConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    plugin: VTubeStudioPluginInfo = Field(
+        default_factory=lambda: VTubeStudioPluginInfo(
+            plugin_name="LiveStudio",
+            plugin_developer="Zaxpris",
+        ),
+        description="VTube Studio 插件身份信息。",
+    )
+
     host: str = Field(default="127.0.0.1", description="VTube Studio WebSocket 主机名。")
     port: int = Field(default=8001, ge=1, le=65535, description="VTube Studio WebSocket 端口。")
     api_name: str = Field(default="VTubeStudioPublicAPI", description="固定 API 名称。")
