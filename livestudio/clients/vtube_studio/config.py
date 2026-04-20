@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class VTubeStudioPluginInfo(BaseModel):
     """插件身份信息。"""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid")
 
     plugin_name: str = Field(
         min_length=3,
@@ -36,6 +36,7 @@ class VTubeStudioConfig(BaseModel):
             plugin_name="LiveStudio",
             plugin_developer="Zaxpris",
         ),
+        exclude=True,
         description="VTube Studio 插件身份信息。",
     )
 

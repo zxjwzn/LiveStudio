@@ -31,7 +31,6 @@ async def main() -> None:
 
         await service.tween.tween(
             parameter_name=parameter_name,
-            start_value=0.0,
             end_value=15.0,
             duration=0.3,
             easing=Easing.out_sine,
@@ -39,7 +38,6 @@ async def main() -> None:
         )
         await service.tween.tween(
             parameter_name=parameter_name,
-            start_value=15.0,
             end_value=-15.0,
             duration=0.3,
             easing=Easing.out_sine,
@@ -47,7 +45,6 @@ async def main() -> None:
         )
         await service.tween.tween(
             parameter_name=parameter_name,
-            start_value=-15.0,
             end_value=0.0,
             duration=0.3,
             easing=Easing.out_sine,
