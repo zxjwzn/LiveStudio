@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class VTubeStudioPluginInfo(BaseModel):
@@ -40,8 +40,7 @@ class VTubeStudioConfig(BaseModel):
         description="VTube Studio 插件身份信息。",
     )
 
-    host: str = Field(default="127.0.0.1", description="VTube Studio WebSocket 主机名。")
-    port: int = Field(default=8001, ge=1, le=65535, description="VTube Studio WebSocket 端口。")
+    ws_url: str = Field(default="ws://127.0.0.1:8001", description='VTube Studio WebSocket 地址，格式如 "ws://127.0.0.1:8001"。')
     authentication_token: str | None = Field(default=None, description="持久化保存的 VTube Studio 认证令牌。")
     api_name: str = Field(default="VTubeStudioPublicAPI", exclude=True, description="固定 API 名称。")
     api_version: str = Field(default="1.0", exclude=True, description="固定 API 版本。")
@@ -54,8 +53,17 @@ class VTubeStudioConfig(BaseModel):
     auto_resubscribe: bool = Field(default=True, description="重新认证成功后是否自动恢复事件订阅。")
     user_agent: str = Field(default="LiveStudio/0.1.0", exclude=True, description="连接时附带的 User-Agent。")
 
+    @field_validator("ws_url")
+    @classmethod
+    def validate_ws_url(cls, value: str) -> str:
+        """校验 WebSocket 地址格式。"""
+
+        if not value.startswith(("ws://", "wss://")):
+            raise ValueError("ws_url 必须以 ws:// 或 wss:// 开头")
+        return value
+
     @property
     def websocket_url(self) -> str:
         """返回 WebSocket 地址。"""
 
-        return f"ws://{self.host}:{self.port}"
+        return self.ws_url
