@@ -8,3 +8,13 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local config files
+config/**/*.yaml
+config/**/*.yml
+*.yaml
+*.yml
+
+# Documentation
+docs/
+doccs/
