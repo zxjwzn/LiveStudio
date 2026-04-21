@@ -79,7 +79,7 @@ class VTubeStudioSubservice(ABC, Generic[FileConfigT]):
         return manager
 
     @property
-    def file_config(self) -> FileConfigT:
+    def config(self) -> FileConfigT:
         """返回子服务完整配置文件快照。"""
 
         return self.config_manager.config
@@ -88,7 +88,7 @@ class VTubeStudioSubservice(ABC, Generic[FileConfigT]):
     def enabled(self) -> bool:
         """返回子服务启用状态。"""
 
-        return self.file_config.enable
+        return self.config.enable
 
     def bind(self, owner: VTubeStudio, config_manager: ConfigManager[FileConfigT]) -> None:
         """绑定所属服务及配置管理器。"""
@@ -96,6 +96,7 @@ class VTubeStudioSubservice(ABC, Generic[FileConfigT]):
         self._owner = owner
         self._config_manager = config_manager
 
+    @abstractmethod
     async def initialize(self) -> None:
         """子服务初始化钩子。"""
 
@@ -107,11 +108,13 @@ class VTubeStudioSubservice(ABC, Generic[FileConfigT]):
     async def stop(self) -> None:
         """停止子服务。"""
 
+    @abstractmethod
     async def close(self) -> None:
         """关闭子服务。默认等同于停止。"""
 
         await self.stop()
 
+    @abstractmethod
     async def save_config(self) -> None:
         """持久化子服务配置。"""
 
