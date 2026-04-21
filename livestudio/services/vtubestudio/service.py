@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from livestudio.config import ConfigManager
 from livestudio.log import logger
@@ -26,6 +27,7 @@ from ...clients.vtube_studio.models import (
     InjectParameterValue,
     VTubeStudioAPIStateBroadcast,
 )
+from .subservice import VTubeStudioSubservice
 
 
 class VTubeStudio:
@@ -36,13 +38,10 @@ class VTubeStudio:
         config_path: str | Path | None = None,
         *,
         config_manager: ConfigManager[VTubeStudioConfig] | None = None,
+        subservices: Iterable[VTubeStudioSubservice[Any]] | None = None,
         tween_keep_alive_interval: float = 0.5,
         tween_default_fps: int = 60,
     ) -> None:
-        from .model_expression_sync.model_expression_sync import (
-            ModelExpressionSyncService,
-        )
-
         self.config_manager = config_manager or ConfigManager(
             VTubeStudioConfig,
             Path(config_path) if config_path is not None else Path("config") / "vtube_studio.yaml",
@@ -50,13 +49,15 @@ class VTubeStudio:
         self._client: VTubeStudioClient | None = None
         self._events: VTSEventManager | None = None
         self._discovery: VTubeStudioDiscovery | None = None
-        self._model_expression_sync_service: ModelExpressionSyncService = ModelExpressionSyncService(self)
-        self._subservices: tuple[ModelExpressionSyncService, ...] = (self._model_expression_sync_service,)
+        self._subservices: dict[str, VTubeStudioSubservice[Any]] = {}
         self.tween = ParameterTweenEngine(
             self._send_parameter_states,
             keep_alive_interval=tween_keep_alive_interval,
             default_fps=tween_default_fps,
         )
+        if subservices is not None:
+            for subservice in subservices:
+                self.register_subservice(subservice)
 
     @property
     def config(self) -> VTubeStudioConfig:
@@ -82,6 +83,12 @@ class VTubeStudio:
 
         return self._require_discovery()
 
+    @property
+    def subservices(self) -> dict[str, VTubeStudioSubservice[Any]]:
+        """返回已注册的子服务映射。"""
+
+        return dict(self._subservices)
+
     async def initialize(self) -> None:
         """加载配置并创建内部依赖。"""
 
@@ -93,6 +100,40 @@ class VTubeStudio:
         self._client = client
         self._events = VTSEventManager(client, client.config.event_queue_size)
         self._discovery = VTubeStudioDiscovery(client.config)
+        await self._initialize_subservices()
+
+    def register_subservice(self, subservice: VTubeStudioSubservice[Any]) -> None:
+        """注册一个子服务。"""
+
+        if subservice.name in self._subservices:
+            raise ValueError(f"子服务已存在: {subservice.name}")
+        self._subservices[subservice.name] = subservice
+
+    def get_subservice(self, name: str) -> VTubeStudioSubservice[Any]:
+        """按名称返回已注册子服务。"""
+
+        subservice = self._subservices.get(name)
+        if subservice is None:
+            raise KeyError(f"未注册的子服务: {name}")
+        return subservice
+
+    async def _initialize_subservices(self) -> None:
+        for subservice in self._subservices.values():
+            manager = ConfigManager(subservice.config_model, self._resolve_subservice_config_path(subservice))
+            await manager.load()
+            subservice.bind(self, manager)
+            await subservice.initialize()
+
+    def _resolve_subservice_config_path(self, subservice: VTubeStudioSubservice[Any]) -> Path:
+        explicit_path = subservice.config_path
+        if explicit_path is not None:
+            return explicit_path
+
+        configured_path = self.config.subservice_config_paths.get(subservice.name)
+        if configured_path is not None:
+            return Path(configured_path)
+
+        return Path(self.config.subservice_config_dir) / f"{subservice.name}.yaml"
 
     def _require_client(self) -> VTubeStudioClient:
         client = self._client
@@ -115,8 +156,8 @@ class VTubeStudio:
     async def close(self) -> None:
         """释放该服务持有的后台资源。"""
 
-        for subservice in reversed(self._subservices):
-            await subservice.close()
+        await self.stop_subservices()
+        await self._save_subservice_configs()
         await self.tween.close()
         await self.config_manager.save()
         client = self._client
@@ -134,8 +175,43 @@ class VTubeStudio:
         if not authenticated:
             raise RuntimeError("VTube Studio 认证失败")
 
-        for subservice in self._subservices:
-            await subservice.start()
+        await self.start_subservices()
+
+    async def start_subservices(self, names: Iterable[str] | None = None) -> None:
+        """启动全部或指定子服务。"""
+
+        target_names = tuple(names) if names is not None else tuple(self._subservices)
+        for name in target_names:
+            await self.start_subservice(name)
+
+    async def start_subservice(self, name: str, *, force: bool = False) -> bool:
+        """启动指定子服务。"""
+
+        subservice = self.get_subservice(name)
+        if not subservice.enabled and not force:
+            logger.info("子服务 {} 未启用，跳过启动", name)
+            return False
+
+        await subservice.start()
+        return True
+
+    async def stop_subservices(self, names: Iterable[str] | None = None) -> None:
+        """停止全部或指定子服务。"""
+
+        target_names = tuple(names) if names is not None else tuple(reversed(tuple(self._subservices)))
+        for name in target_names:
+            await self.stop_subservice(name)
+
+    async def stop_subservice(self, name: str) -> bool:
+        """停止指定子服务。"""
+
+        subservice = self.get_subservice(name)
+        await subservice.stop()
+        return True
+
+    async def _save_subservice_configs(self) -> None:
+        for subservice in self._subservices.values():
+            await subservice.save_config()
 
     async def connect_and_authenticate(self, authentication_token: str | None = None) -> bool:
         """连接到 VTube Studio 并执行认证流程。"""

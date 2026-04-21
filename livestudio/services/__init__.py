@@ -1,8 +1,9 @@
 """应用服务层。"""
 
 from .vtubestudio import (
-	ModelExpressionSyncService,
+	SubserviceConfigFile,
 	VTubeStudio,
+	VTubeStudioSubservice,
 )
 
-__all__ = ["ModelExpressionSyncService", "VTubeStudio"]
+__all__ = ["SubserviceConfigFile", "VTubeStudio", "VTubeStudioSubservice"]

@@ -1,8 +1,6 @@
 """VTube Studio 相关服务。"""
 
-from .model_expression_sync.model_expression_sync import (
-	ModelExpressionSyncService,
-)
 from .service import VTubeStudio
+from .subservice import SubserviceConfigFile, VTubeStudioSubservice
 
-__all__ = ["ModelExpressionSyncService", "VTubeStudio"]
+__all__ = ["SubserviceConfigFile", "VTubeStudio", "VTubeStudioSubservice"]
