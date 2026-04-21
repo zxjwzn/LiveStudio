@@ -1,7 +1,8 @@
-"""应用服务层"""
+"""应用服务层。"""
 
 from .vtubestudio import (
-    VTubeStudio,
+	ModelExpressionSyncService,
+	VTubeStudio,
 )
 
-__all__ = ["VTubeStudio"]
+__all__ = ["ModelExpressionSyncService", "VTubeStudio"]

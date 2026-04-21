@@ -2,70 +2,27 @@ from __future__ import annotations
 
 import asyncio
 
-from livestudio import Easing
-from livestudio.clients.vtube_studio.errors import AuthenticationError
 from livestudio.log import logger
 from livestudio.services.vtubestudio import VTubeStudio
 
 
 async def main() -> None:
-    parameter_name = "FaceAngleX"
-    service = VTubeStudio()
-    await service.initialize()
+    vtubestudio_service = VTubeStudio()
+    await vtubestudio_service.initialize()
 
     try:
-        await service.client.connect()
-        authentication_token = service.config.authentication_token
-
-        if authentication_token is None:
-            authentication_token = await service.request_authentication_token()
-            service.config.authentication_token = authentication_token
-            await service.config_manager.save()
-
-        try:
-            authenticated = await service.client.authenticate(authentication_token)
-        except AuthenticationError:
-            logger.warning("[WARN] 认证令牌无效或已被撤销，正在重新获取 token")
-            authentication_token = await service.request_authentication_token()
-            service.config.authentication_token = authentication_token
-            await service.config_manager.save()
-            authenticated = await service.client.authenticate(authentication_token)
-
-        if not authenticated:
-            raise RuntimeError("VTube Studio 认证失败")
-
-        service.tween.start()
+        await vtubestudio_service.start()
 
         logger.info("[OK] 已连接并认证 VTS")
-        logger.info(f"[OK] 开始测试参数: {parameter_name}")
+        logger.info("[OK] 模型表情自动同步已启动，按 Ctrl+C 退出程序")
 
-        await service.tween.tween(
-            parameter_name=parameter_name,
-            end_value=15.0,
-            duration=0.3,
-            easing=Easing.out_sine,
-            keep_alive=False,
-        )
-        await service.tween.tween(
-            parameter_name=parameter_name,
-            end_value=-15.0,
-            duration=0.3,
-            easing=Easing.out_sine,
-            keep_alive=False,
-        )
-        await service.tween.tween(
-            parameter_name=parameter_name,
-            end_value=0.0,
-            duration=0.3,
-            easing=Easing.out_sine,
-            keep_alive=False,
-        )
-
-        await service.tween.release(parameter_name)
-        print("[OK] tween 测试完成")
+        await asyncio.Event().wait()
     finally:
-        await service.close()
+        await vtubestudio_service.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("[OK] 收到 Ctrl+C，程序已退出")
