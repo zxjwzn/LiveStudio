@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from livestudio import Easing
+from livestudio.clients.vtube_studio.errors import AuthenticationError
 from livestudio.log import logger
 from livestudio.services.vtubestudio import VTubeStudio
 
@@ -21,7 +22,15 @@ async def main() -> None:
             service.config.authentication_token = authentication_token
             await service.config_manager.save()
 
-        authenticated = await service.client.authenticate(authentication_token)
+        try:
+            authenticated = await service.client.authenticate(authentication_token)
+        except AuthenticationError:
+            logger.warning("[WARN] 认证令牌无效或已被撤销，正在重新获取 token")
+            authentication_token = await service.request_authentication_token()
+            service.config.authentication_token = authentication_token
+            await service.config_manager.save()
+            authenticated = await service.client.authenticate(authentication_token)
+
         if not authenticated:
             raise RuntimeError("VTube Studio 认证失败")
 
