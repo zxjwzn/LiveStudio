@@ -4,10 +4,13 @@ import asyncio
 
 from livestudio.log import logger
 from livestudio.services.vtubestudio import VTubeStudio
+from livestudio.services.vtubestudio.subservices.model_expression_sync.model_expression_sync import (
+    ModelExpressionSyncSubservice,
+)
 
 
 async def main() -> None:
-    vtubestudio_service = VTubeStudio()
+    vtubestudio_service = VTubeStudio(subservices=[ModelExpressionSyncSubservice()])
     await vtubestudio_service.initialize()
 
     try:

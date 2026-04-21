@@ -12,7 +12,6 @@ import json5
 import yaml
 
 from .errors import ConfigFormatError, ConfigLoadError, ConfigSaveError
-from .models import FileVersion
 
 ConfigFormat = Literal["json", "yaml"]
 
@@ -67,11 +66,3 @@ class ConfigStore:
                 with contextlib.suppress(OSError):
                     temp_path.unlink()
 
-    def get_version(self, path: Path) -> FileVersion | None:
-        try:
-            stat_result = path.stat()
-        except FileNotFoundError:
-            return None
-        except OSError as exc:
-            raise ConfigLoadError(f"读取配置文件状态失败: {path}") from exc
-        return FileVersion(modified_time_ns=stat_result.st_mtime_ns, size=stat_result.st_size)

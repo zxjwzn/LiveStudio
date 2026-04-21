@@ -27,7 +27,7 @@ from ...clients.vtube_studio.models import (
     InjectParameterValue,
     VTubeStudioAPIStateBroadcast,
 )
-from .subservice import VTubeStudioSubservice
+from .subservices.base import VTubeStudioSubservice
 
 
 class VTubeStudio:

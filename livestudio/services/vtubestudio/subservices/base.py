@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from livestudio.config import ConfigManager
 
 if TYPE_CHECKING:
-    from .service import VTubeStudio
+    from ..service import VTubeStudio
 
 ConfigT = TypeVar("ConfigT", bound=BaseModel)
 FileConfigT = TypeVar("FileConfigT", bound="SubserviceConfigFile[Any]")
