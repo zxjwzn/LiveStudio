@@ -13,8 +13,7 @@ async def main() -> None:
     try:
         await vtubestudio_service.start()
 
-        logger.info("[OK] 已连接并认证 VTS")
-        logger.info("[OK] 模型表情自动同步已启动，按 Ctrl+C 退出程序")
+        logger.info("[OK] 已连接并认证 VTS，按 Ctrl+C 退出程序")
 
         await asyncio.Event().wait()
     finally:
