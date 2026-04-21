@@ -39,7 +39,9 @@ class VTubeStudio:
         tween_keep_alive_interval: float = 0.5,
         tween_default_fps: int = 60,
     ) -> None:
-        from .model_expression_sync import ModelExpressionSyncService
+        from .model_expression_sync.model_expression_sync import (
+            ModelExpressionSyncService,
+        )
 
         self.config_manager = config_manager or ConfigManager(
             VTubeStudioConfig,

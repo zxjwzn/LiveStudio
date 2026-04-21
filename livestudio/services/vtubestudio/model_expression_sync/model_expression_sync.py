@@ -7,12 +7,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from livestudio.config import ConfigLoadError, ConfigManager, ConfigValidationError
 from livestudio.log import logger
 
-from ...clients.vtube_studio.models import (
+from ....clients.vtube_studio.models import (
     EventSubscriptionConfig,
     ExpressionActivationRequest,
     ExpressionActivationRequestData,
@@ -21,34 +19,14 @@ from ...clients.vtube_studio.models import (
     ExpressionStateRequestData,
     VTSEventEnvelope,
 )
-from ...clients.vtube_studio.models.model import CurrentModelResponseData
+from ....clients.vtube_studio.models.model import CurrentModelResponseData
+from .models import ModelExpressionConfig, ModelExpressionEntry
 
 if TYPE_CHECKING:
-    from .service import VTubeStudio
+    from ..service import VTubeStudio
 
 _INVALID_FILE_CHARS = re.compile(r'[<>:"/\\|?*\s]+')
 _MAX_FILENAME_STEM_LENGTH = 80
-
-
-class ModelExpressionEntry(BaseModel):
-    """单个表情的激活配置。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(description="表情名称。")
-    file: str = Field(description="表情文件名。")
-    active: bool = Field(default=False, description="切换到该模型时是否自动激活。")
-
-
-class ModelExpressionConfig(BaseModel):
-    """按模型保存的表情配置文件。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    model_id: str = Field(default="", description="VTS 模型 ID。")
-    model_name: str = Field(default="", description="VTS 模型名称。")
-    expressions: list[ModelExpressionEntry] = Field(default_factory=list, description="模型全部表情及目标激活状态。")
-
 
 class ModelExpressionSyncService:
     """VTube Studio 的模型表情同步子服务。"""
