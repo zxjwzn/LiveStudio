@@ -27,6 +27,7 @@ from ...clients.vtube_studio.models import (
     InjectParameterValue,
     VTubeStudioAPIStateBroadcast,
 )
+from .subservices.animation_runtime import AnimationRuntimeService
 from .subservices.base import VTubeStudioSubservice
 
 
@@ -88,6 +89,15 @@ class VTubeStudio:
         """返回已注册的子服务映射。"""
 
         return dict(self._subservices)
+
+    @property
+    def animation_runtime(self) -> AnimationRuntimeService:
+        """返回动画运行时子服务。"""
+
+        subservice = self.get_subservice("animation_runtime")
+        if not isinstance(subservice, AnimationRuntimeService):
+            raise TypeError("animation_runtime 子服务类型不正确")
+        return subservice
 
     async def initialize(self) -> None:
         """加载配置并创建内部依赖。"""
@@ -168,10 +178,10 @@ class VTubeStudio:
             await client.disconnect()
 
     async def start(self) -> None:
-        """启动连接、认证和模型表情自动同步。"""
+        """启动连接、认证流程与子服务。"""
 
         authenticated = await self._authenticate_session(allow_request_token=True)
-
+        self.tween.start()
         if not authenticated:
             raise RuntimeError("VTube Studio 认证失败")
 
@@ -201,6 +211,9 @@ class VTubeStudio:
         target_names = tuple(names) if names is not None else tuple(reversed(tuple(self._subservices)))
         for name in target_names:
             await self.stop_subservice(name)
+
+        if names is None:
+            await self.tween.release_all()
 
     async def stop_subservice(self, name: str) -> bool:
         """停止指定子服务。"""
