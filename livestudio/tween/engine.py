@@ -170,6 +170,20 @@ class ParameterTweenEngine:
             with contextlib.suppress(asyncio.CancelledError):
                 await task_to_cancel
 
+    async def cancel_all(self) -> None:
+        """取消所有活动缓动，并保留各参数最后一次已发送的值。"""
+
+        async with self._lock:
+            active_tweens = tuple(self._active_tweens.values())
+            self._active_tweens.clear()
+
+        for active in active_tweens:
+            active.task.cancel()
+
+        for active in active_tweens:
+            with contextlib.suppress(asyncio.CancelledError):
+                await active.task
+
     async def release_all(self) -> None:
         """释放所有受控参数。"""
 
