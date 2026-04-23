@@ -20,7 +20,12 @@ class ResponseError(VTubeStudioError):
 class APIError(VTubeStudioError):
     """VTube Studio 返回 `APIError` 消息。"""
 
-    def __init__(self, error_id: int, message: str, payload: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        error_id: int,
+        message: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(f"VTube Studio API error {error_id}: {message}")
         self.error_id = error_id
         self.message = message

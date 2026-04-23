@@ -106,7 +106,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self._loop = asyncio.get_running_loop()
         self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
-        logger.info("麦克风音频源已初始化，目标设备: {} ({})", self.device_info.name, self.device_info.index)
+        logger.info(
+            "麦克风音频源已初始化，目标设备: {} ({})",
+            self.device_info.name,
+            self.device_info.index,
+        )
 
     async def start(self) -> None:
         """启动麦克风输入流。"""
@@ -120,7 +124,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         stream = sd.InputStream(
             device=self._device_info.index,
             channels=self.config.channels,
-            samplerate=self.config.samplerate or int(self._device_info.default_samplerate),
+            samplerate=self.config.samplerate
+            or int(self._device_info.default_samplerate),
             dtype=self.config.dtype,
             blocksize=self.config.blocksize,
             latency=self.config.latency,
@@ -202,7 +207,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             await self.stop()
             await self.start()
 
-        logger.info("麦克风输入设备已切换为: {} ({})", selected_device.name, selected_device.index)
+        logger.info(
+            "麦克风输入设备已切换为: {} ({})",
+            selected_device.name,
+            selected_device.index,
+        )
         return selected_device
 
     async def reload_device(self) -> None:
@@ -218,7 +227,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
-        logger.info("麦克风输入设备已刷新为: {} ({})", self.device_info.name, self.device_info.index)
+        logger.info(
+            "麦克风输入设备已刷新为: {} ({})",
+            self.device_info.name,
+            self.device_info.index,
+        )
 
         if was_started:
             await self.start()
@@ -235,7 +248,13 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
     def _handle_audio_callback(
         self,
-        indata: np.ndarray[tuple[int, int], np.dtype[np.float32] | np.dtype[np.int16] | np.dtype[np.int32] | np.dtype[np.uint8]],
+        indata: np.ndarray[
+            tuple[int, int],
+            np.dtype[np.float32]
+            | np.dtype[np.int16]
+            | np.dtype[np.int32]
+            | np.dtype[np.uint8],
+        ],
         frames: int,
         time_info: _SoundDeviceTimeInfo,
         status: sd.CallbackFlags,
@@ -247,7 +266,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         chunk = AudioChunk(
             frames=frames,
-            samplerate=self.config.samplerate or int(self.device_info.default_samplerate),
+            samplerate=self.config.samplerate
+            or int(self.device_info.default_samplerate),
             channels=self.config.channels,
             data=indata.copy(),
             overflowed=bool(status.input_overflow),
@@ -269,7 +289,10 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             queue.put_nowait(chunk)
         except asyncio.QueueFull:
             self._dropped_chunks += 1
-            logger.warning("音频缓冲队列已满，丢弃 1 个音频块；累计丢弃: {}", self._dropped_chunks)
+            logger.warning(
+                "音频缓冲队列已满，丢弃 1 个音频块；累计丢弃: {}",
+                self._dropped_chunks,
+            )
 
     async def _resolve_input_device(self) -> InputDeviceInfo:
         devices = await self.list_input_devices()
@@ -304,24 +327,36 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         device_index: int | None,
     ) -> InputDeviceInfo | None:
         if device_index is not None:
-            return next((device for device in devices if device.index == device_index), None)
+            return next(
+                (device for device in devices if device.index == device_index),
+                None,
+            )
 
         if device_name is None:
             return None
 
-        exact_match = next((device for device in devices if device.name == device_name), None)
+        exact_match = next(
+            (device for device in devices if device.name == device_name),
+            None,
+        )
         if exact_match is not None:
             return exact_match
 
         normalized_name = device_name.casefold()
-        return next((device for device in devices if normalized_name in device.name.casefold()), None)
+        return next(
+            (device for device in devices if normalized_name in device.name.casefold()),
+            None,
+        )
 
     def _apply_selected_device(self, device: InputDeviceInfo) -> None:
         self._device_info = device
         self.config.device_name = device.name
         self.config.device_index = device.index
 
-    def _normalize_input_devices(self, devices: Sequence[object]) -> list[InputDeviceInfo]:
+    def _normalize_input_devices(
+        self,
+        devices: Sequence[object],
+    ) -> list[InputDeviceInfo]:
         normalized_devices: list[InputDeviceInfo] = []
         for index, raw_device in enumerate(devices):
             if not self._is_raw_input_device_info(raw_device):
@@ -353,7 +388,10 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             normalized_devices.append(normalized_device)
         return normalized_devices
 
-    def _is_raw_input_device_info(self, raw_device: object) -> TypeGuard[_RawInputDeviceInfo]:
+    def _is_raw_input_device_info(
+        self,
+        raw_device: object,
+    ) -> TypeGuard[_RawInputDeviceInfo]:
         if not isinstance(raw_device, dict):
             return False
 

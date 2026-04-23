@@ -6,9 +6,9 @@ from .subservices.base import SubserviceConfigFile, VTubeStudioSubservice
 from .subservices.model_expression_sync import ModelExpressionSyncService
 
 __all__ = [
-	"AnimationRuntimeService",
-	"ModelExpressionSyncService",
-	"SubserviceConfigFile",
-	"VTubeStudio",
-	"VTubeStudioSubservice",
+    "AnimationRuntimeService",
+    "ModelExpressionSyncService",
+    "SubserviceConfigFile",
+    "VTubeStudio",
+    "VTubeStudioSubservice",
 ]

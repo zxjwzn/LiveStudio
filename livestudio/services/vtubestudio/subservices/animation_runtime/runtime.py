@@ -27,7 +27,11 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
     """统一管理循环动画、一次性动画与模板动画。"""
 
     def __init__(self, *, config_path: str | Path | None = None) -> None:
-        super().__init__("animation_runtime", AnimationRuntimeConfigFile, config_path=config_path)
+        super().__init__(
+            "animation_runtime",
+            AnimationRuntimeConfigFile,
+            config_path=config_path,
+        )
         self._controllers: dict[str, AnimationController[Any]] = {}
         self._template_repository: AnimationTemplateRepository | None = None
         self._audio_stream: AudioStreamSource | None = None
@@ -88,7 +92,12 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
         for controller in self._controllers.values():
             await controller.stop_without_wait()
 
-    async def execute_oneshot(self, controller_name: str, *, parameters: Mapping[str, TemplateScalar] | None = None) -> None:
+    async def execute_oneshot(
+        self,
+        controller_name: str,
+        *,
+        parameters: Mapping[str, TemplateScalar] | None = None,
+    ) -> None:
         controller = self._require_controller(controller_name)
         if controller.animation_type is not AnimationType.ONESHOT:
             raise ValueError(f"控制器 {controller_name} 不是一次性控制器")
@@ -112,7 +121,11 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
             await asyncio.gather(*tasks)
 
     async def _run_template_action(self, action: object) -> None:
-        resolved_action = action if isinstance(action, ResolvedTemplateAction) else ResolvedTemplateAction.model_validate(action)
+        resolved_action = (
+            action
+            if isinstance(action, ResolvedTemplateAction)
+            else ResolvedTemplateAction.model_validate(action)
+        )
         if resolved_action.delay > 0:
             await asyncio.sleep(resolved_action.delay)
         await self.vtubestudio.tween.tween(

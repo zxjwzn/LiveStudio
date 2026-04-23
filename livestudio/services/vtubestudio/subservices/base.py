@@ -90,7 +90,11 @@ class VTubeStudioSubservice(ABC, Generic[FileConfigT]):
 
         return self.config.enable
 
-    def bind(self, owner: VTubeStudio, config_manager: ConfigManager[FileConfigT]) -> None:
+    def bind(
+        self,
+        owner: VTubeStudio,
+        config_manager: ConfigManager[FileConfigT],
+    ) -> None:
         """绑定所属服务及配置管理器。"""
 
         self._owner = owner

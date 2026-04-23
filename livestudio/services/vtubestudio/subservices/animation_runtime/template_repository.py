@@ -125,7 +125,9 @@ class AnimationTemplateRepository:
             return
 
         for path in sorted(self._template_dir.glob("*.jsonc")):
-            template = AnimationTemplate.model_validate(json5.loads(path.read_text(encoding="utf-8")))
+            template = AnimationTemplate.model_validate(
+                json5.loads(path.read_text(encoding="utf-8")),
+            )
             if template.name in self._templates:
                 raise ValueError(f"重复的动画模板名称: {template.name}")
             self._templates[template.name] = template
@@ -153,7 +155,11 @@ class AnimationTemplateRepository:
             )
             for action in template.data.actions
         ]
-        return TemplatePlayback(template_name=template.name, context=context, actions=actions)
+        return TemplatePlayback(
+            template_name=template.name,
+            context=context,
+            actions=actions,
+        )
 
     def _prepare_context(
         self,
@@ -183,7 +189,11 @@ class AnimationTemplateRepository:
         *,
         context: Mapping[str, TemplateScalar],
     ) -> ResolvedTemplateAction:
-        from_value = None if action.from_value is None else float(self._evaluate_value(action.from_value, context))
+        from_value = (
+            None
+            if action.from_value is None
+            else float(self._evaluate_value(action.from_value, context))
+        )
         return ResolvedTemplateAction(
             parameter=action.parameter,
             to=float(self._evaluate_value(action.to, context)),

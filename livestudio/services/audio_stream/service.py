@@ -24,11 +24,15 @@ class AudioStreamRouter(AudioStreamSource):
     ) -> None:
         self.config_manager = config_manager or ConfigManager(
             AudioStreamConfigFile,
-            Path(config_path) if config_path is not None else Path("config") / "audio_stream.yaml",
+            Path(config_path)
+            if config_path is not None
+            else Path("config") / "audio_stream.yaml",
         )
+        self._microphone_source = MicrophoneAudioStreamSource()
+        self._tts_source = TTSAudioStreamSource()
         self._sources: dict[AudioSourceKind, AudioStreamSource] = {
-            AudioSourceKind.MICROPHONE: MicrophoneAudioStreamSource(),
-            AudioSourceKind.TTS: TTSAudioStreamSource(),
+            AudioSourceKind.MICROPHONE: self._microphone_source,
+            AudioSourceKind.TTS: self._tts_source,
         }
         self._active_source_kind: AudioSourceKind | None = None
         self._initialized = False
@@ -52,25 +56,19 @@ class AudioStreamRouter(AudioStreamSource):
     def microphone_source(self) -> MicrophoneAudioStreamSource:
         """返回内置麦克风音频源。"""
 
-        source = self._sources[AudioSourceKind.MICROPHONE]
-        if not isinstance(source, MicrophoneAudioStreamSource):
-            raise TypeError("内置 microphone 音频源类型不正确")
-        return source
+        return self._microphone_source
 
     @property
     def tts_source(self) -> TTSAudioStreamSource:
         """返回内置 TTS 音频源。"""
 
-        source = self._sources[AudioSourceKind.TTS]
-        if not isinstance(source, TTSAudioStreamSource):
-            raise TypeError("内置 tts 音频源类型不正确")
-        return source
+        return self._tts_source
 
     @property
     def is_started(self) -> bool:
         active_source = self._get_active_source()
         return active_source.is_started if active_source is not None else False
-    
+
     def bind_source(self, source: AudioStreamSource) -> None:
         source_kind = source.source_kind
         if source_kind in self._sources:
@@ -112,7 +110,12 @@ class AudioStreamRouter(AudioStreamSource):
         active_source = self._require_active_source()
         return await active_source.read_chunk(timeout=timeout)
 
-    async def switch_source(self, source_kind: AudioSourceKind, *, persist: bool = True) -> None:
+    async def switch_source(
+        self,
+        source_kind: AudioSourceKind,
+        *,
+        persist: bool = True,
+    ) -> None:
         next_source = self._sources.get(source_kind)
         if next_source is None:
             raise RuntimeError(f"未绑定音频源: {source_kind}")
@@ -147,10 +150,5 @@ class AudioStreamRouter(AudioStreamSource):
         return active_source
 
     def _apply_source_configs(self) -> None:
-        microphone_source = self._sources.get(AudioSourceKind.MICROPHONE)
-        if isinstance(microphone_source, MicrophoneAudioStreamSource):
-            microphone_source.apply_config(self.config.microphone)
-
-        tts_source = self._sources.get(AudioSourceKind.TTS)
-        if isinstance(tts_source, TTSAudioStreamSource):
-            tts_source.apply_config(self.config.tts)
+        self._microphone_source.apply_config(self.config.microphone)
+        self._tts_source.apply_config(self.config.tts)

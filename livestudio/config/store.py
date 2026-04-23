@@ -65,4 +65,3 @@ class ConfigStore:
             if temp_path.exists():
                 with contextlib.suppress(OSError):
                     temp_path.unlink()
-

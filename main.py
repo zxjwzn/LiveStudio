@@ -72,7 +72,8 @@ async def main() -> None:
         audio_stream.microphone_source.device_info.name,
         audio_stream.microphone_source.device_info.index,
         audio_stream.microphone_source.config.channels,
-        audio_stream.microphone_source.config.samplerate or int(audio_stream.microphone_source.device_info.default_samplerate),
+        audio_stream.microphone_source.config.samplerate
+        or int(audio_stream.microphone_source.device_info.default_samplerate),
     )
 
     audio_task: asyncio.Task[None] | None = None

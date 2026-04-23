@@ -22,10 +22,16 @@ class VTSEventManager:
         self._client = client
         self._queue_size = queue_size
 
-    async def subscribe(self, request: EventSubscriptionRequest) -> EventSubscriptionResponse:
+    async def subscribe(
+        self,
+        request: EventSubscriptionRequest,
+    ) -> EventSubscriptionResponse:
         return await self._client.subscribe_event(request)
 
-    async def unsubscribe(self, event_name: str | None = None) -> EventSubscriptionResponse:
+    async def unsubscribe(
+        self,
+        event_name: str | None = None,
+    ) -> EventSubscriptionResponse:
         return await self._client.unsubscribe_event(event_name)
 
     def add_handler(self, event_name: str, handler: ListenerHandler) -> None:

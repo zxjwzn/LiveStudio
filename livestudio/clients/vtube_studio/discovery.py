@@ -19,7 +19,10 @@ class VTubeStudioDiscovery:
     def __init__(self, config: VTubeStudioConfig) -> None:
         self._config = config
 
-    async def discover_once(self, timeout: float | None = None) -> VTubeStudioAPIStateBroadcast:
+    async def discover_once(
+        self,
+        timeout: float | None = None,
+    ) -> VTubeStudioAPIStateBroadcast:
         effective_timeout = timeout or self._config.discovery_timeout
         async for broadcast in self.listen(timeout=effective_timeout, max_messages=1):
             return broadcast
@@ -39,7 +42,9 @@ class VTubeStudioDiscovery:
             sock.bind(("", self._config.discovery_port))
         except OSError as exc:
             sock.close()
-            raise DiscoveryError(f"无法绑定 UDP 端口 {self._config.discovery_port}") from exc
+            raise DiscoveryError(
+                f"无法绑定 UDP 端口 {self._config.discovery_port}",
+            ) from exc
 
         try:
             received = 0
@@ -53,7 +58,9 @@ class VTubeStudioDiscovery:
                     raise DiscoveryError("等待 VTube Studio UDP 广播超时") from exc
 
                 try:
-                    yield VTubeStudioAPIStateBroadcast.model_validate_json(data.decode("utf-8"))
+                    yield VTubeStudioAPIStateBroadcast.model_validate_json(
+                        data.decode("utf-8"),
+                    )
                 except (UnicodeDecodeError, ValidationError) as exc:
                     raise DiscoveryError("收到的 UDP 广播无法解析") from exc
                 received += 1

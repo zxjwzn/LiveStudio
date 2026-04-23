@@ -27,16 +27,33 @@ class PermissionRequestData(VTSEmptyData):
 class PermissionRequest(VTSRequestEnvelope[PermissionRequestData]):
     """权限请求。"""
 
-    message_type: str = Field(default="PermissionRequest", alias="messageType", description="请求或查询插件权限。")
-    data: PermissionRequestData = Field(default_factory=PermissionRequestData, description="权限请求参数。")
+    message_type: str = Field(
+        default="PermissionRequest",
+        alias="messageType",
+        description="请求或查询插件权限。",
+    )
+    data: PermissionRequestData = Field(
+        default_factory=PermissionRequestData,
+        description="权限请求参数。",
+    )
 
 
 class PermissionResponseData(VTSEmptyData):
     """权限响应负载。"""
 
-    grant_success: bool | None = Field(default=None, alias="grantSuccess", description="用户是否授予成功；纯查询时通常为空。")
-    requested_permission: str | None = Field(default=None, alias="requestedPermission", description="本次请求的权限名称。")
-    permissions: list[Permission] = Field(description="VTube Studio 当前提供的全部权限及授权状态。")
+    grant_success: bool | None = Field(
+        default=None,
+        alias="grantSuccess",
+        description="用户是否授予成功；纯查询时通常为空。",
+    )
+    requested_permission: str | None = Field(
+        default=None,
+        alias="requestedPermission",
+        description="本次请求的权限名称。",
+    )
+    permissions: list[Permission] = Field(
+        description="VTube Studio 当前提供的全部权限及授权状态。",
+    )
 
 
 class PermissionResponse(VTSResponseEnvelope[PermissionResponseData]):

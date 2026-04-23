@@ -74,7 +74,12 @@ class MouthSyncControllerConfig(ControllerSettings):
     open_max: float = Field(default=1.0, description="最大开口值。")
     noise_floor: float = Field(default=0.01, ge=0.0, description="静音门限。")
     voice_ceiling: float = Field(default=0.2, gt=0.0, description="有效语音上限。")
-    smoothing_factor: float = Field(default=0.35, ge=0.0, le=1.0, description="嘴型平滑系数。")
+    smoothing_factor: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=1.0,
+        description="嘴型平滑系数。",
+    )
     update_interval: float = Field(default=0.05, gt=0.0, description="更新间隔。")
     attack_duration: float = Field(default=0.04, ge=0.0, description="张嘴过渡时长。")
     release_duration: float = Field(default=0.08, ge=0.0, description="闭嘴过渡时长。")
@@ -109,7 +114,11 @@ class TemplateActionDefinition(BaseModel):
     parameter: str = Field(min_length=1, description="目标参数名。")
     to: TemplateValue = Field(description="目标值。")
     duration: TemplateValue = Field(default=0.0, description="动作时长。")
-    from_value: TemplateValue | None = Field(default=None, alias="from", description="可选起始值。")
+    from_value: TemplateValue | None = Field(
+        default=None,
+        alias="from",
+        description="可选起始值。",
+    )
     delay: TemplateValue = Field(default=0.0, description="动作延迟。")
     easing: str = Field(default="linear", description="缓动函数名。")
     mode: TweenMode = Field(default="set", description="参数写入模式。")
@@ -121,9 +130,18 @@ class TemplateDataDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     description: str | None = Field(default=None, description="模板说明。")
-    params: list[TemplateParameterDefinition] = Field(default_factory=list, description="外部参数声明。")
-    variables: dict[str, TemplateValue] = Field(default_factory=dict, description="内部变量定义。")
-    actions: list[TemplateActionDefinition] = Field(default_factory=list, description="动作列表。")
+    params: list[TemplateParameterDefinition] = Field(
+        default_factory=list,
+        description="外部参数声明。",
+    )
+    variables: dict[str, TemplateValue] = Field(
+        default_factory=dict,
+        description="内部变量定义。",
+    )
+    actions: list[TemplateActionDefinition] = Field(
+        default_factory=list,
+        description="动作列表。",
+    )
 
 
 class AnimationTemplate(BaseModel):
@@ -133,7 +151,10 @@ class AnimationTemplate(BaseModel):
 
     name: str = Field(min_length=1, description="模板名称。")
     type: Literal["animation"] = Field(default="animation", description="模板类型。")
-    data: TemplateDataDefinition = Field(default_factory=TemplateDataDefinition, description="模板主体数据。")
+    data: TemplateDataDefinition = Field(
+        default_factory=TemplateDataDefinition,
+        description="模板主体数据。",
+    )
 
 
 class AnimationRuntimeConfig(BaseModel):
@@ -143,11 +164,23 @@ class AnimationRuntimeConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="运行时内部逻辑开关。")
     template_dir: str = Field(default="config/animations", description="动画模板目录。")
-    auto_start_idle: bool = Field(default=True, description="启动子服务时是否自动启动循环控制器。")
+    auto_start_idle: bool = Field(
+        default=True,
+        description="启动子服务时是否自动启动循环控制器。",
+    )
     tick_fps: int = Field(default=60, ge=1, le=240, description="逻辑采样频率提示值。")
-    blink: BlinkControllerConfig = Field(default_factory=BlinkControllerConfig, description="眨眼控制器配置。")
-    breathing: BreathingControllerConfig = Field(default_factory=BreathingControllerConfig, description="呼吸控制器配置。")
-    mouth_sync: MouthSyncControllerConfig = Field(default_factory=MouthSyncControllerConfig, description="嘴型同步控制器配置。")
+    blink: BlinkControllerConfig = Field(
+        default_factory=BlinkControllerConfig,
+        description="眨眼控制器配置。",
+    )
+    breathing: BreathingControllerConfig = Field(
+        default_factory=BreathingControllerConfig,
+        description="呼吸控制器配置。",
+    )
+    mouth_sync: MouthSyncControllerConfig = Field(
+        default_factory=MouthSyncControllerConfig,
+        description="嘴型同步控制器配置。",
+    )
 
     def resolve_template_dir(self) -> Path:
         return Path(self.template_dir)

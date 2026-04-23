@@ -11,7 +11,10 @@ from livestudio.log import logger
 from .easing import EASING_REGISTRY, Easing, EasingFunction
 from .models import ActiveTween, ControlledParameterState, TweenMode, TweenRequest
 
-ParameterSender = Callable[[Iterable[ControlledParameterState], TweenMode], Awaitable[None]]
+ParameterSender = Callable[
+    [Iterable[ControlledParameterState], TweenMode],
+    Awaitable[None],
+]
 
 
 class ParameterTweenEngine:
@@ -249,17 +252,21 @@ class ParameterTweenEngine:
 
                 elapsed = min(request.duration, max(0.0, loop.time() - start_time))
                 t = min(1.0, elapsed / request.duration)
-                value = start_value + (request.end_value - start_value) * request.easing_function(t)
+                value = start_value + (
+                    request.end_value - start_value
+                ) * request.easing_function(t)
                 should_send = False
 
                 async with self._lock:
                     active = self._active_tweens.get(request.parameter_name)
                     if active is not None and active.task is current_task:
-                        self._controlled_params[request.parameter_name] = ControlledParameterState(
-                            name=request.parameter_name,
-                            value=value,
-                            mode=request.mode,
-                            keep_alive=request.keep_alive,
+                        self._controlled_params[request.parameter_name] = (
+                            ControlledParameterState(
+                                name=request.parameter_name,
+                                value=value,
+                                mode=request.mode,
+                                keep_alive=request.keep_alive,
+                            )
                         )
                         should_send = True
 
@@ -315,7 +322,9 @@ class ParameterTweenEngine:
             )
 
         try:
-            await self._send_parameter_values([self._controlled_params[request.parameter_name]])
+            await self._send_parameter_values(
+                [self._controlled_params[request.parameter_name]],
+            )
         finally:
             async with self._lock:
                 active = self._active_tweens.get(request.parameter_name)
@@ -338,7 +347,8 @@ class ParameterTweenEngine:
                     states_to_send = [
                         state
                         for parameter_name, state in self._controlled_params.items()
-                        if state.keep_alive and parameter_name not in self._active_tweens
+                        if state.keep_alive
+                        and parameter_name not in self._active_tweens
                     ]
 
                 if not states_to_send:
@@ -350,7 +360,10 @@ class ParameterTweenEngine:
         except Exception:
             logger.exception("缓动引擎保活循环出错")
 
-    async def _send_parameter_values(self, states: Iterable[ControlledParameterState]) -> None:
+    async def _send_parameter_values(
+        self,
+        states: Iterable[ControlledParameterState],
+    ) -> None:
         parameter_states = list(states)
         if not parameter_states:
             return

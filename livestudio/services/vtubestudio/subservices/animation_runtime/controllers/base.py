@@ -20,7 +20,12 @@ ConfigT = TypeVar("ConfigT", bound=ControllerSettings)
 class AnimationController(ABC, Generic[ConfigT]):
     """动画控制器统一抽象。"""
 
-    def __init__(self, runtime: AnimationRuntimeService, name: str, config: ConfigT) -> None:
+    def __init__(
+        self,
+        runtime: AnimationRuntimeService,
+        name: str,
+        config: ConfigT,
+    ) -> None:
         self._runtime = runtime
         self._name = name
         self._config = config

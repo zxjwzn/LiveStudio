@@ -40,20 +40,72 @@ class VTubeStudioConfig(BaseModel):
         description="VTube Studio 插件身份信息。",
     )
 
-    ws_url: str = Field(default="ws://127.0.0.1:8001", description='VTube Studio WebSocket 地址，格式如 "ws://127.0.0.1:8001"。')
-    authentication_token: str | None = Field(default=None, description="持久化保存的 VTube Studio 认证令牌。")
-    api_name: str = Field(default="VTubeStudioPublicAPI", exclude=True, description="固定 API 名称。")
+    ws_url: str = Field(
+        default="ws://127.0.0.1:8001",
+        description='VTube Studio WebSocket 地址，格式如 "ws://127.0.0.1:8001"。',
+    )
+    authentication_token: str | None = Field(
+        default=None,
+        description="持久化保存的 VTube Studio 认证令牌。",
+    )
+    api_name: str = Field(
+        default="VTubeStudioPublicAPI",
+        exclude=True,
+        description="固定 API 名称。",
+    )
     api_version: str = Field(default="1.0", exclude=True, description="固定 API 版本。")
-    connect_timeout: float = Field(default=10.0, gt=0, description="建立 WebSocket 连接超时秒数。")
-    request_timeout: float = Field(default=10.0, gt=0, description="单次请求等待响应超时秒数。")
-    discovery_timeout: float = Field(default=5.0, gt=0, description="UDP discovery 等待超时秒数。")
-    discovery_port: int = Field(default=47779, ge=1, le=65535, description="VTube Studio UDP 广播端口。")
-    udp_buffer_size: int = Field(default=65536, ge=1024, le=1048576, exclude=True, description="UDP discovery 接收缓冲区大小。")
-    event_queue_size: int = Field(default=128, ge=1, le=4096, exclude=True, description="每类事件队列缓存大小。")
-    auto_resubscribe: bool = Field(default=True, description="重新认证成功后是否自动恢复事件订阅。")
-    subservice_config_dir: str = Field(default="config/vtube_studio_services", description="子服务独立配置文件所在目录。")
-    subservice_config_paths: dict[str, str] = Field(default_factory=dict, description="子服务名称到独立配置文件路径的映射。")
-    user_agent: str = Field(default="LiveStudio/0.1.0", exclude=True, description="连接时附带的 User-Agent。")
+    connect_timeout: float = Field(
+        default=10.0,
+        gt=0,
+        description="建立 WebSocket 连接超时秒数。",
+    )
+    request_timeout: float = Field(
+        default=10.0,
+        gt=0,
+        description="单次请求等待响应超时秒数。",
+    )
+    discovery_timeout: float = Field(
+        default=5.0,
+        gt=0,
+        description="UDP discovery 等待超时秒数。",
+    )
+    discovery_port: int = Field(
+        default=47779,
+        ge=1,
+        le=65535,
+        description="VTube Studio UDP 广播端口。",
+    )
+    udp_buffer_size: int = Field(
+        default=65536,
+        ge=1024,
+        le=1048576,
+        exclude=True,
+        description="UDP discovery 接收缓冲区大小。",
+    )
+    event_queue_size: int = Field(
+        default=128,
+        ge=1,
+        le=4096,
+        exclude=True,
+        description="每类事件队列缓存大小。",
+    )
+    auto_resubscribe: bool = Field(
+        default=True,
+        description="重新认证成功后是否自动恢复事件订阅。",
+    )
+    subservice_config_dir: str = Field(
+        default="config/vtube_studio_services",
+        description="子服务独立配置文件所在目录。",
+    )
+    subservice_config_paths: dict[str, str] = Field(
+        default_factory=dict,
+        description="子服务名称到独立配置文件路径的映射。",
+    )
+    user_agent: str = Field(
+        default="LiveStudio/0.1.0",
+        exclude=True,
+        description="连接时附带的 User-Agent。",
+    )
 
     @field_validator("ws_url")
     @classmethod

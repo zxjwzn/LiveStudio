@@ -41,7 +41,9 @@ class VTSRequestEnvelope(VTSBaseModel, Generic[RequestDataT]):
         alias="messageType",
         description="请求消息类型，例如 `StatisticsRequest`。",
     )
-    data: RequestDataT = Field(description="请求负载。即使某些接口不需要，发送空对象通常也会被服务端忽略。")
+    data: RequestDataT = Field(
+        description="请求负载。即使某些接口不需要，发送空对象通常也会被服务端忽略。",
+    )
 
     def to_payload(self) -> dict[str, Any]:
         """将模型转换为适合发送的 JSON 负载。"""
@@ -55,7 +57,10 @@ class VTSResponseEnvelope(VTSBaseModel, Generic[ResponseDataT]):
     api_name: str = Field(alias="apiName", description="固定 API 名称。")
     api_version: str = Field(alias="apiVersion", description="响应的 API 版本。")
     timestamp: int = Field(description="服务端处理该请求时的 UNIX 毫秒时间戳。")
-    message_type: str = Field(alias="messageType", description="响应消息类型，例如 `StatisticsResponse`。")
+    message_type: str = Field(
+        alias="messageType",
+        description="响应消息类型，例如 `StatisticsResponse`。",
+    )
     request_id: str = Field(alias="requestID", description="与请求对应的唯一标识。")
     data: ResponseDataT = Field(description="响应业务负载。")
 

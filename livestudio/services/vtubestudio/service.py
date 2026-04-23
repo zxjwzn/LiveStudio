@@ -45,7 +45,9 @@ class VTubeStudio:
     ) -> None:
         self.config_manager = config_manager or ConfigManager(
             VTubeStudioConfig,
-            Path(config_path) if config_path is not None else Path("config") / "vtube_studio.yaml",
+            Path(config_path)
+            if config_path is not None
+            else Path("config") / "vtube_studio.yaml",
         )
         self._client: VTubeStudioClient | None = None
         self._events: VTSEventManager | None = None
@@ -129,12 +131,18 @@ class VTubeStudio:
 
     async def _initialize_subservices(self) -> None:
         for subservice in self._subservices.values():
-            manager = ConfigManager(subservice.config_model, self._resolve_subservice_config_path(subservice))
+            manager = ConfigManager(
+                subservice.config_model,
+                self._resolve_subservice_config_path(subservice),
+            )
             await manager.load()
             subservice.bind(self, manager)
             await subservice.initialize()
 
-    def _resolve_subservice_config_path(self, subservice: VTubeStudioSubservice[Any]) -> Path:
+    def _resolve_subservice_config_path(
+        self,
+        subservice: VTubeStudioSubservice[Any],
+    ) -> Path:
         explicit_path = subservice.config_path
         if explicit_path is not None:
             return explicit_path
@@ -208,7 +216,11 @@ class VTubeStudio:
     async def stop_subservices(self, names: Iterable[str] | None = None) -> None:
         """停止全部或指定子服务。"""
 
-        target_names = tuple(names) if names is not None else tuple(reversed(tuple(self._subservices)))
+        target_names = (
+            tuple(names)
+            if names is not None
+            else tuple(reversed(tuple(self._subservices)))
+        )
         for name in target_names:
             await self.stop_subservice(name)
 
@@ -226,11 +238,16 @@ class VTubeStudio:
         for subservice in self._subservices.values():
             await subservice.save_config()
 
-    async def connect_and_authenticate(self, authentication_token: str | None = None) -> bool:
+    async def connect_and_authenticate(
+        self,
+        authentication_token: str | None = None,
+    ) -> bool:
         """连接到 VTube Studio 并执行认证流程。"""
 
         try:
-            return await self._authenticate_session(authentication_token=authentication_token)
+            return await self._authenticate_session(
+                authentication_token=authentication_token,
+            )
         except Exception:
             logger.exception("连接并认证失败")
             with contextlib.suppress(Exception):
@@ -241,7 +258,10 @@ class VTubeStudio:
         """重新建立连接并进行认证。"""
 
         try:
-            return await self._authenticate_session(authentication_token=authentication_token, disconnect_first=True)
+            return await self._authenticate_session(
+                authentication_token=authentication_token,
+                disconnect_first=True,
+            )
         except Exception:
             logger.exception("重连并认证失败")
             with contextlib.suppress(Exception):
@@ -288,7 +308,9 @@ class VTubeStudio:
             authentication_token = await self._require_client().request_token()
         except APIError as exc:
             if exc.error_id == 50:
-                raise RuntimeError("用户已拒绝插件认证请求，请在 VTube Studio 中允许后重试") from exc
+                raise RuntimeError(
+                    "用户已拒绝插件认证请求，请在 VTube Studio 中允许后重试",
+                ) from exc
             raise
 
         if store:
@@ -337,7 +359,10 @@ class VTubeStudio:
         max_messages: int | None = None,
     ) -> list[VTubeStudioAPIStateBroadcast]:
         broadcasts: list[VTubeStudioAPIStateBroadcast] = []
-        async for broadcast in self._require_discovery().listen(timeout=timeout, max_messages=max_messages):
+        async for broadcast in self._require_discovery().listen(
+            timeout=timeout,
+            max_messages=max_messages,
+        ):
             broadcasts.append(broadcast)
         return broadcasts
 
@@ -353,7 +378,10 @@ class VTubeStudio:
         request = InjectParameterDataRequest(
             data=InjectParameterDataRequestData(
                 mode=mode,
-                parameterValues=[InjectParameterValue(id=state.name, value=state.value) for state in parameter_states],
+                parameterValues=[
+                    InjectParameterValue(id=state.name, value=state.value)
+                    for state in parameter_states
+                ],
             ),
         )
         await self._require_client().inject_parameter_data(request)

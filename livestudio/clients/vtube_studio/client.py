@@ -132,7 +132,11 @@ class VTubeStudioClient:
     def is_connected(self) -> bool:
         """当前是否已建立 WebSocket 连接。"""
 
-        return self._connection is not None and self._reader_task is not None and not self._reader_task.done()
+        return (
+            self._connection is not None
+            and self._reader_task is not None
+            and not self._reader_task.done()
+        )
 
     async def connect(self) -> None:
         """建立到 VTube Studio 的 WebSocket 连接。"""
@@ -154,7 +158,9 @@ class VTubeStudioClient:
             self._reader_task = asyncio.create_task(self._reader_loop())
         except (OSError, TimeoutError, WebSocketException) as exc:
             self._connection = None
-            raise VTubeStudioConnectionError(f"无法连接到 {self.config.websocket_url}") from exc
+            raise VTubeStudioConnectionError(
+                f"无法连接到 {self.config.websocket_url}",
+            ) from exc
 
     async def disconnect(self) -> None:
         """关闭 WebSocket 连接。"""
@@ -176,7 +182,9 @@ class VTubeStudioClient:
         except WebSocketException as exc:
             raise VTubeStudioConnectionError("关闭 VTube Studio 连接失败") from exc
         finally:
-            self._fail_pending_requests(VTubeStudioConnectionError("VTube Studio 连接已关闭"))
+            self._fail_pending_requests(
+                VTubeStudioConnectionError("VTube Studio 连接已关闭"),
+            )
 
     async def request_token(self) -> str:
         """请求插件认证令牌。"""
@@ -209,7 +217,11 @@ class VTubeStudioClient:
                 await self.send_request(subscription_request, EventSubscriptionResponse)
         return True
 
-    async def send_request(self, request: VTSRequestEnvelope[Any], response_model: type[ResponseT]) -> ResponseT:
+    async def send_request(
+        self,
+        request: VTSRequestEnvelope[Any],
+        response_model: type[ResponseT],
+    ) -> ResponseT:
         """发送请求并解析响应。"""
 
         future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
@@ -231,7 +243,10 @@ class VTubeStudioClient:
                 raise ResponseError("发送或接收 VTube Studio 消息失败") from exc
 
         try:
-            raw_response = await asyncio.wait_for(future, timeout=self.config.request_timeout)
+            raw_response = await asyncio.wait_for(
+                future,
+                timeout=self.config.request_timeout,
+            )
         except TimeoutError as exc:
             self._pending_requests.pop(request.request_id, None)
             raise ResponseError(f"等待 {request.message_type} 响应超时") from exc
@@ -261,7 +276,9 @@ class VTubeStudioClient:
         except EventDispatchError:
             pass
         finally:
-            self._fail_pending_requests(VTubeStudioConnectionError("VTube Studio 连接已关闭"))
+            self._fail_pending_requests(
+                VTubeStudioConnectionError("VTube Studio 连接已关闭"),
+            )
 
     async def _route_message(self, raw_message: str) -> None:
         """路由收到的文本消息。"""
@@ -309,7 +326,12 @@ class VTubeStudioClient:
             if not future.done():
                 future.set_exception(error)
 
-    def _parse_response(self, raw_response: Any, request_id: str, response_model: type[ResponseT]) -> ResponseT:
+    def _parse_response(
+        self,
+        raw_response: Any,
+        request_id: str,
+        response_model: type[ResponseT],
+    ) -> ResponseT:
         """解析 JSON 响应并处理 APIError。"""
 
         if not isinstance(raw_response, str):
@@ -359,12 +381,18 @@ class VTubeStudioClient:
         if not handlers:
             self._event_handlers.pop(event_name, None)
 
-    async def request_permission(self, request: PermissionRequest) -> PermissionResponse:
+    async def request_permission(
+        self,
+        request: PermissionRequest,
+    ) -> PermissionResponse:
         """请求或查询插件权限。"""
 
         return await self.send_request(request, PermissionResponse)
 
-    async def subscribe_event(self, request: EventSubscriptionRequest) -> EventSubscriptionResponse:
+    async def subscribe_event(
+        self,
+        request: EventSubscriptionRequest,
+    ) -> EventSubscriptionResponse:
         """订阅事件。"""
 
         response = await self.send_request(request, EventSubscriptionResponse)
@@ -377,7 +405,10 @@ class VTubeStudioClient:
             self._event_subscriptions.clear()
         return response
 
-    async def unsubscribe_event(self, event_name: str | None = None) -> EventSubscriptionResponse:
+    async def unsubscribe_event(
+        self,
+        event_name: str | None = None,
+    ) -> EventSubscriptionResponse:
         """退订指定事件或全部事件。"""
 
         request = EventSubscriptionRequest(
@@ -405,7 +436,10 @@ class VTubeStudioClient:
         return await self.send_request(CurrentModelRequest(), CurrentModelResponse)
 
     async def get_available_models(self) -> AvailableModelsResponse:
-        return await self.send_request(AvailableModelsRequest(), AvailableModelsResponse)
+        return await self.send_request(
+            AvailableModelsRequest(),
+            AvailableModelsResponse,
+        )
 
     async def load_model(self, request: ModelLoadRequest) -> ModelLoadResponse:
         return await self.send_request(request, ModelLoadResponse)
@@ -413,16 +447,28 @@ class VTubeStudioClient:
     async def move_model(self, request: MoveModelRequest) -> MoveModelResponse:
         return await self.send_request(request, MoveModelResponse)
 
-    async def get_hotkeys(self, request: HotkeysInCurrentModelRequest) -> HotkeysInCurrentModelResponse:
+    async def get_hotkeys(
+        self,
+        request: HotkeysInCurrentModelRequest,
+    ) -> HotkeysInCurrentModelResponse:
         return await self.send_request(request, HotkeysInCurrentModelResponse)
 
-    async def trigger_hotkey(self, request: HotkeyTriggerRequest) -> HotkeyTriggerResponse:
+    async def trigger_hotkey(
+        self,
+        request: HotkeyTriggerRequest,
+    ) -> HotkeyTriggerResponse:
         return await self.send_request(request, HotkeyTriggerResponse)
 
-    async def get_expression_state(self, request: ExpressionStateRequest) -> ExpressionStateResponse:
+    async def get_expression_state(
+        self,
+        request: ExpressionStateRequest,
+    ) -> ExpressionStateResponse:
         return await self.send_request(request, ExpressionStateResponse)
 
-    async def set_expression_active(self, request: ExpressionActivationRequest) -> ExpressionActivationResponse:
+    async def set_expression_active(
+        self,
+        request: ExpressionActivationRequest,
+    ) -> ExpressionActivationResponse:
         return await self.send_request(request, ExpressionActivationResponse)
 
     async def get_art_meshes(self) -> ArtMeshListResponse:
@@ -432,33 +478,60 @@ class VTubeStudioClient:
         return await self.send_request(request, ColorTintResponse)
 
     async def get_scene_color_overlay_info(self) -> SceneColorOverlayInfoResponse:
-        return await self.send_request(SceneColorOverlayInfoRequest(), SceneColorOverlayInfoResponse)
+        return await self.send_request(
+            SceneColorOverlayInfoRequest(),
+            SceneColorOverlayInfoResponse,
+        )
 
     async def is_face_found(self) -> FaceFoundResponse:
         return await self.send_request(FaceFoundRequest(), FaceFoundResponse)
 
     async def get_input_parameters(self) -> InputParameterListResponse:
-        return await self.send_request(InputParameterListRequest(), InputParameterListResponse)
+        return await self.send_request(
+            InputParameterListRequest(),
+            InputParameterListResponse,
+        )
 
-    async def get_parameter_value(self, request: ParameterValueRequest) -> ParameterValueResponse:
+    async def get_parameter_value(
+        self,
+        request: ParameterValueRequest,
+    ) -> ParameterValueResponse:
         return await self.send_request(request, ParameterValueResponse)
 
     async def get_live2d_parameters(self) -> Live2DParameterListResponse:
-        return await self.send_request(Live2DParameterListRequest(), Live2DParameterListResponse)
+        return await self.send_request(
+            Live2DParameterListRequest(),
+            Live2DParameterListResponse,
+        )
 
-    async def create_parameter(self, request: ParameterCreationRequest) -> ParameterCreationResponse:
+    async def create_parameter(
+        self,
+        request: ParameterCreationRequest,
+    ) -> ParameterCreationResponse:
         return await self.send_request(request, ParameterCreationResponse)
 
-    async def delete_parameter(self, request: ParameterDeletionRequest) -> ParameterDeletionResponse:
+    async def delete_parameter(
+        self,
+        request: ParameterDeletionRequest,
+    ) -> ParameterDeletionResponse:
         return await self.send_request(request, ParameterDeletionResponse)
 
-    async def inject_parameter_data(self, request: InjectParameterDataRequest) -> InjectParameterDataResponse:
+    async def inject_parameter_data(
+        self,
+        request: InjectParameterDataRequest,
+    ) -> InjectParameterDataResponse:
         return await self.send_request(request, InjectParameterDataResponse)
 
     async def get_current_model_physics(self) -> GetCurrentModelPhysicsResponse:
-        return await self.send_request(GetCurrentModelPhysicsRequest(), GetCurrentModelPhysicsResponse)
+        return await self.send_request(
+            GetCurrentModelPhysicsRequest(),
+            GetCurrentModelPhysicsResponse,
+        )
 
-    async def set_current_model_physics(self, request: SetCurrentModelPhysicsRequest) -> SetCurrentModelPhysicsResponse:
+    async def set_current_model_physics(
+        self,
+        request: SetCurrentModelPhysicsRequest,
+    ) -> SetCurrentModelPhysicsResponse:
         return await self.send_request(request, SetCurrentModelPhysicsResponse)
 
     async def get_ndi_config(self, request: NDIConfigRequest) -> NDIConfigResponse:
@@ -473,7 +546,10 @@ class VTubeStudioClient:
     async def unload_item(self, request: ItemUnloadRequest) -> ItemUnloadResponse:
         return await self.send_request(request, ItemUnloadResponse)
 
-    async def control_item_animation(self, request: ItemAnimationControlRequest) -> ItemAnimationControlResponse:
+    async def control_item_animation(
+        self,
+        request: ItemAnimationControlRequest,
+    ) -> ItemAnimationControlResponse:
         return await self.send_request(request, ItemAnimationControlResponse)
 
     async def move_items(self, request: ItemMoveRequest) -> ItemMoveResponse:
@@ -482,14 +558,23 @@ class VTubeStudioClient:
     async def sort_item(self, request: ItemSortRequest) -> ItemSortResponse:
         return await self.send_request(request, ItemSortResponse)
 
-    async def select_art_meshes(self, request: ArtMeshSelectionRequest) -> ArtMeshSelectionResponse:
+    async def select_art_meshes(
+        self,
+        request: ArtMeshSelectionRequest,
+    ) -> ArtMeshSelectionResponse:
         return await self.send_request(request, ArtMeshSelectionResponse)
 
     async def pin_item(self, request: ItemPinRequest) -> ItemPinResponse:
         return await self.send_request(request, ItemPinResponse)
 
-    async def get_post_processing(self, request: PostProcessingListRequest) -> PostProcessingListResponse:
+    async def get_post_processing(
+        self,
+        request: PostProcessingListRequest,
+    ) -> PostProcessingListResponse:
         return await self.send_request(request, PostProcessingListResponse)
 
-    async def update_post_processing(self, request: PostProcessingUpdateRequest) -> PostProcessingUpdateResponse:
+    async def update_post_processing(
+        self,
+        request: PostProcessingUpdateRequest,
+    ) -> PostProcessingUpdateResponse:
         return await self.send_request(request, PostProcessingUpdateResponse)

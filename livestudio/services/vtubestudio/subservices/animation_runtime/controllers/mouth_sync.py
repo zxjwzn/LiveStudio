@@ -20,7 +20,12 @@ if TYPE_CHECKING:
 class MouthSyncController(AnimationController[MouthSyncControllerConfig]):
     """根据麦克风实时输入驱动嘴部参数。"""
 
-    def __init__(self, runtime: AnimationRuntimeService, name: str, config: MouthSyncControllerConfig) -> None:
+    def __init__(
+        self,
+        runtime: AnimationRuntimeService,
+        name: str,
+        config: MouthSyncControllerConfig,
+    ) -> None:
         super().__init__(runtime, name, config)
         self._smoothed_value = config.closed_value
 
@@ -36,14 +41,20 @@ class MouthSyncController(AnimationController[MouthSyncControllerConfig]):
             return
 
         try:
-            chunk = await audio_stream.read_chunk(timeout=max(self.config.update_interval * 2.0, 0.1))
+            chunk = await audio_stream.read_chunk(
+                timeout=max(self.config.update_interval * 2.0, 0.1),
+            )
         except TimeoutError:
             logger.debug("嘴型同步控制器暂未收到音频块，等待下一轮")
             await asyncio.sleep(self.config.update_interval)
             return
 
         target_value = self._calculate_target_value(chunk)
-        duration = self.config.attack_duration if target_value > self._smoothed_value else self.config.release_duration
+        duration = (
+            self.config.attack_duration
+            if target_value > self._smoothed_value
+            else self.config.release_duration
+        )
         self._smoothed_value = target_value
 
         await self.runtime.vtubestudio.tween.tween(
@@ -75,9 +86,16 @@ class MouthSyncController(AnimationController[MouthSyncControllerConfig]):
     def _calculate_target_value(self, chunk: AudioChunk) -> float:
         rms = self._calculate_rms(chunk)
         normalized_level = self._normalize_level(rms)
-        speaking_floor = self.config.open_min if normalized_level > 0.0 else self.config.closed_value
-        raw_value = speaking_floor + normalized_level * (self.config.open_max - speaking_floor)
-        smoothed_value = self._smoothed_value + (raw_value - self._smoothed_value) * self.config.smoothing_factor
+        speaking_floor = (
+            self.config.open_min if normalized_level > 0.0 else self.config.closed_value
+        )
+        raw_value = speaking_floor + normalized_level * (
+            self.config.open_max - speaking_floor
+        )
+        smoothed_value = (
+            self._smoothed_value
+            + (raw_value - self._smoothed_value) * self.config.smoothing_factor
+        )
         return min(self.config.open_max, max(self.config.closed_value, smoothed_value))
 
     def _calculate_rms(self, chunk: AudioChunk) -> float:
@@ -90,5 +108,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerConfig]):
     def _normalize_level(self, rms: float) -> float:
         if rms <= self.config.noise_floor:
             return 0.0
-        normalized = (rms - self.config.noise_floor) / (self.config.voice_ceiling - self.config.noise_floor)
+        normalized = (rms - self.config.noise_floor) / (
+            self.config.voice_ceiling - self.config.noise_floor
+        )
         return min(1.0, max(0.0, normalized))

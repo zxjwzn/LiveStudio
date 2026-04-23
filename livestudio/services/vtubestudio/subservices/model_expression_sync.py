@@ -42,7 +42,10 @@ class ManagedModelExpressionConfig(BaseModel):
 
     model_name: str = Field(min_length=1, description="模型名称。")
     model_id: str = Field(min_length=1, description="模型 ID。")
-    expressions: list[ManagedExpressionConfig] = Field(default_factory=list, description="该模型的表情激活配置。")
+    expressions: list[ManagedExpressionConfig] = Field(
+        default_factory=list,
+        description="该模型的表情激活配置。",
+    )
 
 
 class ModelExpressionSyncConfig(BaseModel):
@@ -52,8 +55,16 @@ class ModelExpressionSyncConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="是否启用模型表情同步逻辑。")
     models_dir: str = Field(default="config/models", description="模型表情配置目录。")
-    sync_on_startup: bool = Field(default=True, description="服务启动后是否立即同步当前模型表情。")
-    activation_fade_time: float = Field(default=0.25, ge=0, le=2, description="表情切换淡入时长。")
+    sync_on_startup: bool = Field(
+        default=True,
+        description="服务启动后是否立即同步当前模型表情。",
+    )
+    activation_fade_time: float = Field(
+        default=0.25,
+        ge=0,
+        le=2,
+        description="表情切换淡入时长。",
+    )
 
     def resolve_models_dir(self) -> Path:
         return Path(self.models_dir)
@@ -69,7 +80,11 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
     """订阅模型切换事件，并按模型配置同步表情状态。"""
 
     def __init__(self, *, config_path: str | Path | None = None) -> None:
-        super().__init__("model_expression_sync", ModelExpressionSyncConfigFile, config_path=config_path)
+        super().__init__(
+            "model_expression_sync",
+            ModelExpressionSyncConfigFile,
+            config_path=config_path,
+        )
         self._store = ConfigStore()
         self._sync_lock = asyncio.Lock()
         self._started = False
@@ -85,7 +100,10 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
             logger.info("模型表情同步逻辑已禁用，跳过启动")
             return
 
-        await self.vtubestudio.subscribe("ModelLoadedEvent", self._handle_model_loaded_event)
+        await self.vtubestudio.subscribe(
+            "ModelLoadedEvent",
+            self._handle_model_loaded_event,
+        )
         self._started = True
         logger.info("模型表情同步子服务已启动")
 
@@ -96,7 +114,10 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
         if not self._started:
             return
 
-        await self.vtubestudio.unsubscribe("ModelLoadedEvent", self._handle_model_loaded_event)
+        await self.vtubestudio.unsubscribe(
+            "ModelLoadedEvent",
+            self._handle_model_loaded_event,
+        )
         sync_task = self._sync_task
         self._sync_task = None
         if sync_task is not None:
@@ -124,7 +145,10 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
                 ExpressionStateRequest(data=ExpressionStateRequestData(details=True)),
             )
             expression_states = expression_response.data.expressions
-            model_config_path = self._build_model_config_path(current_model.model_name, current_model.model_id)
+            model_config_path = self._build_model_config_path(
+                current_model.model_name,
+                current_model.model_id,
+            )
             model_config = self._load_or_build_model_config(
                 model_name=current_model.model_name,
                 model_id=current_model.model_id,
@@ -134,7 +158,9 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
             await self._apply_expression_config(expression_states, model_config)
 
     async def _handle_model_loaded_event(self, event: object) -> None:
-        payload = event.model_dump(by_alias=True) if isinstance(event, BaseModel) else event
+        payload = (
+            event.model_dump(by_alias=True) if isinstance(event, BaseModel) else event
+        )
         model_loaded_event = ModelLoadedEvent.model_validate(payload)
         if not model_loaded_event.data.model_loaded:
             logger.info("收到模型卸载事件，跳过表情同步")
@@ -177,7 +203,9 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
             logger.info("已为模型生成表情配置文件: {}", path)
             return generated_config
 
-        existing_config = ManagedModelExpressionConfig.model_validate(self._store.load_dict(path))
+        existing_config = ManagedModelExpressionConfig.model_validate(
+            self._store.load_dict(path),
+        )
         merged_config = self._merge_model_config(existing_config, generated_config)
         if merged_config != existing_config:
             self._save_model_config(path, merged_config)
@@ -195,7 +223,11 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
             model_name=model_name,
             model_id=model_id,
             expressions=[
-                ManagedExpressionConfig(name=expression.name, file=expression.file, active=expression.active)
+                ManagedExpressionConfig(
+                    name=expression.name,
+                    file=expression.file,
+                    active=expression.active,
+                )
                 for expression in expression_states
             ],
         )
@@ -205,7 +237,10 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
         existing_config: ManagedModelExpressionConfig,
         generated_config: ManagedModelExpressionConfig,
     ) -> ManagedModelExpressionConfig:
-        existing_active_by_file = {expression.file: expression.active for expression in existing_config.expressions}
+        existing_active_by_file = {
+            expression.file: expression.active
+            for expression in existing_config.expressions
+        }
         merged_expressions = [
             ManagedExpressionConfig(
                 name=expression.name,
@@ -225,7 +260,10 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
         expression_states: list[ExpressionState],
         model_config: ManagedModelExpressionConfig,
     ) -> None:
-        desired_state_by_file = {expression.file: expression.active for expression in model_config.expressions}
+        desired_state_by_file = {
+            expression.file: expression.active
+            for expression in model_config.expressions
+        }
         changed_count = 0
         for expression_state in expression_states:
             desired_active = desired_state_by_file.get(expression_state.file)
@@ -255,5 +293,12 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
             return sanitized
         return "unknown"
 
-    def _save_model_config(self, path: Path, model_config: ManagedModelExpressionConfig) -> None:
-        self._store.save_dict(path, model_config.model_dump(mode="json", exclude_none=True))
+    def _save_model_config(
+        self,
+        path: Path,
+        model_config: ManagedModelExpressionConfig,
+    ) -> None:
+        self._store.save_dict(
+            path,
+            model_config.model_dump(mode="json", exclude_none=True),
+        )

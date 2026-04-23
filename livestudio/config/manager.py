@@ -74,4 +74,6 @@ class ConfigManager(Generic[ConfigT]):
             raise ConfigValidationError(f"配置校验失败: {self._path}") from exc
 
     def _persist_snapshot(self, config: ConfigT) -> None:
-        self._store.save_dict(self._path, config.model_dump(mode="json", exclude_none=True))
+        self._store.save_dict(
+            self._path, config.model_dump(mode="json", exclude_none=True)
+        )
