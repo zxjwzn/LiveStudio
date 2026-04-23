@@ -11,8 +11,8 @@ from livestudio.log import logger
 from livestudio.tween import TweenMode
 
 from ..base import VTubeStudioSubservice
+from .controllers import BlinkController, BreathingController
 from .controllers.base import AnimationController
-from .controllers.builtin import BlinkController, BreathingController
 from .models import (
     AnimationRuntimeConfigFile,
     AnimationType,
