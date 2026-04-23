@@ -1,4 +1,4 @@
-"""音频输入服务配置模型。"""
+"""麦克风音频源配置模型。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class AudioInputConfig(BaseModel):
+class MicrophoneAudioStreamConfig(BaseModel):
     """麦克风输入配置。"""
 
     model_config = ConfigDict(extra="forbid")
@@ -22,9 +22,7 @@ class AudioInputConfig(BaseModel):
     latency: Literal["low", "high"] | float | None = Field(default="low", description="输入延迟配置。")
 
     @model_validator(mode="after")
-    def validate_device_selector(self) -> "AudioInputConfig":
-        """校验设备选择配置。"""
-
+    def validate_device_selector(self) -> MicrophoneAudioStreamConfig:
         if self.device_name is not None and not self.device_name.strip():
             raise ValueError("device_name 不能为空字符串")
         return self

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from livestudio.log import logger
-from livestudio.services.audio_input import AudioInputService
+from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.tween import TweenMode
 
 from ..base import VTubeStudioSubservice
@@ -30,7 +30,7 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
         super().__init__("animation_runtime", AnimationRuntimeConfigFile, config_path=config_path)
         self._controllers: dict[str, AnimationController[Any]] = {}
         self._template_repository: AnimationTemplateRepository | None = None
-        self._audio_input_service: AudioInputService | None = None
+        self._audio_stream: AudioStreamSource | None = None
 
     @property
     def controllers(self) -> dict[str, AnimationController[Any]]:
@@ -44,11 +44,11 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
         return repository
 
     @property
-    def audio_input_service(self) -> AudioInputService | None:
-        return self._audio_input_service
+    def audio_stream(self) -> AudioStreamSource | None:
+        return self._audio_stream
 
-    def bind_audio_input_service(self, audio_input_service: AudioInputService) -> None:
-        self._audio_input_service = audio_input_service
+    def bind_audio_stream(self, audio_stream: AudioStreamSource) -> None:
+        self._audio_stream = audio_stream
 
     async def initialize(self) -> None:
         config = self.config.config

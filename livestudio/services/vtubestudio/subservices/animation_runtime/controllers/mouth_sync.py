@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from livestudio.log import logger
-from livestudio.services.audio_input import AudioChunk
+from livestudio.services.audio_stream import AudioChunk
 
 from ..models import AnimationType, MouthSyncControllerConfig
 from .base import AnimationController
@@ -29,14 +29,14 @@ class MouthSyncController(AnimationController[MouthSyncControllerConfig]):
         return AnimationType.IDLE
 
     async def run_cycle(self) -> None:
-        audio_service = self.runtime.audio_input_service
-        if audio_service is None:
-            logger.debug("嘴型同步控制器未绑定音频输入服务，等待下一轮")
+        audio_stream = self.runtime.audio_stream
+        if audio_stream is None:
+            logger.debug("嘴型同步控制器未绑定音频流，等待下一轮")
             await asyncio.sleep(self.config.update_interval)
             return
 
         try:
-            chunk = await audio_service.read_chunk(timeout=max(self.config.update_interval * 2.0, 0.1))
+            chunk = await audio_stream.read_chunk(timeout=max(self.config.update_interval * 2.0, 0.1))
         except TimeoutError:
             logger.debug("嘴型同步控制器暂未收到音频块，等待下一轮")
             await asyncio.sleep(self.config.update_interval)

@@ -1,4 +1,4 @@
-"""基于 sounddevice 的实时麦克风输入服务。"""
+"""基于 sounddevice 的实时麦克风音频源。"""
 
 from __future__ import annotations
 
@@ -13,8 +13,10 @@ import sounddevice as sd
 from livestudio.config import ConfigManager
 from livestudio.log import logger
 
-from .config import AudioInputConfig
-from .models import AudioChunk, AudioChunkMetadata, InputDeviceInfo
+from ...base import AudioStreamSource
+from ...models import AudioChunk, AudioChunkMetadata, AudioSourceKind
+from .config import MicrophoneAudioStreamConfig
+from .models import InputDeviceInfo
 
 
 class _SoundDeviceTimeInfo(Protocol):
@@ -35,19 +37,17 @@ class _RawInputDeviceInfo(TypedDict):
     index: NotRequired[int]
 
 
-class AudioInputService:
+class MicrophoneAudioStreamSource(AudioStreamSource):
     """提供指定麦克风的实时音频流采集能力。"""
 
     def __init__(
         self,
-        config_path: str | Path | None = None,
         *,
-        config_manager: ConfigManager[AudioInputConfig] | None = None,
+        config_manager: ConfigManager[MicrophoneAudioStreamConfig] | None = None,
+        config: MicrophoneAudioStreamConfig | None = None,
     ) -> None:
-        self.config_manager = config_manager or ConfigManager(
-            AudioInputConfig,
-            Path(config_path) if config_path is not None else Path("config") / "audio_input.yaml",
-        )
+        self.config_manager = config_manager
+        self._config = config or MicrophoneAudioStreamConfig()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._queue: asyncio.Queue[AudioChunk] | None = None
         self._stream: sd.InputStream | None = None
@@ -56,10 +56,30 @@ class AudioInputService:
         self._dropped_chunks = 0
 
     @property
-    def config(self) -> AudioInputConfig:
+    def config(self) -> MicrophoneAudioStreamConfig:
         """返回当前配置快照。"""
 
-        return self.config_manager.config
+        manager = self.config_manager
+        if manager is not None:
+            return manager.config
+        return self._config
+
+    def apply_config(self, config: MicrophoneAudioStreamConfig) -> None:
+        """应用外部注入的麦克风配置。"""
+
+        self._config = config
+
+    @property
+    def source_kind(self) -> AudioSourceKind:
+        """返回当前音频源类型。"""
+
+        return AudioSourceKind.MICROPHONE
+
+    @property
+    def is_started(self) -> bool:
+        """返回当前输入流是否已启动。"""
+
+        return self._started
 
     @property
     def device_info(self) -> InputDeviceInfo:
@@ -67,7 +87,7 @@ class AudioInputService:
 
         device_info = self._device_info
         if device_info is None:
-            raise RuntimeError("音频输入服务尚未初始化")
+            raise RuntimeError("麦克风音频源尚未初始化")
         return device_info
 
     @property
@@ -79,11 +99,14 @@ class AudioInputService:
     async def initialize(self) -> None:
         """加载配置并解析目标输入设备。"""
 
-        await self.config_manager.load()
+        manager = self.config_manager
+        if manager is not None:
+            await manager.load()
+            self._config = manager.config
         self._loop = asyncio.get_running_loop()
         self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
-        logger.info("音频输入服务已初始化，目标设备: {} ({})", self.device_info.name, self.device_info.index)
+        logger.info("麦克风音频源已初始化，目标设备: {} ({})", self.device_info.name, self.device_info.index)
 
     async def start(self) -> None:
         """启动麦克风输入流。"""
@@ -92,7 +115,7 @@ class AudioInputService:
             return
 
         if self._loop is None or self._queue is None or self._device_info is None:
-            raise RuntimeError("音频输入服务尚未初始化，请先调用 initialize()")
+            raise RuntimeError("麦克风音频源尚未初始化，请先调用 initialize()")
 
         stream = sd.InputStream(
             device=self._device_info.index,
@@ -106,7 +129,7 @@ class AudioInputService:
         await asyncio.to_thread(stream.start)
         self._stream = stream
         self._started = True
-        logger.info("音频输入流已启动")
+        logger.info("麦克风音频流已启动")
 
     async def stop(self) -> None:
         """停止麦克风输入流。"""
@@ -120,14 +143,16 @@ class AudioInputService:
         await asyncio.to_thread(stream.stop)
         await asyncio.to_thread(stream.close)
         self._started = False
-        logger.info("音频输入流已停止")
+        logger.info("麦克风音频流已停止")
 
     async def close(self) -> None:
         """关闭服务并持久化配置。"""
 
         await self.stop()
         self._persist_selected_device_to_config()
-        await self.config_manager.save()
+        manager = self.config_manager
+        if manager is not None:
+            await manager.save()
 
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
         """读取下一段音频数据。"""
@@ -177,20 +202,23 @@ class AudioInputService:
             await self.stop()
             await self.start()
 
-        logger.info("音频输入设备已切换为: {} ({})", selected_device.name, selected_device.index)
+        logger.info("麦克风输入设备已切换为: {} ({})", selected_device.name, selected_device.index)
         return selected_device
 
     async def reload_device(self) -> None:
         """根据最新配置重新选择设备并重启输入流。"""
 
-        await self.config_manager.load()
+        manager = self.config_manager
+        if manager is not None:
+            await manager.load()
+            self._config = manager.config
         was_started = self._started
         if was_started:
             await self.stop()
 
         self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
-        logger.info("音频输入设备已刷新为: {} ({})", self.device_info.name, self.device_info.index)
+        logger.info("麦克风输入设备已刷新为: {} ({})", self.device_info.name, self.device_info.index)
 
         if was_started:
             await self.start()
@@ -345,5 +373,5 @@ class AudioInputService:
     def _require_queue(self) -> asyncio.Queue[AudioChunk]:
         queue = self._queue
         if queue is None:
-            raise RuntimeError("音频输入服务尚未初始化")
+            raise RuntimeError("麦克风音频源尚未初始化")
         return queue

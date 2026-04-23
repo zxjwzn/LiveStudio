@@ -1,10 +1,16 @@
 """应用服务层。"""
 
-from .audio_input import (
+from .audio_stream import (
 	AudioChunk,
-	AudioInputConfig,
-	AudioInputService,
+	AudioSourceKind,
+	AudioStreamConfigFile,
+	AudioStreamRouter,
+	AudioStreamRouterConfig,
+	AudioStreamSource,
 	InputDeviceInfo,
+	MicrophoneAudioStreamConfig,
+	MicrophoneAudioStreamSource,
+	TTSAudioStreamSource,
 )
 from .vtubestudio import (
 	SubserviceConfigFile,
@@ -14,10 +20,16 @@ from .vtubestudio import (
 
 __all__ = [
 	"AudioChunk",
-	"AudioInputConfig",
-	"AudioInputService",
+	"AudioSourceKind",
+	"AudioStreamConfigFile",
+	"AudioStreamRouter",
+	"AudioStreamRouterConfig",
+	"AudioStreamSource",
 	"InputDeviceInfo",
+	"MicrophoneAudioStreamConfig",
+	"MicrophoneAudioStreamSource",
 	"SubserviceConfigFile",
+	"TTSAudioStreamSource",
 	"VTubeStudio",
 	"VTubeStudioSubservice",
 ]
