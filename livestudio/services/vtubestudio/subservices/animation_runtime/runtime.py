@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from livestudio.log import logger
+from livestudio.services.audio_input import AudioInputService
 from livestudio.tween import TweenMode
 
 from ..base import VTubeStudioSubservice
-from .controllers import BlinkController, BreathingController
+from .controllers import BlinkController, BreathingController, MouthSyncController
 from .controllers.base import AnimationController
 from .models import (
     AnimationRuntimeConfigFile,
@@ -29,6 +30,7 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
         super().__init__("animation_runtime", AnimationRuntimeConfigFile, config_path=config_path)
         self._controllers: dict[str, AnimationController[Any]] = {}
         self._template_repository: AnimationTemplateRepository | None = None
+        self._audio_input_service: AudioInputService | None = None
 
     @property
     def controllers(self) -> dict[str, AnimationController[Any]]:
@@ -40,6 +42,13 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
         if repository is None:
             raise RuntimeError("动画模板仓库尚未初始化")
         return repository
+
+    @property
+    def audio_input_service(self) -> AudioInputService | None:
+        return self._audio_input_service
+
+    def bind_audio_input_service(self, audio_input_service: AudioInputService) -> None:
+        self._audio_input_service = audio_input_service
 
     async def initialize(self) -> None:
         config = self.config.config
@@ -122,6 +131,7 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
         return {
             "blink": BlinkController(self, "blink", config.blink),
             "breathing": BreathingController(self, "breathing", config.breathing),
+            "mouth_sync": MouthSyncController(self, "mouth_sync", config.mouth_sync),
         }
 
     def _require_controller(self, name: str) -> AnimationController[Any]:

@@ -61,6 +61,7 @@ async def main() -> None:
 
     await vtubestudio_service.initialize()
     await audio_service.initialize()
+    vtubestudio_service.animation_runtime.bind_audio_input_service(audio_service)
 
     logger.info(
         "[MIC] 已选择输入设备: {} ({})，channels={}, samplerate={}",
@@ -73,8 +74,8 @@ async def main() -> None:
     audio_task: asyncio.Task[None] | None = None
 
     try:
-        await vtubestudio_service.start()
         await audio_service.start()
+        await vtubestudio_service.start()
         audio_task = asyncio.create_task(monitor_microphone(audio_service))
         logger.info("[OK] 已连接并认证 VTS，麦克风监听已启动，按 Ctrl+C 退出程序")
 

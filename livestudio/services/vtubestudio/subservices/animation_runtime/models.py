@@ -65,6 +65,30 @@ class BreathingControllerConfig(ControllerSettings):
     easing: str = Field(default="in_out_sine", description="单段缓动函数。")
 
 
+class MouthSyncControllerConfig(ControllerSettings):
+    """嘴型同步控制器配置。"""
+
+    parameter: str = Field(default="MouthOpen", description="嘴型开合参数名。")
+    closed_value: float = Field(default=0.0, description="闭嘴值。")
+    open_min: float = Field(default=0.1, description="说话时的最小开口值。")
+    open_max: float = Field(default=1.0, description="最大开口值。")
+    noise_floor: float = Field(default=0.01, ge=0.0, description="静音门限。")
+    voice_ceiling: float = Field(default=0.2, gt=0.0, description="有效语音上限。")
+    smoothing_factor: float = Field(default=0.35, ge=0.0, le=1.0, description="嘴型平滑系数。")
+    update_interval: float = Field(default=0.05, gt=0.0, description="更新间隔。")
+    attack_duration: float = Field(default=0.04, ge=0.0, description="张嘴过渡时长。")
+    release_duration: float = Field(default=0.08, ge=0.0, description="闭嘴过渡时长。")
+    priority: int = Field(default=30, description="嘴型参数控制优先级。")
+
+    @model_validator(mode="after")
+    def validate_mouth_sync_range(self) -> MouthSyncControllerConfig:
+        if self.open_max < self.open_min:
+            raise ValueError("open_max 不能小于 open_min")
+        if self.voice_ceiling <= self.noise_floor:
+            raise ValueError("voice_ceiling 必须大于 noise_floor")
+        return self
+
+
 class TemplateParameterDefinition(BaseModel):
     """模板可接收的外部参数声明。"""
 
@@ -123,6 +147,7 @@ class AnimationRuntimeConfig(BaseModel):
     tick_fps: int = Field(default=60, ge=1, le=240, description="逻辑采样频率提示值。")
     blink: BlinkControllerConfig = Field(default_factory=BlinkControllerConfig, description="眨眼控制器配置。")
     breathing: BreathingControllerConfig = Field(default_factory=BreathingControllerConfig, description="呼吸控制器配置。")
+    mouth_sync: MouthSyncControllerConfig = Field(default_factory=MouthSyncControllerConfig, description="嘴型同步控制器配置。")
 
     def resolve_template_dir(self) -> Path:
         return Path(self.template_dir)
