@@ -79,7 +79,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerConfig]):
                 duration=self.config.release_duration,
                 easing="linear",
                 priority=self.config.priority,
-                keep_alive=False,
+                keep_alive=True,
             )
             await self.runtime.vtubestudio.tween.release(self.config.parameter)
 

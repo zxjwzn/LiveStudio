@@ -25,7 +25,7 @@ class BlinkController(AnimationController[BlinkControllerConfig]):
                 duration=config.close_duration,
                 easing=config.easing,
                 priority=CONTROLLER_PRIORITY,
-                keep_alive=False,
+                keep_alive=True,
             ),
             self.runtime.vtubestudio.tween.tween(
                 parameter_name=config.right_parameter,
@@ -33,7 +33,7 @@ class BlinkController(AnimationController[BlinkControllerConfig]):
                 duration=config.close_duration,
                 easing=config.easing,
                 priority=CONTROLLER_PRIORITY,
-                keep_alive=False,
+                keep_alive=True,
             ),
         )
         await asyncio.sleep(config.hold_duration)
@@ -44,7 +44,7 @@ class BlinkController(AnimationController[BlinkControllerConfig]):
                 duration=config.open_duration,
                 easing=config.easing,
                 priority=CONTROLLER_PRIORITY,
-                keep_alive=False,
+                keep_alive=True,
             ),
             self.runtime.vtubestudio.tween.tween(
                 parameter_name=config.right_parameter,
@@ -52,7 +52,7 @@ class BlinkController(AnimationController[BlinkControllerConfig]):
                 duration=config.open_duration,
                 easing=config.easing,
                 priority=CONTROLLER_PRIORITY,
-                keep_alive=False,
+                keep_alive=True,
             ),
         )
         await asyncio.sleep(random.uniform(config.min_interval, config.max_interval))
