@@ -326,8 +326,9 @@ class VTubeStudio:
         *,
         config: EventSubscriptionConfig | None = None,
     ) -> EventSubscriptionResponse:
+        events = self._require_events()
         if handler is not None:
-            self._require_events().add_handler(event_name, handler)
+            events.add_handler(event_name, handler)
 
         request = EventSubscriptionRequest(
             data=EventSubscriptionRequestData(
@@ -338,10 +339,10 @@ class VTubeStudio:
         )
 
         try:
-            return await self._require_client().subscribe_event(request)
+            return await events.subscribe(request)
         except Exception:
             if handler is not None:
-                self._require_events().remove_handler(event_name, handler)
+                events.remove_handler(event_name, handler)
             raise
 
     async def unsubscribe(
@@ -349,9 +350,16 @@ class VTubeStudio:
         event_name: EventName | str,
         handler: ListenerHandler | None = None,
     ) -> EventSubscriptionResponse:
+        events = self._require_events()
         if handler is not None:
-            self._require_events().remove_handler(event_name, handler)
-        return await self._require_client().unsubscribe_event(event_name)
+            events.remove_handler(event_name, handler)
+
+        try:
+            return await events.unsubscribe(event_name)
+        except Exception:
+            if handler is not None:
+                events.add_handler(event_name, handler)
+            raise
 
     async def listen_for_api(
         self,

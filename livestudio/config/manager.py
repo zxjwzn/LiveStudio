@@ -75,5 +75,6 @@ class ConfigManager(Generic[ConfigT]):
 
     def _persist_snapshot(self, config: ConfigT) -> None:
         self._store.save_dict(
-            self._path, config.model_dump(mode="json", exclude_none=True)
+            self._path,
+            config.model_dump(mode="json", exclude_none=True),
         )
