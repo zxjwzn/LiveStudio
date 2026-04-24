@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 
 from livestudio.log import logger
 
@@ -112,6 +112,39 @@ class ParameterTweenEngine:
             keep_alive=keep_alive,
         )
 
+    async def set_values(
+        self,
+        values: Mapping[str, float],
+        *,
+        mode: TweenMode = "set",
+        priority: int = 0,
+        keep_alive: bool = True,
+    ) -> None:
+        """立即批量设置参数值，并可选地持续保持控制权。"""
+
+        if not values:
+            return
+
+        current_task = asyncio.current_task()
+        if current_task is None:
+            logger.error("无法获取当前批量设置任务")
+            return
+
+        task = []
+        for parameter_name, value in values.items():
+            task.append(
+                self.tween(
+                    parameter_name=parameter_name,
+                    end_value=value,
+                    duration=0.0,
+                    easing=Easing.linear,
+                    mode=mode,
+                    priority=priority,
+                    keep_alive=keep_alive,
+                ),
+            )
+        await asyncio.gather(*task)
+
     async def tween(
         self,
         parameter_name: str,
@@ -156,6 +189,12 @@ class ParameterTweenEngine:
             task_to_cancel.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task_to_cancel
+
+    async def release_many(self, parameter_names: Iterable[str]) -> None:
+        """释放多个参数的控制权。"""
+
+        for parameter_name in tuple(parameter_names):
+            await self.release(parameter_name)
 
     async def cancel(self, parameter_name: str, *, release: bool = False) -> None:
         """取消某个参数的活动缓动，并可选择是否释放控制权。"""
