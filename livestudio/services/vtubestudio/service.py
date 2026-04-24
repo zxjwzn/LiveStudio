@@ -317,9 +317,12 @@ class VTubeStudio:
         self,
         event_name: EventName | str,
         handler: ListenerHandler | None = None,
-    ) -> EventSubscriptionResponse:
+    ) -> EventSubscriptionResponse | None:
         if handler is not None:
             self.events.remove_handler(event_name, handler)
+
+        if handler is not None and self.events.has_handlers(event_name):
+            return None
 
         try:
             return await self.events.unsubscribe(event_name)

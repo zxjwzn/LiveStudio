@@ -13,27 +13,6 @@ class ManagedExpressionConfig(BaseModel):
     active: bool = Field(description="是否在模型加载后激活。")
 
 
-class ManagedModelExpressionConfig(BaseModel):
-    """单个模型的表情配置文件。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    model_name: str = Field(
-        default="UnknownModel",
-        min_length=1,
-        description="模型名称。",
-    )
-    model_id: str = Field(
-        default="UnknownModelID",
-        min_length=1,
-        description="模型 ID。",
-    )
-    expressions: list[ManagedExpressionConfig] = Field(
-        default_factory=list,
-        description="该模型的表情激活配置。",
-    )
-
-
 class ModelExpressionSyncConfig(BaseModel):
     """模型表情同步逻辑配置。"""
 

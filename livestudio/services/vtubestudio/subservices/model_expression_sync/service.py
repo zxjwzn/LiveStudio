@@ -8,7 +8,6 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from livestudio.config import ConfigManager
 from livestudio.log import logger
 
 from .....clients.vtube_studio.models import (
@@ -18,10 +17,10 @@ from .....clients.vtube_studio.models import (
     ExpressionStateRequestData,
     ModelLoadedEvent,
 )
+from ...model_config import VTubeStudioModelConfigRepository
 from ..base import VTubeStudioSubservice
 from .models import (
     ManagedExpressionConfig,
-    ManagedModelExpressionConfig,
     ModelExpressionSyncConfigFile,
 )
 
@@ -37,6 +36,7 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
         )
         self._sync_lock = asyncio.Lock()
         self._sync_task: asyncio.Task[None] | None = None
+        self._model_config_repository = VTubeStudioModelConfigRepository()
 
     async def initialize(self) -> None:
         pass
@@ -82,16 +82,13 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
                 ExpressionStateRequest(data=ExpressionStateRequestData(details=True)),
             )
             expression_states = expression_response.data.expressions
-            model_config_path = (
-                Path(
-                    "config/models",
-                )
-                / f"{current_model.model_name}_{current_model.model_id}.yaml"
+            model_config_manager = await self._model_config_repository.load_current_model_config(
+                current_model,
             )
-            model_config_manager = ConfigManager(
-                ManagedModelExpressionConfig,
-                model_config_path,
-            )
+            if model_config_manager is None:
+                logger.info("当前未加载模型，跳过表情同步")
+                return
+
             expression = [
                 ManagedExpressionConfig(
                     name=state.name,
@@ -100,26 +97,16 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
                 )
                 for state in expression_states
             ]
-            if not model_config_manager.path.exists():
-                model_config_manager.config.model_name = current_model.model_name
-                model_config_manager.config.model_id = current_model.model_id
+            if not model_config_manager.config.expressions:
                 model_config_manager.config.expressions = expression
                 await model_config_manager.save()
                 logger.info(
                     "未找到模型表情配置，已按当前状态创建: {}",
-                    model_config_path,
+                    model_config_manager.path,
                 )
                 return
 
-            await model_config_manager.load()
             config_updated = False
-
-            if model_config_manager.config.model_name != current_model.model_name:
-                model_config_manager.config.model_name = current_model.model_name
-                config_updated = True
-            if model_config_manager.config.model_id != current_model.model_id:
-                model_config_manager.config.model_id = current_model.model_id
-                config_updated = True
 
             configured_expressions = {
                 item.file: item for item in model_config_manager.config.expressions

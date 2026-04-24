@@ -169,6 +169,13 @@ class AnimationRuntimeConfig(BaseModel):
         description="启动子服务时是否自动启动循环控制器。",
     )
     tick_fps: int = Field(default=60, ge=1, le=240, description="逻辑采样频率提示值。")
+
+
+class ModelAnimationConfig(BaseModel):
+    """绑定到单个模型的动画控制器配置。"""
+
+    model_config = ConfigDict(extra="forbid")
+
     blink: BlinkControllerConfig = Field(
         default_factory=BlinkControllerConfig,
         description="眨眼控制器配置。",
@@ -181,9 +188,6 @@ class AnimationRuntimeConfig(BaseModel):
         default_factory=MouthSyncControllerConfig,
         description="嘴型同步控制器配置。",
     )
-
-    def resolve_template_dir(self) -> Path:
-        return Path(self.template_dir)
 
 
 class AnimationRuntimeConfigFile(SubserviceConfigFile[AnimationRuntimeConfig]):

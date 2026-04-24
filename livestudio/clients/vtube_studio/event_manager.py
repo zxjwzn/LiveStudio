@@ -40,6 +40,9 @@ class VTSEventManager:
     def remove_handler(self, event_name: str, handler: ListenerHandler) -> None:
         self._client.remove_event_handler(event_name, handler)
 
+    def has_handlers(self, event_name: str) -> bool:
+        return self._client.has_event_handlers(event_name)
+
     def create_listener(self, event_name: str) -> VTSEventListener:
         listener = VTSEventListener(event_name=event_name, queue_size=self._queue_size)
 

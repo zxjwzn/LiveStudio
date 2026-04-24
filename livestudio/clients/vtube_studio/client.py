@@ -381,6 +381,11 @@ class VTubeStudioClient:
         if not handlers:
             self._event_handlers.pop(event_name, None)
 
+    def has_event_handlers(self, event_name: str) -> bool:
+        """返回指定事件当前是否仍有本地处理器。"""
+
+        return bool(self._event_handlers.get(event_name))
+
     async def request_permission(
         self,
         request: PermissionRequest,
