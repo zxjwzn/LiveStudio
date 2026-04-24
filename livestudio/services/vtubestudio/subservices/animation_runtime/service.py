@@ -30,7 +30,7 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
         super().__init__(
             "animation_runtime",
             AnimationRuntimeConfigFile,
-            Path("config") / "vtubestudio" / "animation_runtime.yaml",
+            Path("config") / "vtubestudio_services" / "animation_runtime.yaml",
         )
         self._controllers: dict[str, AnimationController[Any]] = {
             "blink": BlinkController(self, "blink", self.config.config.blink),

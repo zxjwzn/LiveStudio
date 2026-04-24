@@ -33,7 +33,7 @@ class ModelExpressionSyncService(VTubeStudioSubservice[ModelExpressionSyncConfig
         super().__init__(
             "model_expression_sync",
             ModelExpressionSyncConfigFile,
-            Path("config") / "model_expression_sync.yaml",
+            Path("config/vtubestudio_services") / "model_expression_sync.yaml",
         )
         self._sync_lock = asyncio.Lock()
         self._sync_task: asyncio.Task[None] | None = None
