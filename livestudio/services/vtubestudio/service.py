@@ -9,6 +9,7 @@ from typing import Any
 
 from livestudio.config import ConfigManager
 from livestudio.log import logger
+from livestudio.services.audio_stream.base import AudioStreamSource
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine, TweenMode
 
 from ...clients.vtube_studio.client import VTubeStudioClient
@@ -29,6 +30,9 @@ from ...clients.vtube_studio.models import (
 )
 from .subservices.animation_runtime import AnimationRuntimeService
 from .subservices.base import VTubeStudioSubservice
+from .subservices.model_expression_sync.service import (
+    ModelExpressionSyncService,
+)
 
 
 class VTubeStudio:
@@ -36,18 +40,13 @@ class VTubeStudio:
 
     def __init__(
         self,
-        config_path: str | Path | None = None,
         *,
-        config_manager: ConfigManager[VTubeStudioConfig] | None = None,
         subservices: Iterable[VTubeStudioSubservice[Any]] | None = None,
-        tween_keep_alive_interval: float = 0.5,
-        tween_default_fps: int = 60,
+        audio_stream: AudioStreamSource | None = None,
     ) -> None:
-        self.config_manager = config_manager or ConfigManager(
+        self.config_manager = ConfigManager(
             VTubeStudioConfig,
-            Path(config_path)
-            if config_path is not None
-            else Path("config") / "vtube_studio.yaml",
+            Path("config") / "vtube_studio.yaml",
         )
         self._client: VTubeStudioClient | None = None
         self._events: VTSEventManager | None = None
@@ -55,9 +54,8 @@ class VTubeStudio:
         self._subservices: dict[str, VTubeStudioSubservice[Any]] = {}
         self.tween = ParameterTweenEngine(
             self._send_parameter_states,
-            keep_alive_interval=tween_keep_alive_interval,
-            default_fps=tween_default_fps,
         )
+        self._audio_stream = audio_stream
         if subservices is not None:
             for subservice in subservices:
                 self.register_subservice(subservice)
@@ -71,20 +69,30 @@ class VTubeStudio:
     @property
     def client(self) -> VTubeStudioClient:
         """返回已初始化的底层客户端。"""
-
-        return self._require_client()
+        if self._client is None:
+            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
+        return self._client
 
     @property
     def events(self) -> VTSEventManager:
         """返回已初始化的事件管理器。"""
-
-        return self._require_events()
+        if self._events is None:
+            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
+        return self._events
 
     @property
     def discovery(self) -> VTubeStudioDiscovery:
         """返回已初始化的 discovery 实例。"""
+        if self._discovery is None:
+            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
+        return self._discovery
 
-        return self._require_discovery()
+    @property
+    def audio_stream(self) -> AudioStreamSource:
+        """返回已绑定的音频流源。"""
+        if self._audio_stream is None:
+            raise RuntimeError("尚未绑定音频流源，请先调用 bind_audio_stream()")
+        return self._audio_stream
 
     @property
     def subservices(self) -> dict[str, VTubeStudioSubservice[Any]]:
@@ -101,18 +109,31 @@ class VTubeStudio:
             raise TypeError("animation_runtime 子服务类型不正确")
         return subservice
 
+    @property
+    def model_expression_sync(self) -> ModelExpressionSyncService:
+        """返回模型表情同步子服务。"""
+
+        subservice = self.get_subservice("model_expression_sync")
+        if not isinstance(subservice, ModelExpressionSyncService):
+            raise TypeError("model_expression_sync 子服务类型不正确")
+        return subservice
+
     async def initialize(self) -> None:
         """加载配置并创建内部依赖。"""
 
         await self.config_manager.load()
-        client = VTubeStudioClient(
-            config=self.config_manager.config,
-            plugin_info=self.config_manager.config.plugin,
+        self._client = VTubeStudioClient(
+            config=self.config,
+            plugin_info=self.config.plugin,
         )
-        self._client = client
-        self._events = VTSEventManager(client, client.config.event_queue_size)
-        self._discovery = VTubeStudioDiscovery(client.config)
-        await self._initialize_subservices()
+        self._events = VTSEventManager(self._client, self.config.event_queue_size)
+        self._discovery = VTubeStudioDiscovery(self.config)
+        await self.audio_stream.initialize()
+        for subservice in self.subservices.values():
+            subservice.owner = self
+            subservice.audio_stream = self.audio_stream
+            await subservice.config_manager.load()
+            await subservice.initialize()
 
     def register_subservice(self, subservice: VTubeStudioSubservice[Any]) -> None:
         """注册一个子服务。"""
@@ -129,66 +150,23 @@ class VTubeStudio:
             raise KeyError(f"未注册的子服务: {name}")
         return subservice
 
-    async def _initialize_subservices(self) -> None:
-        for subservice in self._subservices.values():
-            manager = ConfigManager(
-                subservice.config_model,
-                self._resolve_subservice_config_path(subservice),
-            )
-            await manager.load()
-            subservice.bind(self, manager)
-            await subservice.initialize()
-
-    def _resolve_subservice_config_path(
-        self,
-        subservice: VTubeStudioSubservice[Any],
-    ) -> Path:
-        explicit_path = subservice.config_path
-        if explicit_path is not None:
-            return explicit_path
-
-        configured_path = self.config.subservice_config_paths.get(subservice.name)
-        if configured_path is not None:
-            return Path(configured_path)
-
-        return Path(self.config.subservice_config_dir) / f"{subservice.name}.yaml"
-
-    def _require_client(self) -> VTubeStudioClient:
-        client = self._client
-        if client is None:
-            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
-        return client
-
-    def _require_events(self) -> VTSEventManager:
-        events = self._events
-        if events is None:
-            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
-        return events
-
-    def _require_discovery(self) -> VTubeStudioDiscovery:
-        discovery = self._discovery
-        if discovery is None:
-            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
-        return discovery
-
     async def close(self) -> None:
         """释放该服务持有的后台资源。"""
 
         await self.stop_subservices()
-        await self._save_subservice_configs()
+        await self.audio_stream.close()
         await self.tween.close()
+        await self.client.disconnect()
         await self.config_manager.save()
-        client = self._client
         self._client = None
         self._events = None
         self._discovery = None
-        if client is not None:
-            await client.disconnect()
 
     async def start(self) -> None:
         """启动连接、认证流程与子服务。"""
 
         authenticated = await self._authenticate_session(allow_request_token=True)
+        await self.audio_stream.start()
         self.tween.start()
         if not authenticated:
             raise RuntimeError("VTube Studio 认证失败")
@@ -198,18 +176,17 @@ class VTubeStudio:
     async def start_subservices(self, names: Iterable[str] | None = None) -> None:
         """启动全部或指定子服务。"""
 
-        target_names = tuple(names) if names is not None else tuple(self._subservices)
+        target_names = list(names) if names is not None else list(self._subservices)
         for name in target_names:
             await self.start_subservice(name)
 
-    async def start_subservice(self, name: str, *, force: bool = False) -> bool:
+    async def start_subservice(self, name: str) -> bool:
         """启动指定子服务。"""
 
         subservice = self.get_subservice(name)
-        if not subservice.enabled and not force:
+        if not subservice.enabled:
             logger.info("子服务 {} 未启用，跳过启动", name)
             return False
-
         await subservice.start()
         return True
 
@@ -224,19 +201,13 @@ class VTubeStudio:
         for name in target_names:
             await self.stop_subservice(name)
 
-        if names is None:
-            await self.tween.release_all()
-
     async def stop_subservice(self, name: str) -> bool:
         """停止指定子服务。"""
 
         subservice = self.get_subservice(name)
         await subservice.stop()
+        await subservice.config_manager.save()
         return True
-
-    async def _save_subservice_configs(self) -> None:
-        for subservice in self._subservices.values():
-            await subservice.save_config()
 
     async def connect_and_authenticate(
         self,
@@ -251,7 +222,7 @@ class VTubeStudio:
         except Exception:
             logger.exception("连接并认证失败")
             with contextlib.suppress(Exception):
-                await self._require_client().disconnect()
+                await self.client.disconnect()
             return False
 
     async def reconnect(self, authentication_token: str) -> bool:
@@ -265,7 +236,7 @@ class VTubeStudio:
         except Exception:
             logger.exception("重连并认证失败")
             with contextlib.suppress(Exception):
-                await self._require_client().disconnect()
+                await self.client.disconnect()
             return False
 
     async def _authenticate_session(
@@ -277,13 +248,11 @@ class VTubeStudio:
     ) -> bool:
         """统一处理连接、申请 token 与认证流程。"""
 
-        client = self._require_client()
-
         if disconnect_first:
             with contextlib.suppress(Exception):
-                await client.disconnect()
+                await self.client.disconnect()
 
-        await client.connect()
+        await self.client.connect()
 
         token = authentication_token or self.config.authentication_token
         if token is None:
@@ -293,19 +262,19 @@ class VTubeStudio:
             token = await self._request_token(store=True)
 
         try:
-            return await client.authenticate(token)
+            return await self.client.authenticate(token)
         except AuthenticationError:
             if not allow_request_token:
                 raise
             logger.warning("[WARN] 认证令牌无效或已被撤销，正在重新获取 token")
             token = await self._request_token(store=True)
-            return await client.authenticate(token)
+            return await self.client.authenticate(token)
 
     async def _request_token(self, *, store: bool = False) -> str:
         """申请认证令牌，并按需持久化。"""
 
         try:
-            authentication_token = await self._require_client().request_token()
+            authentication_token = await self.client.request_token()
         except APIError as exc:
             if exc.error_id == 50:
                 raise RuntimeError(
@@ -326,9 +295,8 @@ class VTubeStudio:
         *,
         config: EventSubscriptionConfig | None = None,
     ) -> EventSubscriptionResponse:
-        events = self._require_events()
         if handler is not None:
-            events.add_handler(event_name, handler)
+            self.events.add_handler(event_name, handler)
 
         request = EventSubscriptionRequest(
             data=EventSubscriptionRequestData(
@@ -339,10 +307,10 @@ class VTubeStudio:
         )
 
         try:
-            return await events.subscribe(request)
+            return await self.events.subscribe(request)
         except Exception:
             if handler is not None:
-                events.remove_handler(event_name, handler)
+                self.events.remove_handler(event_name, handler)
             raise
 
     async def unsubscribe(
@@ -350,15 +318,14 @@ class VTubeStudio:
         event_name: EventName | str,
         handler: ListenerHandler | None = None,
     ) -> EventSubscriptionResponse:
-        events = self._require_events()
         if handler is not None:
-            events.remove_handler(event_name, handler)
+            self.events.remove_handler(event_name, handler)
 
         try:
-            return await events.unsubscribe(event_name)
+            return await self.events.unsubscribe(event_name)
         except Exception:
             if handler is not None:
-                events.add_handler(event_name, handler)
+                self.events.add_handler(event_name, handler)
             raise
 
     async def listen_for_api(
@@ -367,7 +334,7 @@ class VTubeStudio:
         max_messages: int | None = None,
     ) -> list[VTubeStudioAPIStateBroadcast]:
         broadcasts: list[VTubeStudioAPIStateBroadcast] = []
-        async for broadcast in self._require_discovery().listen(
+        async for broadcast in self.discovery.listen(
             timeout=timeout,
             max_messages=max_messages,
         ):
@@ -392,4 +359,4 @@ class VTubeStudio:
                 ],
             ),
         )
-        await self._require_client().inject_parameter_data(request)
+        await self.client.inject_parameter_data(request)

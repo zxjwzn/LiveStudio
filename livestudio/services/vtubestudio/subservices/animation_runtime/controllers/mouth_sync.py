@@ -14,7 +14,7 @@ from ..models import AnimationType, MouthSyncControllerConfig
 from .base import AnimationController
 
 if TYPE_CHECKING:
-    from ..runtime import AnimationRuntimeService
+    from ..service import AnimationRuntimeService
 
 
 class MouthSyncController(AnimationController[MouthSyncControllerConfig]):

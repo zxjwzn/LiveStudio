@@ -18,15 +18,10 @@ class AudioStreamRouter(AudioStreamSource):
 
     def __init__(
         self,
-        config_path: str | Path | None = None,
-        *,
-        config_manager: ConfigManager[AudioStreamConfigFile] | None = None,
     ) -> None:
-        self.config_manager = config_manager or ConfigManager(
+        self.config_manager = ConfigManager(
             AudioStreamConfigFile,
-            Path(config_path)
-            if config_path is not None
-            else Path("config") / "audio_stream.yaml",
+            Path("config") / "audio_stream.yaml",
         )
         self._microphone_source = MicrophoneAudioStreamSource()
         self._tts_source = TTSAudioStreamSource()

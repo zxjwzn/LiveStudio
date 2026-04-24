@@ -55,17 +55,16 @@ async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
 
 
 async def main() -> None:
+    audio_stream = AudioStreamRouter()
     vtubestudio_service = VTubeStudio(
         subservices=[
             AnimationRuntimeService(),
             ModelExpressionSyncService(),
         ],
+        audio_stream=audio_stream,
     )
-    audio_stream = AudioStreamRouter()
 
     await vtubestudio_service.initialize()
-    await audio_stream.initialize()
-    vtubestudio_service.animation_runtime.bind_audio_stream(audio_stream)
 
     logger.info(
         "[MIC] 已选择输入设备: {} ({})，channels={}, samplerate={}",
@@ -79,7 +78,6 @@ async def main() -> None:
     audio_task: asyncio.Task[None] | None = None
 
     try:
-        await audio_stream.start()
         await vtubestudio_service.start()
         audio_task = asyncio.create_task(monitor_audio_stream(audio_stream))
         logger.info("[OK] 已连接并认证 VTS，通用音频流监听已启动，按 Ctrl+C 退出程序")
@@ -90,7 +88,6 @@ async def main() -> None:
             audio_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await audio_task
-        await audio_stream.close()
         await vtubestudio_service.close()
 
 

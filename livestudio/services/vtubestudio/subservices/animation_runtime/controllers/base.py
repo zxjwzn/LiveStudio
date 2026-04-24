@@ -12,7 +12,7 @@ from livestudio.log import logger
 from ..models import AnimationType, ControllerSettings
 
 if TYPE_CHECKING:
-    from ..runtime import AnimationRuntimeService
+    from ..service import AnimationRuntimeService
 
 ConfigT = TypeVar("ConfigT", bound=ControllerSettings)
 

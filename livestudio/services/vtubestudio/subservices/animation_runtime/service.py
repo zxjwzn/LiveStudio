@@ -26,40 +26,43 @@ from .template_repository import AnimationTemplateRepository
 class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile]):
     """统一管理循环动画、一次性动画与模板动画。"""
 
-    def __init__(self, *, config_path: str | Path | None = None) -> None:
+    def __init__(self) -> None:
         super().__init__(
             "animation_runtime",
             AnimationRuntimeConfigFile,
-            config_path=config_path,
+            Path("config") / "vtubestudio" / "animation_runtime.yaml",
         )
-        self._controllers: dict[str, AnimationController[Any]] = {}
+        self._controllers: dict[str, AnimationController[Any]] = {
+            "blink": BlinkController(self, "blink", self.config.config.blink),
+            "breathing": BreathingController(
+                self,
+                "breathing",
+                self.config.config.breathing,
+            ),
+            "mouth_sync": MouthSyncController(
+                self,
+                "mouth_sync",
+                self.config.config.mouth_sync,
+            ),
+        }
         self._template_repository: AnimationTemplateRepository | None = None
         self._audio_stream: AudioStreamSource | None = None
 
     @property
     def controllers(self) -> dict[str, AnimationController[Any]]:
-        return dict(self._controllers)
+        return self._controllers
 
     @property
     def template_repository(self) -> AnimationTemplateRepository:
-        repository = self._template_repository
-        if repository is None:
+        if self._template_repository is None:
             raise RuntimeError("动画模板仓库尚未初始化")
-        return repository
-
-    @property
-    def audio_stream(self) -> AudioStreamSource | None:
-        return self._audio_stream
-
-    def bind_audio_stream(self, audio_stream: AudioStreamSource) -> None:
-        self._audio_stream = audio_stream
+        return self._template_repository
 
     async def initialize(self) -> None:
         config = self.config.config
         repository = AnimationTemplateRepository(config.resolve_template_dir())
         await repository.load()
         self._template_repository = repository
-        self._controllers = self._build_controllers()
         logger.info("动画运行时已初始化，控制器数量: {}", len(self._controllers))
 
     async def start(self) -> None:
@@ -74,9 +77,6 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
 
     async def close(self) -> None:
         await self.stop()
-
-    async def save_config(self) -> None:
-        await self.config_manager.save()
 
     async def start_idle_controllers(self) -> None:
         for controller in self._controllers.values():
@@ -138,14 +138,6 @@ class AnimationRuntimeService(VTubeStudioSubservice[AnimationRuntimeConfigFile])
             priority=resolved_action.priority,
             keep_alive=resolved_action.keep_alive,
         )
-
-    def _build_controllers(self) -> dict[str, AnimationController[Any]]:
-        config = self.config.config
-        return {
-            "blink": BlinkController(self, "blink", config.blink),
-            "breathing": BreathingController(self, "breathing", config.breathing),
-            "mouth_sync": MouthSyncController(self, "mouth_sync", config.mouth_sync),
-        }
 
     def _require_controller(self, name: str) -> AnimationController[Any]:
         controller = self._controllers.get(name)

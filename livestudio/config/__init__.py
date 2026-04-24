@@ -8,7 +8,6 @@ from .errors import (
     ConfigValidationError,
 )
 from .manager import ConfigManager
-from .store import ConfigStore
 
 __all__ = [
     "ConfigError",
@@ -16,6 +15,5 @@ __all__ = [
     "ConfigLoadError",
     "ConfigManager",
     "ConfigSaveError",
-    "ConfigStore",
     "ConfigValidationError",
 ]

@@ -46,9 +46,3 @@ class MicrophoneAudioStreamConfig(BaseModel):
         default="low",
         description="输入延迟配置。",
     )
-
-    @model_validator(mode="after")
-    def validate_device_selector(self) -> MicrophoneAudioStreamConfig:
-        if self.device_name is not None and not self.device_name.strip():
-            raise ValueError("device_name 不能为空字符串")
-        return self

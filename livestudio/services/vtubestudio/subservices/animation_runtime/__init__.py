@@ -6,7 +6,7 @@ from .models import (
     AnimationType,
     MouthSyncControllerConfig,
 )
-from .runtime import AnimationRuntimeService
+from .service import AnimationRuntimeService
 from .template_repository import AnimationTemplateRepository, TemplateEvaluationError
 
 __all__ = [
