@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from pathlib import Path
-from typing import NotRequired, Protocol, TypedDict, TypeGuard
+from typing import TypeGuard
 
 import numpy as np
 import sounddevice as sd
@@ -16,25 +16,7 @@ from livestudio.log import logger
 from ...base import AudioStreamSource
 from ...models import AudioChunk, AudioChunkMetadata, AudioSourceKind
 from .config import MicrophoneAudioStreamConfig
-from .models import InputDeviceInfo
-
-
-class _SoundDeviceTimeInfo(Protocol):
-    """sounddevice 回调时间信息协议。"""
-
-    inputBufferAdcTime: float
-    currentTime: float
-    outputBufferDacTime: float
-
-
-class _RawInputDeviceInfo(TypedDict):
-    """sounddevice 输入设备原始信息。"""
-
-    name: str
-    max_input_channels: int
-    default_samplerate: float | int
-    hostapi: int
-    index: NotRequired[int]
+from .models import InputDeviceInfo, RawInputDeviceInfo, SoundDeviceTimeInfo
 
 
 class MicrophoneAudioStreamSource(AudioStreamSource):
@@ -256,7 +238,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             | np.dtype[np.uint8],
         ],
         frames: int,
-        time_info: _SoundDeviceTimeInfo,
+        time_info: SoundDeviceTimeInfo,
         status: sd.CallbackFlags,
     ) -> None:
         loop = self._loop
@@ -391,7 +373,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     def _is_raw_input_device_info(
         self,
         raw_device: object,
-    ) -> TypeGuard[_RawInputDeviceInfo]:
+    ) -> TypeGuard[RawInputDeviceInfo]:
         if not isinstance(raw_device, dict):
             return False
 
