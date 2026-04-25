@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
 
 from livestudio.config import ConfigManager
 from livestudio.log import logger
-from livestudio.services.audio_stream.base import AudioStreamSource
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine, TweenMode
 
 from ...clients.vtube_studio.client import VTubeStudioClient
@@ -96,75 +93,36 @@ class VTubeStudio:
         self._discovery = None
 
     async def start(self) -> None:
-        """启动连接、认证流程与子服务。"""
+        """启动连接与认证流程。"""
 
-        authenticated = await self._authenticate_session(allow_request_token=True)
+        await self.connect()
+        await self.authenticate()
         self.tween.start()
-        if not authenticated:
-            raise RuntimeError("VTube Studio 认证失败")
 
-    async def connect_and_authenticate(
-        self,
-        authentication_token: str | None = None,
-    ) -> bool:
-        """连接到 VTube Studio 并执行认证流程。"""
-
-        try:
-            return await self._authenticate_session(
-                authentication_token=authentication_token,
-            )
-        except Exception:
-            logger.exception("连接并认证失败")
-            with contextlib.suppress(Exception):
-                await self.client.disconnect()
-            return False
-
-    async def reconnect(self, authentication_token: str) -> bool:
-        """重新建立连接并进行认证。"""
-
-        try:
-            return await self._authenticate_session(
-                authentication_token=authentication_token,
-                disconnect_first=True,
-            )
-        except Exception:
-            logger.exception("重连并认证失败")
-            with contextlib.suppress(Exception):
-                await self.client.disconnect()
-            return False
-
-    async def _authenticate_session(
-        self,
-        authentication_token: str | None = None,
-        *,
-        allow_request_token: bool = False,
-        disconnect_first: bool = False,
-    ) -> bool:
-        """统一处理连接、申请 token 与认证流程。"""
-
-        if disconnect_first:
-            with contextlib.suppress(Exception):
-                await self.client.disconnect()
+    async def connect(self) -> None:
+        """连接到 VTube Studio。"""
 
         await self.client.connect()
 
-        token = authentication_token or self.config.authentication_token
+    async def authenticate(
+        self,
+    ) -> None:
+        """使用给定令牌或配置中的令牌完成认证。"""
+
+        token = self.config.authentication_token
         if token is None:
-            if not allow_request_token:
-                logger.error("未提供 authentication_token，无法完成会话认证")
-                return False
-            token = await self._request_token(store=True)
-
+            logger.warning("[WARN] 当前没有认证令牌，正在申请新的 token")
+            token = await self.request_token()
+            logger.success("[SUCCESS] 已获取新的认证令牌")
         try:
-            return await self.client.authenticate(token)
+            await self.client.authenticate(token)
         except AuthenticationError:
-            if not allow_request_token:
-                raise
             logger.warning("[WARN] 认证令牌无效或已被撤销，正在重新获取 token")
-            token = await self._request_token(store=True)
-            return await self.client.authenticate(token)
+            token = await self.request_token()
+            await self.client.authenticate(token)
+            logger.success("[SUCCESS] 已获取新的认证令牌并完成认证")
 
-    async def _request_token(self, *, store: bool = False) -> str:
+    async def request_token(self) -> str:
         """申请认证令牌，并按需持久化。"""
 
         try:
@@ -176,9 +134,8 @@ class VTubeStudio:
                 ) from exc
             raise
 
-        if store:
-            self.config.authentication_token = authentication_token
-            await self.config_manager.save()
+        self.config.authentication_token = authentication_token
+        await self.config_manager.save()
 
         return authentication_token
 

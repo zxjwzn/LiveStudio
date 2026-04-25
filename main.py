@@ -23,9 +23,11 @@ async def main() -> None:
     try:
         await vtubestudio_service.start()
         await audio_stream.start()
-        await audio_stream.switch_source(AudioSourceKind.MICROPHONE)
+        await audio_stream.switch_source(AudioSourceKind.TTS)
         await asyncio.Event().wait()
+
     finally:
+        await audio_stream.close()
         await vtubestudio_service.close()
 
 

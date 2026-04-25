@@ -13,9 +13,7 @@ from .audio_stream import (
     TTSAudioStreamSource,
 )
 from .vtubestudio import (
-    SubserviceConfigFile,
     VTubeStudio,
-    VTubeStudioSubservice,
 )
 
 __all__ = [
@@ -28,8 +26,6 @@ __all__ = [
     "InputDeviceInfo",
     "MicrophoneAudioStreamConfig",
     "MicrophoneAudioStreamSource",
-    "SubserviceConfigFile",
     "TTSAudioStreamSource",
     "VTubeStudio",
-    "VTubeStudioSubservice",
 ]
