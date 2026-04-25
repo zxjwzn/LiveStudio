@@ -23,12 +23,9 @@ class AudioStreamRouter(AudioStreamSource):
             AudioStreamConfigFile,
             Path("config") / "audio_stream.yaml",
         )
-        self._microphone_source = MicrophoneAudioStreamSource()
-        self._tts_source = TTSAudioStreamSource()
-        self._sources: dict[AudioSourceKind, AudioStreamSource] = {
-            AudioSourceKind.MICROPHONE: self._microphone_source,
-            AudioSourceKind.TTS: self._tts_source,
-        }
+        self._microphone_source: MicrophoneAudioStreamSource | None = None
+        self._tts_source: TTSAudioStreamSource | None = None
+        self._sources: dict[AudioSourceKind, AudioStreamSource] = {}
         self._active_source_kind: AudioSourceKind | None = None
 
     @property
@@ -51,12 +48,16 @@ class AudioStreamRouter(AudioStreamSource):
     def microphone_source(self) -> MicrophoneAudioStreamSource:
         """返回内置麦克风音频源。"""
 
+        if self._microphone_source is None:
+            raise RuntimeError("音频流路由器尚未初始化")
         return self._microphone_source
 
     @property
     def tts_source(self) -> TTSAudioStreamSource:
         """返回内置 TTS 音频源。"""
 
+        if self._tts_source is None:
+            raise RuntimeError("音频流路由器尚未初始化")
         return self._tts_source
 
     @property
@@ -69,8 +70,12 @@ class AudioStreamRouter(AudioStreamSource):
     async def initialize(self) -> None:
         await self.config_manager.load()
 
-        self._microphone_source.apply_config(self.config.microphone)
-        self._tts_source.apply_config(self.config.tts)
+        self._microphone_source = MicrophoneAudioStreamSource(self.config.microphone)
+        self._tts_source = TTSAudioStreamSource(self.config.tts)
+        self._sources = {
+            AudioSourceKind.MICROPHONE: self._microphone_source,
+            AudioSourceKind.TTS: self._tts_source,
+        }
 
         for source in self._sources.values():
             await source.initialize()

@@ -10,20 +10,9 @@ from .config import TTSAudioStreamConfig
 class TTSAudioStreamSource(AudioStreamSource):
     """TTS HTTP 流音频源占位实现。"""
 
-    def __init__(self) -> None:
-        self._config = TTSAudioStreamConfig()
+    def __init__(self, config: TTSAudioStreamConfig) -> None:
+        self.config = config
         self._started = False
-
-    @property
-    def config(self) -> TTSAudioStreamConfig:
-        """返回当前 TTS 配置。"""
-
-        return self._config
-
-    def apply_config(self, config: TTSAudioStreamConfig) -> None:
-        """应用外部注入的 TTS 配置。"""
-
-        self._config = config
 
     @property
     def source_kind(self) -> AudioSourceKind:

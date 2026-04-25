@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
-from pathlib import Path
 from typing import TypeGuard
 
 import numpy as np
 import sounddevice as sd
 
-from livestudio.config import ConfigManager
 from livestudio.log import logger
 
 from ...base import AudioStreamSource
@@ -22,34 +20,14 @@ from .models import InputDeviceInfo, RawInputDeviceInfo, SoundDeviceTimeInfo
 class MicrophoneAudioStreamSource(AudioStreamSource):
     """提供指定麦克风的实时音频流采集能力。"""
 
-    def __init__(
-        self,
-        *,
-        config_manager: ConfigManager[MicrophoneAudioStreamConfig] | None = None,
-        config: MicrophoneAudioStreamConfig | None = None,
-    ) -> None:
-        self.config_manager = config_manager
-        self._config = config or MicrophoneAudioStreamConfig()
+    def __init__(self, config: MicrophoneAudioStreamConfig) -> None:
+        self.config = config
         self._loop: asyncio.AbstractEventLoop | None = None
         self._queue: asyncio.Queue[AudioChunk] | None = None
         self._stream: sd.InputStream | None = None
         self._started = False
         self._device_info: InputDeviceInfo | None = None
         self._dropped_chunks = 0
-
-    @property
-    def config(self) -> MicrophoneAudioStreamConfig:
-        """返回当前配置快照。"""
-
-        manager = self.config_manager
-        if manager is not None:
-            return manager.config
-        return self._config
-
-    def apply_config(self, config: MicrophoneAudioStreamConfig) -> None:
-        """应用外部注入的麦克风配置。"""
-
-        self._config = config
 
     @property
     def source_kind(self) -> AudioSourceKind:
@@ -67,10 +45,9 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     def device_info(self) -> InputDeviceInfo:
         """返回当前选中的输入设备信息。"""
 
-        device_info = self._device_info
-        if device_info is None:
+        if self._device_info is None:
             raise RuntimeError("麦克风音频源尚未初始化")
-        return device_info
+        return self._device_info
 
     @property
     def dropped_chunks(self) -> int:
@@ -81,13 +58,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     async def initialize(self) -> None:
         """加载配置并解析目标输入设备。"""
 
-        manager = self.config_manager
-        if manager is not None:
-            await manager.load()
-            self._config = manager.config
         self._loop = asyncio.get_running_loop()
         self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
+        self.config.device_name = self._device_info.name
+        self.config.device_index = self._device_info.index
         logger.info(
             "麦克风音频源已初始化，目标设备: {} ({})",
             self.device_info.name,
@@ -136,29 +111,27 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         """关闭服务并持久化配置。"""
 
         await self.stop()
-        self._persist_selected_device_to_config()
-        manager = self.config_manager
-        if manager is not None:
-            await manager.save()
+        if self._device_info is None:
+            return
+
+        self.config.device_name = self._device_info.name
+        self.config.device_index = self._device_info.index
 
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
         """读取下一段音频数据。"""
 
-        queue = self._require_queue()
+        if self._queue is None:
+            raise RuntimeError("麦克风音频源尚未初始化")
+
         if timeout is None:
-            return await queue.get()
-        return await asyncio.wait_for(queue.get(), timeout=timeout)
+            return await self._queue.get()
+        return await asyncio.wait_for(self._queue.get(), timeout=timeout)
 
     async def list_input_devices(self) -> list[InputDeviceInfo]:
         """列出当前系统可用的输入设备。"""
 
         devices = await asyncio.to_thread(sd.query_devices)
         return self._normalize_input_devices(devices)
-
-    async def get_microphone_devices(self) -> list[InputDeviceInfo]:
-        """返回当前所有可用麦克风设备。"""
-
-        return await self.list_input_devices()
 
     async def select_input_device(
         self,
@@ -168,9 +141,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     ) -> InputDeviceInfo:
         """根据设备名称或索引选择麦克风设备。"""
 
-        has_device_name = device_name is not None
-        has_device_index = device_index is not None
-        if has_device_name == has_device_index:
+        if (device_name is None) == (device_index is None):
             raise ValueError("必须且只能提供 device_name 或 device_index 其中之一")
 
         devices = await self.list_input_devices()
@@ -183,7 +154,9 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             selector = device_name if device_name is not None else device_index
             raise RuntimeError(f"指定的麦克风设备不存在或不可用: {selector}")
 
-        self._apply_selected_device(selected_device)
+        self._device_info = selected_device
+        self.config.device_name = selected_device.name
+        self.config.device_index = selected_device.index
         was_started = self._started
         if was_started:
             await self.stop()
@@ -199,16 +172,14 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     async def reload_device(self) -> None:
         """根据最新配置重新选择设备并重启输入流。"""
 
-        manager = self.config_manager
-        if manager is not None:
-            await manager.load()
-            self._config = manager.config
         was_started = self._started
         if was_started:
             await self.stop()
 
         self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
+        self.config.device_name = self._device_info.name
+        self.config.device_index = self._device_info.index
         logger.info(
             "麦克风输入设备已刷新为: {} ({})",
             self.device_info.name,
@@ -217,16 +188,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         if was_started:
             await self.start()
-
-    def _persist_selected_device_to_config(self) -> None:
-        """将当前已选设备写回配置快照。"""
-
-        device_info = self._device_info
-        if device_info is None:
-            return
-
-        self.config.device_name = device_info.name
-        self.config.device_index = device_info.index
 
     def _handle_audio_callback(
         self,
@@ -242,8 +203,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         status: sd.CallbackFlags,
     ) -> None:
         loop = self._loop
-        queue = self._queue
-        if loop is None or queue is None:
+        if loop is None or self._queue is None:
             return
 
         chunk = AudioChunk(
@@ -263,12 +223,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         loop.call_soon_threadsafe(self._push_chunk_nowait, chunk)
 
     def _push_chunk_nowait(self, chunk: AudioChunk) -> None:
-        queue = self._queue
-        if queue is None:
+        if self._queue is None:
             return
 
         try:
-            queue.put_nowait(chunk)
+            self._queue.put_nowait(chunk)
         except asyncio.QueueFull:
             self._dropped_chunks += 1
             logger.warning(
@@ -287,19 +246,15 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             device_index=self.config.device_index,
         )
         if selected_device is not None:
-            self._apply_selected_device(selected_device)
             return selected_device
 
         default_input_index = await asyncio.to_thread(sd.default.device.__getitem__, 0)
         if default_input_index is not None and default_input_index >= 0:
             for device in devices:
                 if device.index == int(default_input_index):
-                    self._apply_selected_device(device)
                     return device
 
-        selected_device = devices[0]
-        self._apply_selected_device(selected_device)
-        return selected_device
+        return devices[0]
 
     def _find_matching_device(
         self,
@@ -330,11 +285,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             None,
         )
 
-    def _apply_selected_device(self, device: InputDeviceInfo) -> None:
-        self._device_info = device
-        self.config.device_name = device.name
-        self.config.device_index = device.index
-
     def _normalize_input_devices(
         self,
         devices: Sequence[object],
@@ -354,20 +304,18 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
                 if max_input_channels <= 0:
                     continue
 
-                default_samplerate = float(raw_device["default_samplerate"])
-
-                normalized_device = InputDeviceInfo(
-                    index=index,
-                    name=name,
-                    max_input_channels=max_input_channels,
-                    default_samplerate=default_samplerate,
-                    hostapi=raw_device["hostapi"],
+                normalized_devices.append(
+                    InputDeviceInfo(
+                        index=index,
+                        name=name,
+                        max_input_channels=max_input_channels,
+                        default_samplerate=float(raw_device["default_samplerate"]),
+                        hostapi=raw_device["hostapi"],
+                    ),
                 )
             except ValueError:
                 logger.exception("解析输入设备信息失败，已跳过: {}", raw_device)
                 continue
-
-            normalized_devices.append(normalized_device)
         return normalized_devices
 
     def _is_raw_input_device_info(
@@ -389,9 +337,3 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             and isinstance(default_samplerate, int | float)
             and isinstance(hostapi, int)
         )
-
-    def _require_queue(self) -> asyncio.Queue[AudioChunk]:
-        queue = self._queue
-        if queue is None:
-            raise RuntimeError("麦克风音频源尚未初始化")
-        return queue
