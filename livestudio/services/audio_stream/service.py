@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 from livestudio.config import ConfigManager
@@ -19,6 +20,7 @@ class AudioStreamRouter(AudioStreamSource):
     def __init__(
         self,
     ) -> None:
+        super().__init__()
         self.config_manager = ConfigManager(
             AudioStreamConfigFile,
             Path("config") / "audio_stream.yaml",
@@ -33,14 +35,17 @@ class AudioStreamRouter(AudioStreamSource):
         return self.config_manager.config.audio_stream
 
     @property
-    def source_kind(self) -> AudioSourceKind:
+    def active_source_kind(self) -> AudioSourceKind:
         if self._active_source_kind is None:
             raise RuntimeError("音频流路由器尚未激活任何音频源")
         return self._active_source_kind
 
     @property
     def active_source(self) -> AudioStreamSource:
-        if self._active_source_kind is None:
+        if (
+            self._active_source_kind is None
+            or self._sources.get(self._active_source_kind) is None
+        ):
             raise RuntimeError("音频流路由器当前没有可用的活动音频源")
         return self._sources[self._active_source_kind]
 
@@ -60,13 +65,6 @@ class AudioStreamRouter(AudioStreamSource):
             raise RuntimeError("音频流路由器尚未初始化")
         return self._tts_source
 
-    @property
-    def is_started(self) -> bool:
-        active_source_kind = self._active_source_kind
-        if active_source_kind is None:
-            return False
-        return self._sources[active_source_kind].is_started
-
     async def initialize(self) -> None:
         await self.config_manager.load()
 
@@ -79,17 +77,28 @@ class AudioStreamRouter(AudioStreamSource):
 
         for source in self._sources.values():
             await source.initialize()
-        await self.switch_source(self.config.source)
-        logger.info("音频流路由器已初始化，当前音频源: {}", self.source_kind)
+        self._active_source_kind = self.config.source
+        logger.info("音频流路由器已初始化，当前音频源: {}", self.active_source_kind)
 
     async def start(self) -> None:
+        if self.is_started:
+            return
+
         await self.active_source.start()
+        self.is_started = True
 
     async def stop(self) -> None:
+        if not self.is_started:
+            return
+
         await self.active_source.stop()
+        self.is_started = False
 
     async def close(self) -> None:
-        await self.active_source.close()
+        for source in self._sources.values():
+            with contextlib.suppress(Exception):
+                await source.close()
+        self.is_started = False
         await self.config_manager.save()
 
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
@@ -99,24 +108,11 @@ class AudioStreamRouter(AudioStreamSource):
         self,
         source_kind: AudioSourceKind,
     ) -> None:
-        next_source = self._sources.get(source_kind)
-        if next_source is None:
-            raise RuntimeError(f"未绑定音频源: {source_kind}")
-
-        current_source_kind = self._active_source_kind
-        if current_source_kind is source_kind:
+        if self._active_source_kind == source_kind:
             return
-
-        current_source = (
-            self._sources[current_source_kind]
-            if current_source_kind is not None
-            else None
-        )
-        if current_source is not None:
-            await current_source.stop()
-
+        await self.stop()
         self._active_source_kind = source_kind
         self.config.source = source_kind
-        await next_source.start()
+        await self.start()
 
         logger.info("音频流路由器已切换音频源: {}", source_kind)

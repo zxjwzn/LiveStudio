@@ -10,15 +10,8 @@ from .models import AudioChunk, AudioSourceKind
 class AudioStreamSource(ABC):
     """统一音频流来源抽象。"""
 
-    @property
-    @abstractmethod
-    def source_kind(self) -> AudioSourceKind:
-        """返回音频源类型。"""
-
-    @property
-    @abstractmethod
-    def is_started(self) -> bool:
-        """返回音频源是否已启动。"""
+    def __init__(self):
+        self.is_started = False
 
     @abstractmethod
     async def initialize(self) -> None:

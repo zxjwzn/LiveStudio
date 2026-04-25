@@ -11,20 +11,8 @@ class TTSAudioStreamSource(AudioStreamSource):
     """TTS HTTP 流音频源占位实现。"""
 
     def __init__(self, config: TTSAudioStreamConfig) -> None:
+        super().__init__()
         self.config = config
-        self._started = False
-
-    @property
-    def source_kind(self) -> AudioSourceKind:
-        """返回当前音频源类型。"""
-
-        return AudioSourceKind.TTS
-
-    @property
-    def is_started(self) -> bool:
-        """返回当前 TTS 音频流是否已启动。"""
-
-        return self._started
 
     async def initialize(self) -> None:
         """初始化 TTS 音频流占位资源。"""
@@ -32,12 +20,12 @@ class TTSAudioStreamSource(AudioStreamSource):
     async def start(self) -> None:
         """启动 TTS 音频流占位资源。"""
 
-        self._started = True
+        self.is_started = True
 
     async def stop(self) -> None:
         """停止 TTS 音频流占位资源。"""
 
-        self._started = False
+        self.is_started = False
 
     async def close(self) -> None:
         """关闭 TTS 音频流占位资源。"""

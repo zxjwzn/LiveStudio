@@ -21,25 +21,13 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     """提供指定麦克风的实时音频流采集能力。"""
 
     def __init__(self, config: MicrophoneAudioStreamConfig) -> None:
+        super().__init__()
         self.config = config
         self._loop: asyncio.AbstractEventLoop | None = None
         self._queue: asyncio.Queue[AudioChunk] | None = None
         self._stream: sd.InputStream | None = None
-        self._started = False
         self._device_info: InputDeviceInfo | None = None
         self._dropped_chunks = 0
-
-    @property
-    def source_kind(self) -> AudioSourceKind:
-        """返回当前音频源类型。"""
-
-        return AudioSourceKind.MICROPHONE
-
-    @property
-    def is_started(self) -> bool:
-        """返回当前输入流是否已启动。"""
-
-        return self._started
 
     @property
     def device_info(self) -> InputDeviceInfo:
@@ -72,7 +60,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     async def start(self) -> None:
         """启动麦克风输入流。"""
 
-        if self._started:
+        if self.is_started:
             return
 
         if self._loop is None or self._queue is None or self._device_info is None:
@@ -90,7 +78,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         )
         await asyncio.to_thread(stream.start)
         self._stream = stream
-        self._started = True
+        self.is_started = True
         logger.info("麦克风音频流已启动")
 
     async def stop(self) -> None:
@@ -99,12 +87,12 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         stream = self._stream
         self._stream = None
         if stream is None:
-            self._started = False
+            self.is_started = False
             return
 
         await asyncio.to_thread(stream.stop)
         await asyncio.to_thread(stream.close)
-        self._started = False
+        self.is_started = False
         logger.info("麦克风音频流已停止")
 
     async def close(self) -> None:
@@ -157,7 +145,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self._device_info = selected_device
         self.config.device_name = selected_device.name
         self.config.device_index = selected_device.index
-        was_started = self._started
+        was_started = self.is_started
         if was_started:
             await self.stop()
             await self.start()
@@ -172,7 +160,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     async def reload_device(self) -> None:
         """根据最新配置重新选择设备并重启输入流。"""
 
-        was_started = self._started
+        was_started = self.is_started
         if was_started:
             await self.stop()
 
