@@ -28,11 +28,6 @@ from ...clients.vtube_studio.models import (
     InjectParameterValue,
     VTubeStudioAPIStateBroadcast,
 )
-from .subservices.animation_runtime import AnimationRuntimeService
-from .subservices.base import VTubeStudioSubservice
-from .subservices.model_expression_sync.service import (
-    ModelExpressionSyncService,
-)
 
 
 class VTubeStudio:
@@ -40,9 +35,6 @@ class VTubeStudio:
 
     def __init__(
         self,
-        *,
-        subservices: Iterable[VTubeStudioSubservice[Any]] | None = None,
-        audio_stream: AudioStreamSource | None = None,
     ) -> None:
         self.config_manager = ConfigManager(
             VTubeStudioConfig,
@@ -51,14 +43,9 @@ class VTubeStudio:
         self._client: VTubeStudioClient | None = None
         self._events: VTSEventManager | None = None
         self._discovery: VTubeStudioDiscovery | None = None
-        self._subservices: dict[str, VTubeStudioSubservice[Any]] = {}
         self.tween = ParameterTweenEngine(
             self._send_parameter_states,
         )
-        self._audio_stream = audio_stream
-        if subservices is not None:
-            for subservice in subservices:
-                self.register_subservice(subservice)
 
     @property
     def config(self) -> VTubeStudioConfig:
@@ -87,37 +74,6 @@ class VTubeStudio:
             raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
         return self._discovery
 
-    @property
-    def audio_stream(self) -> AudioStreamSource:
-        """返回已绑定的音频流源。"""
-        if self._audio_stream is None:
-            raise RuntimeError("尚未绑定音频流源，请先调用 bind_audio_stream()")
-        return self._audio_stream
-
-    @property
-    def subservices(self) -> dict[str, VTubeStudioSubservice[Any]]:
-        """返回已注册的子服务映射。"""
-
-        return dict(self._subservices)
-
-    @property
-    def animation_runtime(self) -> AnimationRuntimeService:
-        """返回动画运行时子服务。"""
-
-        subservice = self.get_subservice("animation_runtime")
-        if not isinstance(subservice, AnimationRuntimeService):
-            raise TypeError("animation_runtime 子服务类型不正确")
-        return subservice
-
-    @property
-    def model_expression_sync(self) -> ModelExpressionSyncService:
-        """返回模型表情同步子服务。"""
-
-        subservice = self.get_subservice("model_expression_sync")
-        if not isinstance(subservice, ModelExpressionSyncService):
-            raise TypeError("model_expression_sync 子服务类型不正确")
-        return subservice
-
     async def initialize(self) -> None:
         """加载配置并创建内部依赖。"""
 
@@ -128,33 +84,10 @@ class VTubeStudio:
         )
         self._events = VTSEventManager(self._client, self.config.event_queue_size)
         self._discovery = VTubeStudioDiscovery(self.config)
-        await self.audio_stream.initialize()
-        for subservice in self.subservices.values():
-            subservice.owner = self
-            subservice.audio_stream = self.audio_stream
-            await subservice.config_manager.load()
-            await subservice.initialize()
-
-    def register_subservice(self, subservice: VTubeStudioSubservice[Any]) -> None:
-        """注册一个子服务。"""
-
-        if subservice.name in self._subservices:
-            raise ValueError(f"子服务已存在: {subservice.name}")
-        self._subservices[subservice.name] = subservice
-
-    def get_subservice(self, name: str) -> VTubeStudioSubservice[Any]:
-        """按名称返回已注册子服务。"""
-
-        subservice = self._subservices.get(name)
-        if subservice is None:
-            raise KeyError(f"未注册的子服务: {name}")
-        return subservice
 
     async def close(self) -> None:
         """释放该服务持有的后台资源。"""
 
-        await self.stop_subservices()
-        await self.audio_stream.close()
         await self.tween.close()
         await self.client.disconnect()
         await self.config_manager.save()
@@ -166,48 +99,9 @@ class VTubeStudio:
         """启动连接、认证流程与子服务。"""
 
         authenticated = await self._authenticate_session(allow_request_token=True)
-        await self.audio_stream.start()
         self.tween.start()
         if not authenticated:
             raise RuntimeError("VTube Studio 认证失败")
-
-        await self.start_subservices()
-
-    async def start_subservices(self, names: Iterable[str] | None = None) -> None:
-        """启动全部或指定子服务。"""
-
-        target_names = list(names) if names is not None else list(self._subservices)
-        for name in target_names:
-            await self.start_subservice(name)
-
-    async def start_subservice(self, name: str) -> bool:
-        """启动指定子服务。"""
-
-        subservice = self.get_subservice(name)
-        if not subservice.enabled:
-            logger.info("子服务 {} 未启用，跳过启动", name)
-            return False
-        await subservice.start()
-        return True
-
-    async def stop_subservices(self, names: Iterable[str] | None = None) -> None:
-        """停止全部或指定子服务。"""
-
-        target_names = (
-            tuple(names)
-            if names is not None
-            else tuple(reversed(tuple(self._subservices)))
-        )
-        for name in target_names:
-            await self.stop_subservice(name)
-
-    async def stop_subservice(self, name: str) -> bool:
-        """停止指定子服务。"""
-
-        subservice = self.get_subservice(name)
-        await subservice.stop()
-        await subservice.config_manager.save()
-        return True
 
     async def connect_and_authenticate(
         self,
