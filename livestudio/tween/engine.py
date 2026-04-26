@@ -5,14 +5,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from typing import Literal
 
 from livestudio.log import logger
 
 from .easing import EASING_REGISTRY, Easing, EasingFunction
-from .models import ActiveTween, ControlledParameterState, TweenMode, TweenRequest
+from .models import ActiveTween, ControlledParameterState, TweenRequest
 
 ParameterSender = Callable[
-    [Iterable[ControlledParameterState], TweenMode],
+    [Iterable[ControlledParameterState], Literal["set", "add"]],
     Awaitable[None],
 ]
 
@@ -86,37 +87,34 @@ class ParameterTweenEngine:
 
         logger.info("缓动引擎已停止")
 
-    async def close(self) -> None:
-        """`stop` 的别名，用于保持生命周期接口一致。"""
-
-        await self.stop()
-
     async def set_value(
         self,
         parameter_name: str,
         value: float,
         *,
-        mode: TweenMode = "set",
+        mode: Literal["set", "add"] = "set",
         priority: int = 0,
         keep_alive: bool = True,
     ) -> None:
         """立即设置参数值，并可选地持续保持其控制权。"""
 
         await self.tween(
-            parameter_name=parameter_name,
-            end_value=value,
-            duration=0.0,
-            easing=Easing.linear,
-            mode=mode,
-            priority=priority,
-            keep_alive=keep_alive,
+            TweenRequest(
+                parameter_name=parameter_name,
+                end_value=value,
+                duration=0.0,
+                easing=Easing.linear,
+                mode=mode,
+                priority=priority,
+                keep_alive=keep_alive,
+            ),
         )
 
     async def set_values(
         self,
         values: Mapping[str, float],
         *,
-        mode: TweenMode = "set",
+        mode: Literal["set", "add"] = "set",
         priority: int = 0,
         keep_alive: bool = True,
     ) -> None:
@@ -134,45 +132,25 @@ class ParameterTweenEngine:
         for parameter_name, value in values.items():
             task.append(
                 self.tween(
-                    parameter_name=parameter_name,
-                    end_value=value,
-                    duration=0.0,
-                    easing=Easing.linear,
-                    mode=mode,
-                    priority=priority,
-                    keep_alive=keep_alive,
+                    TweenRequest(
+                        parameter_name=parameter_name,
+                        end_value=value,
+                        duration=0.0,
+                        easing=Easing.linear,
+                        mode=mode,
+                        priority=priority,
+                        keep_alive=keep_alive,
+                    ),
                 ),
             )
         await asyncio.gather(*task)
 
-    async def tween(
-        self,
-        parameter_name: str,
-        end_value: float,
-        duration: float,
-        easing: str | EasingFunction,
-        *,
-        start_value: float | None = None,
-        mode: TweenMode = "set",
-        fps: int | None = None,
-        priority: int = 0,
-        keep_alive: bool = True,
-    ) -> None:
-        """使用固定采样与绝对时间对齐方式执行缓动。"""
+    async def tween(self, request: TweenRequest) -> None:
+        """按请求使用固定采样与绝对时间对齐方式执行缓动。"""
 
-        easing_function = self._resolve_easing(easing)
-        tween_request = TweenRequest(
-            parameter_name=parameter_name,
-            end_value=end_value,
-            duration=duration,
-            easing_function=easing_function,
-            start_value=start_value,
-            mode=mode,
-            fps=fps or self._default_fps,
-            priority=priority,
-            keep_alive=keep_alive,
-        )
-        task = asyncio.create_task(self._run_tween(tween_request))
+        if request.fps <= 0:
+            request.fps = self._default_fps
+        task = asyncio.create_task(self._run_tween(request))
         await task
 
     async def release(self, parameter_name: str) -> None:
@@ -248,6 +226,9 @@ class ParameterTweenEngine:
             logger.error("无法获取当前缓动任务")
             return
 
+        if request.delay > 0:
+            await asyncio.sleep(request.delay)
+
         if request.start_value is None:
             async with self._lock:
                 current_state = self._controlled_params.get(request.parameter_name)
@@ -293,7 +274,7 @@ class ParameterTweenEngine:
                 t = min(1.0, elapsed / request.duration)
                 value = start_value + (
                     request.end_value - start_value
-                ) * request.easing_function(t)
+                ) * self._resolve_easing(request.easing)(t)
                 should_send = False
 
                 async with self._lock:

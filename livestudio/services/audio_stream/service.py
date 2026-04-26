@@ -92,14 +92,8 @@ class AudioStreamRouter(AudioStreamSource):
             return
 
         await self.active_source.stop()
-        self.is_started = False
-
-    async def close(self) -> None:
-        for source in self._sources.values():
-            with contextlib.suppress(Exception):
-                await source.close()
-        self.is_started = False
         await self.config_manager.save()
+        self.is_started = False
 
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
         return await self.active_source.read_chunk(timeout=timeout)

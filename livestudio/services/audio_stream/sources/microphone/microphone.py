@@ -92,18 +92,13 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         await asyncio.to_thread(stream.stop)
         await asyncio.to_thread(stream.close)
-        self.is_started = False
-        logger.info("麦克风音频流已停止")
-
-    async def close(self) -> None:
-        """关闭服务并持久化配置。"""
-
-        await self.stop()
         if self._device_info is None:
             return
 
         self.config.device_name = self._device_info.name
         self.config.device_index = self._device_info.index
+        self.is_started = False
+        logger.info("麦克风音频流已停止")
 
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
         """读取下一段音频数据。"""

@@ -8,8 +8,6 @@ from typing import Literal
 
 from .easing import EasingFunction
 
-TweenMode = Literal["set", "add"]
-
 
 @dataclass(slots=True)
 class ControlledParameterState:
@@ -17,7 +15,7 @@ class ControlledParameterState:
 
     name: str
     value: float
-    mode: TweenMode
+    mode: Literal["set", "add"]
     keep_alive: bool = True
 
 
@@ -27,7 +25,7 @@ class ActiveTween:
 
     task: asyncio.Task[None]
     priority: int
-    mode: TweenMode
+    mode: Literal["set", "add"]
     keep_alive: bool
 
 
@@ -38,9 +36,10 @@ class TweenRequest:
     parameter_name: str
     end_value: float
     duration: float
-    easing_function: EasingFunction
+    easing: str | EasingFunction
     start_value: float | None = None
-    mode: TweenMode = "set"
+    delay: float = 0.0
+    mode: Literal["set", "add"] = "set"
     fps: int = 60
     priority: int = 0
     keep_alive: bool = True

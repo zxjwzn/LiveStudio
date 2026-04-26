@@ -27,8 +27,8 @@ async def main() -> None:
         await asyncio.Event().wait()
 
     finally:
-        await audio_stream.close()
-        await vtubestudio_service.close()
+        await audio_stream.stop()
+        await vtubestudio_service.stop()
 
 
 if __name__ == "__main__":

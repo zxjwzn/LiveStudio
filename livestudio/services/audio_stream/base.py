@@ -26,9 +26,5 @@ class AudioStreamSource(ABC):
         """停止音频源。"""
 
     @abstractmethod
-    async def close(self) -> None:
-        """关闭音频源。"""
-
-    @abstractmethod
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
         """读取下一段音频块。"""

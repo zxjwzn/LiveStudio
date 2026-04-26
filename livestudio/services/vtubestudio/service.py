@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any, Literal
 
 from livestudio.config import ConfigManager
 from livestudio.log import logger
-from livestudio.tween import ControlledParameterState, ParameterTweenEngine, TweenMode
+from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 
 from ...clients.vtube_studio.client import VTubeStudioClient
 from ...clients.vtube_studio.config import VTubeStudioConfig
@@ -82,10 +83,10 @@ class VTubeStudio:
         self._events = VTSEventManager(self._client, self.config.event_queue_size)
         self._discovery = VTubeStudioDiscovery(self.config)
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         """释放该服务持有的后台资源。"""
 
-        await self.tween.close()
+        await self.tween.stop()
         await self.client.disconnect()
         await self.config_manager.save()
         self._client = None
@@ -198,7 +199,7 @@ class VTubeStudio:
     async def _send_parameter_states(
         self,
         states: Iterable[ControlledParameterState],
-        mode: TweenMode,
+        mode: Literal["set", "add"] = "set",
     ) -> None:
         parameter_states = list(states)
         if not parameter_states:

@@ -2,7 +2,7 @@
 
 from .easing import EASING_REGISTRY, Easing, EasingFunction
 from .engine import ParameterTweenEngine
-from .models import ActiveTween, ControlledParameterState, TweenMode, TweenRequest
+from .models import ActiveTween, ControlledParameterState, TweenRequest
 
 __all__ = [
     "EASING_REGISTRY",
@@ -11,6 +11,5 @@ __all__ = [
     "Easing",
     "EasingFunction",
     "ParameterTweenEngine",
-    "TweenMode",
     "TweenRequest",
 ]

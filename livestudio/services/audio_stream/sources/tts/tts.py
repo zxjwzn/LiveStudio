@@ -27,11 +27,6 @@ class TTSAudioStreamSource(AudioStreamSource):
 
         self.is_started = False
 
-    async def close(self) -> None:
-        """关闭 TTS 音频流占位资源。"""
-
-        await self.stop()
-
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
         """读取 TTS 音频块。当前为占位实现。"""
 
