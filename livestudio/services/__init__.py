@@ -12,7 +12,7 @@ from .audio_stream import (
     MicrophoneAudioStreamSource,
     TTSAudioStreamSource,
 )
-from .vtubestudio import (
+from .platforms.vtubestudio import (
     VTubeStudio,
 )
 

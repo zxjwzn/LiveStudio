@@ -1,6 +1,6 @@
 """异步 VTube Studio API 客户端库。"""
 
-from ...services.vtubestudio import VTubeStudio
+from ...services.platforms.vtubestudio import VTubeStudio
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .discovery import VTubeStudioDiscovery
 from .errors import (

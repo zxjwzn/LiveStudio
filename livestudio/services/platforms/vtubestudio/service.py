@@ -10,12 +10,12 @@ from livestudio.config import ConfigManager
 from livestudio.log import logger
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 
-from ...clients.vtube_studio.client import VTubeStudioClient
-from ...clients.vtube_studio.config import VTubeStudioConfig
-from ...clients.vtube_studio.discovery import VTubeStudioDiscovery
-from ...clients.vtube_studio.errors import APIError, AuthenticationError
-from ...clients.vtube_studio.event_manager import ListenerHandler, VTSEventManager
-from ...clients.vtube_studio.models import (
+from ....clients.vtube_studio.client import VTubeStudioClient
+from ....clients.vtube_studio.config import VTubeStudioConfig
+from ....clients.vtube_studio.discovery import VTubeStudioDiscovery
+from ....clients.vtube_studio.errors import APIError, AuthenticationError
+from ....clients.vtube_studio.event_manager import ListenerHandler, VTSEventManager
+from ....clients.vtube_studio.models import (
     EventName,
     EventSubscriptionConfig,
     EventSubscriptionRequest,

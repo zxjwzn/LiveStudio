@@ -10,20 +10,20 @@ from livestudio.services import (
     AudioSourceKind,
     AudioStreamRouter,
 )
-from livestudio.services.vtubestudio import VTubeStudio
+from livestudio.services.platforms.vtubestudio import VTubeStudio
 
 
 async def main() -> None:
-    vtubestudio_service = VTubeStudio()
     audio_stream = AudioStreamRouter()
+    vtubestudio_service = VTubeStudio()
 
-    await vtubestudio_service.initialize()
     await audio_stream.initialize()
+    await vtubestudio_service.initialize()
 
     try:
-        await vtubestudio_service.start()
         await audio_stream.start()
-        await audio_stream.switch_source(AudioSourceKind.TTS)
+        await vtubestudio_service.start()
+        await audio_stream.switch_source(AudioSourceKind.MICROPHONE)
         await asyncio.Event().wait()
 
     finally:

@@ -5,14 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from livestudio.log import logger
 
-from ..config import ControllerSettings
-from ..models import AnimationType
+from .config import ControllerSettings
+from .models import AnimationType
 
-ConfigT = TypeVar("ConfigT", bound=ControllerSettings)
+ConfigT = TypeVar("ConfigT", bound=ControllerSettings, covariant=True)
 
 
 class AnimationController(ABC, Generic[ConfigT]):
@@ -71,7 +71,8 @@ class AnimationController(ABC, Generic[ConfigT]):
         self._stop_event.set()
         self._task = None
         if task is not None:
-            await task
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     async def stop_without_wait(self) -> None:
         task = self._task

@@ -122,7 +122,7 @@ class AnimationTemplatePlayer:
 
     @property
     def templates(self) -> dict[str, AnimationTemplate]:
-        return dict(self._templates)
+        return self._templates
 
     def list_loaded_templates(self) -> list[LoadedTemplateInfo]:
         """返回当前已加载模板摘要。"""
