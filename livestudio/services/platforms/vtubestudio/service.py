@@ -26,10 +26,13 @@ from ....clients.vtube_studio.models import (
     InjectParameterValue,
     VTubeStudioAPIStateBroadcast,
 )
+from ..base import PlatformService
 
 
-class VTubeStudio:
+class VTubeStudio(PlatformService):
     """对外暴露稳定业务接口的服务层。"""
+
+    platform_name = "vtubestudio"
 
     def __init__(
         self,
@@ -41,9 +44,21 @@ class VTubeStudio:
         self._client: VTubeStudioClient | None = None
         self._events: VTSEventManager | None = None
         self._discovery: VTubeStudioDiscovery | None = None
-        self.tween = ParameterTweenEngine(
+        self._tween = ParameterTweenEngine(
             self._send_parameter_states,
         )
+
+    @property
+    def name(self) -> str:
+        """平台唯一名称。"""
+
+        return self.platform_name
+
+    @property
+    def tween(self) -> ParameterTweenEngine:
+        """返回 VTube Studio 参数缓动引擎。"""
+
+        return self._tween
 
     @property
     def config(self) -> VTubeStudioConfig:
