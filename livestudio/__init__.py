@@ -1,7 +1,7 @@
 """LiveStudio 包。"""
 
-from .clients.vtube_studio import VTubeStudio
 from .log import logger
+from .services.platforms.vtubestudio import VTubeStudio
 from .tween import Easing, ParameterTweenEngine
 
 __all__ = [
