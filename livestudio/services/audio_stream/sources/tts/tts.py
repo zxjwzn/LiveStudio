@@ -17,6 +17,13 @@ class TTSAudioStreamSource(AudioStreamSource):
     async def initialize(self) -> None:
         """初始化 TTS 音频流占位资源。"""
 
+    async def restart(self) -> None:
+        """重启 TTS 音频流占位资源。"""
+
+        await self.stop()
+        await self.initialize()
+        await self.start()
+
     async def start(self) -> None:
         """启动 TTS 音频流占位资源。"""
 

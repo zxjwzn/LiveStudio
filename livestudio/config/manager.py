@@ -114,6 +114,11 @@ class ConfigManager(Generic[ConfigT]):
             self._persist_snapshot(self._current)
             return self._current
 
+    async def reload(self) -> ConfigT:
+        """重新从磁盘加载配置。"""
+
+        return await self.load()
+
     async def save(self) -> None:
         """将当前快照持久化到磁盘。"""
 

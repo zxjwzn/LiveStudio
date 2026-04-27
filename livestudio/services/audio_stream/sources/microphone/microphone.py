@@ -46,9 +46,12 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     async def initialize(self) -> None:
         """加载配置并解析目标输入设备。"""
 
+        if self._stream is not None:
+            await self.stop()
         self._loop = asyncio.get_running_loop()
         self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
+        self._dropped_chunks = 0
         self.config.device_name = self._device_info.name
         self.config.device_index = self._device_info.index
         logger.info(
@@ -86,19 +89,25 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         stream = self._stream
         self._stream = None
-        if stream is None:
-            self.is_started = False
-            return
-
-        await asyncio.to_thread(stream.stop)
-        await asyncio.to_thread(stream.close)
-        if self._device_info is None:
-            return
-
-        self.config.device_name = self._device_info.name
-        self.config.device_index = self._device_info.index
+        device_info = self._device_info
+        if stream is not None:
+            await asyncio.to_thread(stream.stop)
+            await asyncio.to_thread(stream.close)
+        if device_info is not None:
+            self.config.device_name = device_info.name
+            self.config.device_index = device_info.index
+        self._loop = None
+        self._queue = None
+        self._device_info = None
         self.is_started = False
         logger.info("麦克风音频流已停止")
+
+    async def restart(self) -> None:
+        """重启麦克风音频源。"""
+
+        await self.stop()
+        await self.initialize()
+        await self.start()
 
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
         """读取下一段音频数据。"""
@@ -137,12 +146,16 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             selector = device_name if device_name is not None else device_index
             raise RuntimeError(f"指定的麦克风设备不存在或不可用: {selector}")
 
-        self._device_info = selected_device
-        self.config.device_name = selected_device.name
-        self.config.device_index = selected_device.index
         was_started = self.is_started
         if was_started:
             await self.stop()
+        self._loop = asyncio.get_running_loop()
+        self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
+        self._device_info = selected_device
+        self.config.device_name = selected_device.name
+        self.config.device_index = selected_device.index
+        self._dropped_chunks = 0
+        if was_started:
             await self.start()
 
         logger.info(
@@ -159,8 +172,10 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         if was_started:
             await self.stop()
 
+        self._loop = asyncio.get_running_loop()
         self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
+        self._dropped_chunks = 0
         self.config.device_name = self._device_info.name
         self.config.device_index = self._device_info.index
         logger.info(

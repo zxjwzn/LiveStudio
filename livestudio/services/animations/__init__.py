@@ -1,8 +1,21 @@
 from .controllers import (
     AnimationController,
+    AnimationControllerRegistry,
     AnimationType,
+    BlinkController,
+    BlinkControllerSettings,
+    BodySwingController,
+    BodySwingControllerSettings,
+    BreathingController,
+    BreathingControllerSettings,
+    ControllerFactory,
+    ControllerKey,
+    ControllerRegistration,
     ControllerSettings,
+    EyeFollowControllerSettings,
 )
+from .manager import AnimationManager
+from .runtime import PlatformAnimationRuntime
 from .templates import (
     AnimationTemplatePlayer,
     LoadedTemplateInfo,
@@ -11,9 +24,22 @@ from .templates import (
 
 __all__ = [
     "AnimationController",
+    "AnimationControllerRegistry",
+    "AnimationManager",
     "AnimationTemplatePlayer",
     "AnimationType",
+    "BlinkController",
+    "BlinkControllerSettings",
+    "BodySwingController",
+    "BodySwingControllerSettings",
+    "BreathingController",
+    "BreathingControllerSettings",
+    "ControllerFactory",
+    "ControllerKey",
+    "ControllerRegistration",
     "ControllerSettings",
+    "EyeFollowControllerSettings",
     "LoadedTemplateInfo",
     "LoadedTemplateParameterInfo",
+    "PlatformAnimationRuntime",
 ]

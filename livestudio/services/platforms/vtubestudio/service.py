@@ -47,6 +47,8 @@ class VTubeStudio(PlatformService):
         self._tween = ParameterTweenEngine(
             self._send_parameter_states,
         )
+        self._initialized = False
+        self._started = False
 
     @property
     def name(self) -> str:
@@ -65,6 +67,18 @@ class VTubeStudio(PlatformService):
         """返回最新配置快照。"""
 
         return self.config_manager.config
+
+    @property
+    def is_initialized(self) -> bool:
+        """服务是否已初始化。"""
+
+        return self._initialized
+
+    @property
+    def is_started(self) -> bool:
+        """服务是否已启动。"""
+
+        return self._started
 
     @property
     def client(self) -> VTubeStudioClient:
@@ -90,6 +104,8 @@ class VTubeStudio(PlatformService):
     async def initialize(self) -> None:
         """加载配置并创建内部依赖。"""
 
+        if self._initialized:
+            return
         await self.config_manager.load()
         self._client = VTubeStudioClient(
             config=self.config,
@@ -97,23 +113,47 @@ class VTubeStudio(PlatformService):
         )
         self._events = VTSEventManager(self._client, self.config.event_queue_size)
         self._discovery = VTubeStudioDiscovery(self.config)
+        self._initialized = True
 
     async def stop(self) -> None:
         """释放该服务持有的后台资源。"""
 
+        await self._stop(save_config=True)
+
+    async def _stop(self, *, save_config: bool) -> None:
+        """停止服务并按需保存配置。"""
+
+        if not self._initialized:
+            return
         await self.tween.stop()
-        await self.client.disconnect()
-        await self.config_manager.save()
+        if self._client is not None:
+            await self._client.disconnect()
+        if save_config:
+            await self.config_manager.save()
         self._client = None
         self._events = None
         self._discovery = None
+        self._initialized = False
+        self._started = False
 
     async def start(self) -> None:
         """启动连接与认证流程。"""
 
+        if self._started:
+            return
+        if not self._initialized:
+            await self.initialize()
         await self.connect()
         await self.authenticate()
         self.tween.start()
+        self._started = True
+
+    async def restart(self) -> None:
+        """重启 VTube Studio 服务并重新加载配置。"""
+
+        await self._stop(save_config=False)
+        await self.initialize()
+        await self.start()
 
     async def connect(self) -> None:
         """连接到 VTube Studio。"""

@@ -165,6 +165,11 @@ class AnimationTemplatePlayer:
         self._loaded = True
         logger.info("已加载 {} 个动画模板", len(self._templates))
 
+    async def reload(self) -> None:
+        """重新加载动画模板。"""
+
+        await self.load()
+
     async def play_template(
         self,
         name: str,

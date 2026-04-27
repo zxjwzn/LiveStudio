@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from livestudio.log import logger
 
 from .config import ControllerSettings
 from .models import AnimationType
+
+if TYPE_CHECKING:
+    from livestudio.services.animations.runtime import PlatformAnimationRuntime
 
 ConfigT = TypeVar("ConfigT", bound=ControllerSettings, covariant=True)
 
@@ -20,19 +23,19 @@ class AnimationController(ABC, Generic[ConfigT]):
 
     def __init__(
         self,
-        # runtime: AnimationRuntimeService,
+        runtime: PlatformAnimationRuntime,
         name: str,
         config: ConfigT,
     ) -> None:
-        # self._runtime = runtime
+        self._runtime = runtime
         self._name = name
         self._config = config
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
 
-    # @property
-    # def runtime(self) -> AnimationRuntimeService:
-    #    return self._runtime
+    @property
+    def runtime(self) -> PlatformAnimationRuntime:
+        return self._runtime
 
     @property
     def name(self) -> str:

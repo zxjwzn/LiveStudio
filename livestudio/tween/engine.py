@@ -87,6 +87,12 @@ class ParameterTweenEngine:
 
         logger.info("缓动引擎已停止")
 
+    async def restart(self) -> None:
+        """重启缓动引擎。"""
+
+        await self.stop()
+        self.start()
+
     async def set_value(
         self,
         parameter_name: str,

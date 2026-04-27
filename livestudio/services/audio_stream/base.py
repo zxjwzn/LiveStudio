@@ -25,6 +25,13 @@ class AudioStreamSource(ABC):
     async def stop(self) -> None:
         """停止音频源。"""
 
+    async def restart(self) -> None:
+        """重启音频源。"""
+
+        await self.stop()
+        await self.initialize()
+        await self.start()
+
     @abstractmethod
     async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
         """读取下一段音频块。"""

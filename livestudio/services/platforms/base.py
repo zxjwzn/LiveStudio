@@ -31,3 +31,10 @@ class PlatformService(ABC):
     @abstractmethod
     async def stop(self) -> None:
         """停止平台服务并释放资源。"""
+
+    async def restart(self) -> None:
+        """重启平台服务。"""
+
+        await self.stop()
+        await self.initialize()
+        await self.start()
