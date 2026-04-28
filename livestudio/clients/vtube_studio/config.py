@@ -95,6 +95,7 @@ class VTubeStudioConfig(BaseModel):
     )
     model_config_dir: str = Field(
         default="config/models/vtubestudio",
+        exclude=True,
         description="按 VTube Studio 模型持久化的平台配置目录。",
     )
     user_agent: str = Field(

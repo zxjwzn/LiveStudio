@@ -60,3 +60,14 @@ class BodySwingControllerSettings(ControllerSettings):
         default_factory=EyeFollowControllerSettings,
         description="眼睛跟随配置。",
     )
+
+
+class MouthExpressionControllerSettings(ControllerSettings):
+    """嘴部表情控制器配置。"""
+
+    smile_min: float = Field(default=-0.2, description="微笑参数随机最小值。")
+    smile_max: float = Field(default=0.8, description="微笑参数随机最大值。")
+    open_min: float = Field(default=0.0, description="嘴巴张开参数随机最小值。")
+    open_max: float = Field(default=0.3, description="嘴巴张开参数随机最大值。")
+    min_duration: float = Field(default=1.0, ge=0, description="变化最短持续时间。")
+    max_duration: float = Field(default=4.0, ge=0, description="变化最长持续时间。")

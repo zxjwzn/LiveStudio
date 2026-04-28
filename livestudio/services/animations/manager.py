@@ -15,6 +15,7 @@ from .controllers import (
     BodySwingController,
     BreathingController,
     ControllerSettings,
+    MouthExpressionController,
 )
 from .runtime import PlatformAnimationRuntime
 from .templates import AnimationTemplatePlayer
@@ -154,5 +155,10 @@ class AnimationManager:
             BlinkController(runtime, "blink", config.controllers.blink),
             BreathingController(runtime, "breathing", config.controllers.breathing),
             BodySwingController(runtime, "body_swing", config.controllers.body_swing),
+            MouthExpressionController(
+                runtime,
+                "mouth_expression",
+                config.controllers.mouth_expression,
+            ),
         ]
         await runtime.reload_controllers(controllers)

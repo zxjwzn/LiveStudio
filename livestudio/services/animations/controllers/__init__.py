@@ -5,6 +5,7 @@ from .config import (
     BreathingControllerSettings,
     ControllerSettings,
     EyeFollowControllerSettings,
+    MouthExpressionControllerSettings,
 )
 from .models import AnimationType
 from .registry import (
@@ -13,7 +14,12 @@ from .registry import (
     ControllerKey,
     ControllerRegistration,
 )
-from .vtubestudio import BlinkController, BodySwingController, BreathingController
+from .vtubestudio import (
+    BlinkController,
+    BodySwingController,
+    BreathingController,
+    MouthExpressionController,
+)
 
 __all__ = [
     "AnimationController",
@@ -30,4 +36,6 @@ __all__ = [
     "ControllerRegistration",
     "ControllerSettings",
     "EyeFollowControllerSettings",
+    "MouthExpressionController",
+    "MouthExpressionControllerSettings",
 ]

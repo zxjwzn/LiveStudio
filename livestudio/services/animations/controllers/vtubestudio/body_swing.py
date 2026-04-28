@@ -18,6 +18,7 @@ from .constants import (
     EYE_LEFT_Y_PARAMETER,
     EYE_RIGHT_X_PARAMETER,
     EYE_RIGHT_Y_PARAMETER,
+    IDLE_PRIORITY,
 )
 
 
@@ -36,7 +37,7 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
         target_x = random.uniform(self.config.x_min, self.config.x_max)
         target_z = random.uniform(self.config.z_min, self.config.z_max)
         duration = random.uniform(self.config.min_duration, self.config.max_duration)
-        easing = random.choice(tuple(EASING_REGISTRY.values()))
+        easing = random.choice(["in_out_quad", "in_out_back", "in_out_sine"])
 
         logger.debug(
             "身体摇摆: X: {:.2f}, Z: {:.2f}, 时长: {:.2f}s",
@@ -51,12 +52,14 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
                 end_value=target_x,
                 duration=duration,
                 easing=easing,
+                priority=IDLE_PRIORITY,
             ),
             TweenRequest(
                 parameter_name=BODY_SWING_Z_PARAMETER,
                 end_value=target_z,
                 duration=duration,
                 easing=easing,
+                priority=IDLE_PRIORITY,
             ),
         ]
 
@@ -70,24 +73,28 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
                         end_value=eye_x,
                         duration=duration,
                         easing=easing,
+                        priority=IDLE_PRIORITY,
                     ),
                     TweenRequest(
                         parameter_name=EYE_RIGHT_X_PARAMETER,
                         end_value=eye_x,
                         duration=duration,
                         easing=easing,
+                        priority=IDLE_PRIORITY,
                     ),
                     TweenRequest(
                         parameter_name=EYE_LEFT_Y_PARAMETER,
                         end_value=eye_y,
                         duration=duration,
                         easing=easing,
+                        priority=IDLE_PRIORITY,
                     ),
                     TweenRequest(
                         parameter_name=EYE_RIGHT_Y_PARAMETER,
                         end_value=eye_y,
                         duration=duration,
                         easing=easing,
+                        priority=IDLE_PRIORITY,
                     ),
                 ],
             )

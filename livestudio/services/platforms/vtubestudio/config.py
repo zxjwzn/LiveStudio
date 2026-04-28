@@ -8,6 +8,7 @@ from livestudio.services.animations.controllers import (
     BlinkControllerSettings,
     BodySwingControllerSettings,
     BreathingControllerSettings,
+    MouthExpressionControllerSettings,
 )
 
 
@@ -47,6 +48,10 @@ class VTubeStudioControllerSettingsConfig(BaseModel):
     body_swing: BodySwingControllerSettings = Field(
         default_factory=BodySwingControllerSettings,
         description="身体摇摆控制器配置。",
+    )
+    mouth_expression: MouthExpressionControllerSettings = Field(
+        default_factory=MouthExpressionControllerSettings,
+        description="嘴部表情控制器配置。",
     )
 
 

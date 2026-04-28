@@ -7,7 +7,7 @@ from livestudio.tween import Easing, TweenRequest
 from ..base import AnimationController
 from ..config import BreathingControllerSettings
 from ..models import AnimationType
-from .constants import BREATHING_PARAMETER
+from .constants import BREATHING_PARAMETER, IDLE_PRIORITY
 
 
 class BreathingController(AnimationController[BreathingControllerSettings]):
@@ -28,6 +28,7 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
                 end_value=self.config.max_value,
                 duration=self.config.inhale_duration,
                 easing=Easing.in_out_sine,
+                priority=IDLE_PRIORITY,
             ),
         )
         await self.runtime.platform.tween.tween(
@@ -36,6 +37,7 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
                 end_value=self.config.min_value,
                 duration=self.config.exhale_duration,
                 easing=Easing.in_out_sine,
+                priority=IDLE_PRIORITY,
             ),
         )
 

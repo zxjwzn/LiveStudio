@@ -93,64 +93,6 @@ class ParameterTweenEngine:
         await self.stop()
         self.start()
 
-    async def set_value(
-        self,
-        parameter_name: str,
-        value: float,
-        *,
-        mode: Literal["set", "add"] = "set",
-        priority: int = 0,
-        keep_alive: bool = True,
-    ) -> None:
-        """立即设置参数值，并可选地持续保持其控制权。"""
-
-        await self.tween(
-            TweenRequest(
-                parameter_name=parameter_name,
-                end_value=value,
-                duration=0.0,
-                easing=Easing.linear,
-                mode=mode,
-                priority=priority,
-                keep_alive=keep_alive,
-            ),
-        )
-
-    async def set_values(
-        self,
-        values: Mapping[str, float],
-        *,
-        mode: Literal["set", "add"] = "set",
-        priority: int = 0,
-        keep_alive: bool = True,
-    ) -> None:
-        """立即批量设置参数值，并可选地持续保持控制权。"""
-
-        if not values:
-            return
-
-        current_task = asyncio.current_task()
-        if current_task is None:
-            logger.error("无法获取当前批量设置任务")
-            return
-
-        task = []
-        for parameter_name, value in values.items():
-            task.append(
-                self.tween(
-                    TweenRequest(
-                        parameter_name=parameter_name,
-                        end_value=value,
-                        duration=0.0,
-                        easing=Easing.linear,
-                        mode=mode,
-                        priority=priority,
-                        keep_alive=keep_alive,
-                    ),
-                ),
-            )
-        await asyncio.gather(*task)
-
     async def tween(self, request: TweenRequest) -> None:
         """按请求使用固定采样与绝对时间对齐方式执行缓动。"""
 
