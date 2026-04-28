@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import re
+from collections.abc import Awaitable, Callable, Iterable
+from inspect import isawaitable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from livestudio.config import ConfigManager
 from livestudio.log import logger
@@ -24,9 +26,18 @@ from ....clients.vtube_studio.models import (
     InjectParameterDataRequest,
     InjectParameterDataRequestData,
     InjectParameterValue,
+    ModelLoadedEvent,
+    VTSEventEnvelope,
     VTubeStudioAPIStateBroadcast,
 )
 from ..base import PlatformService
+from ..model import PlatformModelIdentity
+from .config import VTubeStudioModelConfig
+
+ModelConfigReloadHandler = Callable[
+    [VTubeStudioModelConfig],
+    Awaitable[None] | None,
+]
 
 
 class VTubeStudio(PlatformService):
@@ -44,6 +55,8 @@ class VTubeStudio(PlatformService):
         self._client: VTubeStudioClient | None = None
         self._events: VTSEventManager | None = None
         self._discovery: VTubeStudioDiscovery | None = None
+        self._model_config_manager: ConfigManager[VTubeStudioModelConfig] | None = None
+        self._current_model: PlatformModelIdentity | None = None
         self._tween = ParameterTweenEngine(
             self._send_parameter_states,
         )
@@ -67,6 +80,20 @@ class VTubeStudio(PlatformService):
         """返回最新配置快照。"""
 
         return self.config_manager.config
+
+    @property
+    def model_config(self) -> VTubeStudioModelConfig | None:
+        """返回当前模型配置快照。"""
+
+        if self._model_config_manager is None:
+            return None
+        return self._model_config_manager.config
+
+    @property
+    def current_model(self) -> PlatformModelIdentity | None:
+        """返回当前平台已加载模型身份。"""
+
+        return self._current_model
 
     @property
     def is_initialized(self) -> bool:
@@ -133,6 +160,8 @@ class VTubeStudio(PlatformService):
         self._client = None
         self._events = None
         self._discovery = None
+        self._model_config_manager = None
+        self._current_model = None
         self._initialized = False
         self._started = False
 
@@ -154,6 +183,79 @@ class VTubeStudio(PlatformService):
         await self._stop(save_config=False)
         await self.initialize()
         await self.start()
+
+    async def reload_model_config(
+        self,
+        model_id: str,
+        model_name: str,
+    ) -> VTubeStudioModelConfig:
+        """按当前 VTube Studio 模型重建并加载模型级配置。"""
+
+        identity = PlatformModelIdentity(
+            platform_name=self.platform_name,
+            model_id=model_id,
+            model_name=model_name,
+        )
+        config_path = self._build_model_config_path(identity)
+        model_config_manager = ConfigManager(VTubeStudioModelConfig, config_path)
+        model_config = await model_config_manager.reload()
+        model_config.model.id = model_id
+        model_config.model.name = model_name
+        await model_config_manager.save()
+        self._model_config_manager = model_config_manager
+        self._current_model = identity
+        logger.info(
+            "已加载 VTube Studio 模型配置: {} ({}) -> {}",
+            model_name,
+            model_id,
+            config_path,
+        )
+        return model_config
+
+    async def subscribe_model_loaded(
+        self,
+        handler: ModelConfigReloadHandler,
+    ) -> EventSubscriptionResponse:
+        """订阅模型加载事件，并在模型加载后回调业务层应用模型配置。"""
+
+        async def _handle_model_loaded(event: VTSEventEnvelope) -> None:
+            model_event = ModelLoadedEvent.model_validate(event.model_dump())
+            if not model_event.data.model_loaded:
+                self._current_model = None
+                self._model_config_manager = None
+                return
+            model_config = await self.reload_model_config(
+                model_event.data.model_id,
+                model_event.data.model_name,
+            )
+            result = handler(model_config)
+            if isawaitable(result):
+                await result
+
+        return await self.subscribe("ModelLoadedEvent", _handle_model_loaded)
+
+    async def reload_current_model_config(self) -> VTubeStudioModelConfig | None:
+        """读取当前已加载模型，并按模型重载配置。"""
+
+        current_model = await self.client.get_current_model()
+        if not current_model.data.model_loaded:
+            self._current_model = None
+            self._model_config_manager = None
+            return None
+        return await self.reload_model_config(
+            current_model.data.model_id,
+            current_model.data.model_name,
+        )
+
+    def _build_model_config_path(self, identity: PlatformModelIdentity) -> Path:
+        safe_name = self._sanitize_model_config_part(identity.model_name)
+        safe_id = self._sanitize_model_config_part(identity.model_id)
+        filename = f"{safe_name}_{safe_id}.yaml"
+        return Path(self.config.model_config_dir) / filename
+
+    def _sanitize_model_config_part(self, value: str) -> str:
+        sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", value).strip(" ._")
+        return sanitized or "unknown"
 
     async def connect(self) -> None:
         """连接到 VTube Studio。"""

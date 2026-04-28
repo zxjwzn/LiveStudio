@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from livestudio.log import logger
 from livestudio.services.platforms import PlatformService
 
-from .controllers import AnimationController, ControllerSettings
+from .controllers import (
+    AnimationController,
+    BlinkController,
+    BodySwingController,
+    BreathingController,
+    ControllerSettings,
+)
 from .runtime import PlatformAnimationRuntime
 from .templates import AnimationTemplatePlayer
+
+if TYPE_CHECKING:
+    from livestudio.services.platforms.vtubestudio.config import VTubeStudioModelConfig
 
 
 class AnimationManager:
@@ -132,3 +142,17 @@ class AnimationManager:
         await asyncio.gather(
             *(runtime.reload_templates() for runtime in self._runtimes.values()),
         )
+
+    async def apply_vtubestudio_model_config(
+        self,
+        config: VTubeStudioModelConfig,
+    ) -> None:
+        """应用 VTube Studio 当前模型配置到动画运行时。"""
+
+        runtime = self.get_runtime("vtubestudio")
+        controllers: list[AnimationController[ControllerSettings]] = [
+            BlinkController(runtime, "blink", config.controllers.blink),
+            BreathingController(runtime, "breathing", config.controllers.breathing),
+            BodySwingController(runtime, "body_swing", config.controllers.body_swing),
+        ]
+        await runtime.reload_controllers(controllers)

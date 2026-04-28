@@ -93,13 +93,9 @@ class VTubeStudioConfig(BaseModel):
         default=True,
         description="重新认证成功后是否自动恢复事件订阅。",
     )
-    subservice_config_dir: str = Field(
-        default="config/vtube_studio_services",
-        description="子服务独立配置文件所在目录。",
-    )
-    subservice_config_paths: dict[str, str] = Field(
-        default_factory=dict,
-        description="子服务名称到独立配置文件路径的映射。",
+    model_config_dir: str = Field(
+        default="config/models/vtubestudio",
+        description="按 VTube Studio 模型持久化的平台配置目录。",
     )
     user_agent: str = Field(
         default="LiveStudio/0.1.0",
