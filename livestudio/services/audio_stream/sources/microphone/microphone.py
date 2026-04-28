@@ -9,7 +9,7 @@ from typing import TypeGuard
 import numpy as np
 import sounddevice as sd
 
-from livestudio.log import logger
+from livestudio.log import StatusLine, logger
 
 from ...base import AudioStreamSource
 from ...models import AudioChunk, AudioChunkMetadata, AudioSourceKind
@@ -28,6 +28,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self._stream: sd.InputStream | None = None
         self._device_info: InputDeviceInfo | None = None
         self._dropped_chunks = 0
+        self._drop_status_line = StatusLine()
 
     @property
     def device_info(self) -> InputDeviceInfo:
@@ -90,6 +91,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         stream = self._stream
         self._stream = None
         device_info = self._device_info
+        self._drop_status_line.finish()
         if stream is not None:
             await asyncio.to_thread(stream.stop)
             await asyncio.to_thread(stream.close)
@@ -228,9 +230,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             self._queue.put_nowait(chunk)
         except asyncio.QueueFull:
             self._dropped_chunks += 1
-            logger.warning(
-                "音频缓冲队列已满，丢弃 1 个音频块；累计丢弃: {}",
-                self._dropped_chunks,
+            self._drop_status_line.update(
+                f"音频缓冲队列已满，丢弃 1 个音频块；累计丢弃: {self._dropped_chunks}",
             )
 
     async def _resolve_input_device(self) -> InputDeviceInfo:

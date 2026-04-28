@@ -128,7 +128,7 @@ class ConfigManager(Generic[ConfigT]):
     def _load_from_disk(self) -> ConfigT:
         data = self._load_dict(self._path)
         try:
-            return self._model_type.model_validate(data)
+            return self._model_type.model_validate(data, extra="ignore")
         except ValidationError as exc:
             raise ConfigValidationError(f"配置校验失败: {self._path}") from exc
 
