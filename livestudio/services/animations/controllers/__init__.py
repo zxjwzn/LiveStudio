@@ -6,6 +6,9 @@ from .config import (
     ControllerSettings,
     EyeFollowControllerSettings,
     MouthExpressionControllerSettings,
+    MouthPoseConfig,
+    MouthSyncControllerSettings,
+    MouthSyncParameterMapping,
 )
 from .models import AnimationType
 from .registry import (
@@ -38,4 +41,7 @@ __all__ = [
     "EyeFollowControllerSettings",
     "MouthExpressionController",
     "MouthExpressionControllerSettings",
+    "MouthPoseConfig",
+    "MouthSyncControllerSettings",
+    "MouthSyncParameterMapping",
 ]

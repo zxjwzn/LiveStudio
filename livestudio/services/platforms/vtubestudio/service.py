@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Awaitable, Callable, Iterable
-from inspect import isawaitable
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
@@ -26,18 +25,12 @@ from ....clients.vtube_studio.models import (
     InjectParameterDataRequest,
     InjectParameterDataRequestData,
     InjectParameterValue,
-    ModelLoadedEvent,
     VTSEventEnvelope,
     VTubeStudioAPIStateBroadcast,
 )
 from ..base import PlatformService
 from ..model import PlatformModelIdentity
 from .config import VTubeStudioModelConfig
-
-ModelConfigReloadHandler = Callable[
-    [VTubeStudioModelConfig],
-    Awaitable[None] | None,
-]
 
 
 class VTubeStudio(PlatformService):
@@ -211,41 +204,6 @@ class VTubeStudio(PlatformService):
             config_path,
         )
         return model_config
-
-    async def subscribe_model_loaded(
-        self,
-        handler: ModelConfigReloadHandler,
-    ) -> EventSubscriptionResponse:
-        """订阅模型加载事件，并在模型加载后回调业务层应用模型配置。"""
-
-        async def _handle_model_loaded(event: VTSEventEnvelope) -> None:
-            model_event = ModelLoadedEvent.model_validate(event.model_dump())
-            if not model_event.data.model_loaded:
-                self._current_model = None
-                self._model_config_manager = None
-                return
-            model_config = await self.reload_model_config(
-                model_event.data.model_id,
-                model_event.data.model_name,
-            )
-            result = handler(model_config)
-            if isawaitable(result):
-                await result
-
-        return await self.subscribe("ModelLoadedEvent", _handle_model_loaded)
-
-    async def reload_current_model_config(self) -> VTubeStudioModelConfig | None:
-        """读取当前已加载模型，并按模型重载配置。"""
-
-        current_model = await self.client.get_current_model()
-        if not current_model.data.model_loaded:
-            self._current_model = None
-            self._model_config_manager = None
-            return None
-        return await self.reload_model_config(
-            current_model.data.model_id,
-            current_model.data.model_name,
-        )
 
     def _build_model_config_path(self, identity: PlatformModelIdentity) -> Path:
         safe_name = self._sanitize_model_config_part(identity.model_name)

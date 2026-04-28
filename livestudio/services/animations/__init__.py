@@ -13,6 +13,11 @@ from .controllers import (
     ControllerRegistration,
     ControllerSettings,
     EyeFollowControllerSettings,
+    MouthExpressionController,
+    MouthExpressionControllerSettings,
+    MouthPoseConfig,
+    MouthSyncControllerSettings,
+    MouthSyncParameterMapping,
 )
 from .manager import AnimationManager
 from .runtime import PlatformAnimationRuntime
@@ -41,5 +46,10 @@ __all__ = [
     "EyeFollowControllerSettings",
     "LoadedTemplateInfo",
     "LoadedTemplateParameterInfo",
+    "MouthExpressionController",
+    "MouthExpressionControllerSettings",
+    "MouthPoseConfig",
+    "MouthSyncControllerSettings",
+    "MouthSyncParameterMapping",
     "PlatformAnimationRuntime",
 ]
