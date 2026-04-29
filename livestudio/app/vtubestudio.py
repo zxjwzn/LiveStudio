@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from livestudio.clients.vtube_studio.models import (
     EventSubscriptionResponse,
+    ExpressionActivationRequest,
+    ExpressionActivationRequestData,
+    ExpressionStateRequest,
+    ExpressionStateRequestData,
     ModelLoadedEvent,
     VTSEventEnvelope,
 )
@@ -20,6 +24,7 @@ from livestudio.services.animations import (
 from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
+    VTubeStudioExpressionStateConfig,
     VTubeStudioModelConfig,
 )
 
@@ -80,6 +85,7 @@ class VTubeStudioApp:
             model_event.data.model_id,
             model_event.data.model_name,
         )
+        await self._sync_model_expressions(model_config)
         await self._apply_model_config(model_config)
 
     async def _load_active_model_config(self) -> None:
@@ -92,7 +98,84 @@ class VTubeStudioApp:
             current_model.data.model_id,
             current_model.data.model_name,
         )
+        await self._sync_model_expressions(model_config)
         await self._apply_model_config(model_config)
+
+    async def save_current_model_expressions_to_config(self) -> None:
+        """将当前模型表情激活状态保存为下次模型加载时使用的配置。"""
+
+        expression_response = await self.platform.client.get_expression_state(
+            ExpressionStateRequest(
+                data=ExpressionStateRequestData(details=True),
+            ),
+        )
+        self.platform.model_config.expressions = [
+            VTubeStudioExpressionStateConfig(
+                name=expression.name,
+                file=expression.file,
+                enable=expression.active,
+            )
+            for expression in expression_response.data.expressions
+        ]
+        await self.platform.model_config_manager.save()
+
+    async def _sync_model_expressions(self, config: VTubeStudioModelConfig) -> None:
+        """按模型配置同步 VTube Studio 表情激活状态。"""
+
+        expression_response = await self.platform.client.get_expression_state(
+            ExpressionStateRequest(
+                data=ExpressionStateRequestData(details=True),
+            ),
+        )
+        if not expression_response.data.model_loaded:
+            return
+
+        expressions = expression_response.data.expressions
+        if not config.expressions:
+            config.expressions = [
+                VTubeStudioExpressionStateConfig(
+                    name=expression.name,
+                    file=expression.file,
+                    enable=expression.active,
+                )
+                for expression in expressions
+            ]
+            await self.platform.model_config_manager.save()
+            return
+
+        current_by_file = {expression.file: expression for expression in expressions}
+        config_by_file = {
+            expression_config.file: expression_config
+            for expression_config in config.expressions
+        }
+        changed = False
+        for expression in expressions:
+            if expression.file in config_by_file:
+                continue
+            expression_config = VTubeStudioExpressionStateConfig(
+                name=expression.name,
+                file=expression.file,
+                enable=expression.active,
+            )
+            config.expressions.append(expression_config)
+            config_by_file[expression.file] = expression_config
+            changed = True
+
+        for expression_config in config.expressions:
+            expression_file = expression_config.file
+            if expression_file not in current_by_file:
+                continue
+            await self.platform.client.set_expression_active(
+                ExpressionActivationRequest(
+                    data=ExpressionActivationRequestData(
+                        expressionFile=expression_file,
+                        active=expression_config.enable,
+                    ),
+                ),
+            )
+
+        if changed:
+            await self.platform.model_config_manager.save()
 
     async def _apply_model_config(self, config: VTubeStudioModelConfig) -> None:
         """应用模型配置到 VTube Studio 动画运行时。"""

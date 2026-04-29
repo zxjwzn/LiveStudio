@@ -75,17 +75,26 @@ class VTubeStudio(PlatformService):
         return self.config_manager.config
 
     @property
-    def model_config(self) -> VTubeStudioModelConfig | None:
+    def model_config(self) -> VTubeStudioModelConfig:
         """返回当前模型配置快照。"""
 
         if self._model_config_manager is None:
-            return None
+            raise RuntimeError("当前没有已加载的模型配置")
         return self._model_config_manager.config
 
     @property
-    def current_model(self) -> PlatformModelIdentity | None:
-        """返回当前平台已加载模型身份。"""
+    def model_config_manager(self) -> ConfigManager[VTubeStudioModelConfig]:
+        """返回当前模型配置管理器实例。"""
 
+        if self._model_config_manager is None:
+            raise RuntimeError("当前没有已加载的模型配置")
+        return self._model_config_manager
+
+    @property
+    def current_model(self) -> PlatformModelIdentity:
+        """返回当前平台已加载模型身份。"""
+        if self._current_model is None:
+            raise RuntimeError("当前没有已加载的模型")
         return self._current_model
 
     @property

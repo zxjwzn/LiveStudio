@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from livestudio.services.animations.controllers import (
     BlinkControllerSettings,
@@ -31,6 +33,16 @@ class VTubeStudioPlatformModelSettings(BaseModel):
         default_factory=dict,
         description="平台参数名映射覆盖表。",
     )
+
+
+class VTubeStudioExpressionStateConfig(BaseModel):
+    """VTube Studio 表情激活状态配置。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(default="", description="表情名称。")
+    file: str = Field(default="", description="表情文件名。")
+    enable: bool = Field(default=False, description="模型加载时是否激活该表情。")
 
 
 class VTubeStudioControllerSettingsConfig(BaseModel):
@@ -77,3 +89,16 @@ class VTubeStudioModelConfig(BaseModel):
         default_factory=VTubeStudioControllerSettingsConfig,
         description="动画控制器配置。",
     )
+    expressions: list[VTubeStudioExpressionStateConfig] = Field(
+        default_factory=list,
+        description="模型加载时需要同步的表情激活状态配置。",
+    )
+
+    @field_validator("expressions", mode="before")
+    @classmethod
+    def migrate_expression_mapping(cls, value: Any) -> Any:
+        """兼容旧版按文件名索引的表情配置。"""
+
+        if isinstance(value, dict):
+            return list(value.values())
+        return value
