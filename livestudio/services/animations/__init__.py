@@ -12,6 +12,7 @@ from .controllers import (
     MouthExpressionController,
     MouthExpressionControllerSettings,
     MouthPoseConfig,
+    MouthSyncController,
     MouthSyncControllerSettings,
     MouthSyncParameterMapping,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "MouthExpressionController",
     "MouthExpressionControllerSettings",
     "MouthPoseConfig",
+    "MouthSyncController",
     "MouthSyncControllerSettings",
     "MouthSyncParameterMapping",
     "PlatformAnimationRuntime",

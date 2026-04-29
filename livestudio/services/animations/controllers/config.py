@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -76,101 +74,41 @@ class MouthExpressionControllerSettings(ControllerSettings):
 
 
 class MouthSyncParameterMapping(BaseModel):
-    """嘴型姿态到 VTube Studio 参数的映射。"""
+    """嘴部开合到 VTube Studio 参数的映射。"""
 
     model_config = ConfigDict(extra="forbid")
 
     open: str = Field(default="MouthOpen", min_length=1, description="嘴部开合参数。")
-    smile: str | None = Field(default="MouthSmile", description="嘴部形状参数。")
-    x: str | None = Field(default="MouthX", description="嘴部横向动态参数。")
 
 
 class MouthPoseConfig(BaseModel):
-    """嘴型目标姿态配置。"""
+    """嘴部开合目标配置。"""
 
     model_config = ConfigDict(extra="forbid")
 
     open: float = Field(default=0.0, ge=0.0, le=1.0, description="嘴部开合值。")
-    smile: float = Field(default=0.5, ge=0.0, le=1.0, description="嘴部形状值。")
-    x: float = Field(default=0.0, ge=-1.0, le=1.0, description="嘴部横向偏移值。")
 
 
 class MouthSyncControllerSettings(ControllerSettings):
-    """嘴型同步控制器配置。"""
+    """基于响度的嘴部开合同步控制器配置。"""
 
-    mode: Literal["loudness", "spectral"] = Field(
-        default="spectral",
-        description="嘴型同步算法模式。",
-    )
     parameters: MouthSyncParameterMapping = Field(
         default_factory=MouthSyncParameterMapping,
-        description="嘴型姿态参数映射。",
+        description="嘴部开合参数映射。",
     )
     closed_pose: MouthPoseConfig = Field(
         default_factory=MouthPoseConfig,
-        description="静音或停止时的嘴型姿态。",
+        description="静音或停止时的嘴部开合状态。",
     )
     open_min: float = Field(default=0.1, description="说话时的最小开口值。")
     open_max: float = Field(default=0.85, description="最大开口值。")
     noise_floor: float = Field(default=0.01, ge=0.0, description="静音门限。")
     voice_ceiling: float = Field(default=0.2, gt=0.0, description="有效语音上限。")
-    neutral_smile: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="自然嘴角基准值。",
-    )
-    min_smile: float = Field(default=0.05, ge=0.0, le=1.0, description="最小嘴型值。")
-    max_smile: float = Field(default=0.95, ge=0.0, le=1.0, description="最大嘴型值。")
-    smile_open_compensation: float = Field(
-        default=0.16,
-        ge=0.0,
-        description="嘴角上扬造成视觉开口放大时的开合补偿。",
-    )
-    low_smile_open_boost: float = Field(
-        default=0.06,
-        ge=0.0,
-        description="嘴角下压时的开合补偿。",
-    )
-    high_band_smile_gain: float = Field(
-        default=0.55,
-        ge=0.0,
-        description="高频能量对嘴角上扬的增益。",
-    )
-    low_band_smile_gain: float = Field(
-        default=0.45,
-        ge=0.0,
-        description="低频能量对圆唇/下压嘴型的增益。",
-    )
-    x_enabled: bool = Field(default=True, description="是否启用 MouthX 轻微动态。")
-    x_max_offset: float = Field(
-        default=0.06,
-        ge=0.0,
-        le=1.0,
-        description="MouthX 动态最大绝对值。",
-    )
-    x_activity_gain: float = Field(
-        default=0.08,
-        ge=0.0,
-        description="音量变化对 MouthX 动态的增益。",
-    )
     open_smoothing: float = Field(
         default=0.55,
         ge=0.0,
         le=1.0,
         description="嘴部开合平滑系数。",
-    )
-    smile_smoothing: float = Field(
-        default=0.25,
-        ge=0.0,
-        le=1.0,
-        description="嘴部形状平滑系数。",
-    )
-    x_smoothing: float = Field(
-        default=0.18,
-        ge=0.0,
-        le=1.0,
-        description="嘴部横向动态平滑系数。",
     )
     update_interval: float = Field(default=0.02, gt=0.0, description="更新间隔。")
     attack_duration: float = Field(default=0.02, ge=0.0, description="张嘴过渡时长。")
@@ -183,6 +121,4 @@ class MouthSyncControllerSettings(ControllerSettings):
             raise ValueError("open_max 不能小于 open_min")
         if self.voice_ceiling <= self.noise_floor:
             raise ValueError("voice_ceiling 必须大于 noise_floor")
-        if self.max_smile < self.min_smile:
-            raise ValueError("max_smile 不能小于 min_smile")
         return self

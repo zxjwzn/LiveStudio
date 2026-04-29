@@ -15,6 +15,7 @@ from livestudio.services.animations import (
     BreathingController,
     ControllerSettings,
     MouthExpressionController,
+    MouthSyncController,
 )
 from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.services.platforms.vtubestudio import (
@@ -105,6 +106,12 @@ class VTubeStudioApp:
                 runtime,
                 "mouth_expression",
                 config.controllers.mouth_expression,
+            ),
+            MouthSyncController(
+                runtime,
+                "mouth_sync",
+                config.controllers.mouth_sync,
+                self.audio_stream,
             ),
         ]
         await runtime.reload_controllers(controllers)

@@ -16,6 +16,7 @@ from .vtubestudio import (
     BodySwingController,
     BreathingController,
     MouthExpressionController,
+    MouthSyncController,
 )
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "MouthExpressionController",
     "MouthExpressionControllerSettings",
     "MouthPoseConfig",
+    "MouthSyncController",
     "MouthSyncControllerSettings",
     "MouthSyncParameterMapping",
 ]
