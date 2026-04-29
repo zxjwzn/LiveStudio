@@ -2,7 +2,12 @@
 
 from .base import AudioStreamSource
 from .config import AudioStreamConfigFile, AudioStreamRouterConfig, TTSAudioStreamConfig
-from .models import AudioChunk, AudioChunkMetadata, AudioSourceKind
+from .models import (
+    AudioChunk,
+    AudioChunkMetadata,
+    AudioChunkSubscription,
+    AudioSourceKind,
+)
 from .service import AudioStreamRouter
 from .sources import (
     InputDeviceInfo,
@@ -14,6 +19,7 @@ from .sources import (
 __all__ = [
     "AudioChunk",
     "AudioChunkMetadata",
+    "AudioChunkSubscription",
     "AudioSourceKind",
     "AudioStreamConfigFile",
     "AudioStreamRouter",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from pathlib import Path
 
 from livestudio.config import ConfigManager
@@ -9,7 +11,7 @@ from livestudio.log import logger
 
 from .base import AudioStreamSource
 from .config import AudioStreamConfigFile, AudioStreamRouterConfig
-from .models import AudioChunk, AudioSourceKind
+from .models import AudioChunkSubscription, AudioSourceKind
 from .sources import MicrophoneAudioStreamSource, TTSAudioStreamSource
 
 
@@ -28,6 +30,8 @@ class AudioStreamRouter(AudioStreamSource):
         self._tts_source: TTSAudioStreamSource | None = None
         self._sources: dict[AudioSourceKind, AudioStreamSource] = {}
         self._active_source_kind: AudioSourceKind | None = None
+        self._source_subscription: AudioChunkSubscription | None = None
+        self._forward_task: asyncio.Task[None] | None = None
         self._initialized = False
 
     @property
@@ -86,6 +90,9 @@ class AudioStreamRouter(AudioStreamSource):
         for source in self._sources.values():
             await source.initialize()
         self._active_source_kind = self.config.source
+        self._source_subscription = self.active_source.subscribe(
+            queue_maxsize=self.config.microphone.queue_maxsize,
+        )
         self._initialized = True
         logger.info("音频流路由器已初始化，当前音频源: {}", self.active_source_kind)
 
@@ -96,23 +103,24 @@ class AudioStreamRouter(AudioStreamSource):
             await self.initialize()
 
         await self.active_source.start()
+        self._forward_task = asyncio.create_task(self._forward_chunks())
         self.is_started = True
 
     async def stop(self) -> None:
         """停止并释放音频流路由器资源。"""
 
-        await self._stop(save_config=True)
-
-    async def _stop(self, *, save_config: bool) -> None:
-        """停止内部音频源并按需保存配置。"""
-
         if not self._initialized:
             return
 
+        await self._stop_forward_task()
+        if self._source_subscription is not None:
+            self.active_source.unsubscribe(self._source_subscription)
+            self._source_subscription = None
+
         for source in self._sources.values():
             await source.stop()
-        if save_config:
-            await self.config_manager.save()
+        self._clear_subscriptions()
+        await self.config_manager.save()
         self._microphone_source = None
         self._tts_source = None
         self._sources = {}
@@ -123,12 +131,9 @@ class AudioStreamRouter(AudioStreamSource):
     async def restart(self) -> None:
         """重启音频流路由器并重新加载配置。"""
 
-        await self._stop(save_config=False)
+        await self.stop()
         await self.initialize()
         await self.start()
-
-    async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
-        return await self.active_source.read_chunk(timeout=timeout)
 
     async def switch_source(
         self,
@@ -141,12 +146,44 @@ class AudioStreamRouter(AudioStreamSource):
 
         was_started = self.is_started
         if was_started:
+            await self._stop_forward_task()
             await self.active_source.stop()
+        if self._source_subscription is not None:
+            self.active_source.unsubscribe(self._source_subscription)
+            self._source_subscription = None
         self._active_source_kind = source_kind
         self.config.source = source_kind
+        self._source_subscription = self.active_source.subscribe(
+            queue_maxsize=self.config.microphone.queue_maxsize,
+        )
         await self.config_manager.save()
 
         if was_started:
             await self.active_source.start()
+            self._forward_task = asyncio.create_task(self._forward_chunks())
 
         logger.info("音频流路由器已切换音频源: {}", source_kind)
+
+    async def _stop_forward_task(self) -> None:
+        task = self._forward_task
+        self._forward_task = None
+        if task is None:
+            return
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    async def _forward_chunks(self) -> None:
+        """将当前活动源的音频块广播给路由器订阅者。"""
+
+        source_subscription = self._source_subscription
+        if source_subscription is None:
+            raise RuntimeError("音频流路由器尚未订阅活动音频源")
+        try:
+            while True:
+                chunk = await source_subscription.queue.get()
+                self._publish_chunk(chunk)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("音频流路由器转发任务异常")

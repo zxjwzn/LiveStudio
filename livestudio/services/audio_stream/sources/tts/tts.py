@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from ...base import AudioStreamSource
-from ...models import AudioChunk, AudioSourceKind
 from .config import TTSAudioStreamConfig
 
 
@@ -33,9 +32,3 @@ class TTSAudioStreamSource(AudioStreamSource):
         """停止 TTS 音频流占位资源。"""
 
         self.is_started = False
-
-    async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
-        """读取 TTS 音频块。当前为占位实现。"""
-
-        _ = timeout
-        raise NotImplementedError("TTSAudioStreamSource 尚未实现具体的流式音频读取逻辑")

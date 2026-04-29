@@ -12,7 +12,7 @@ import sounddevice as sd
 from livestudio.log import StatusLine, logger
 
 from ...base import AudioStreamSource
-from ...models import AudioChunk, AudioChunkMetadata, AudioSourceKind
+from ...models import AudioChunk, AudioChunkMetadata
 from .config import MicrophoneAudioStreamConfig
 from .models import InputDeviceInfo, RawInputDeviceInfo, SoundDeviceTimeInfo
 
@@ -24,7 +24,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         super().__init__()
         self.config = config
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._queue: asyncio.Queue[AudioChunk] | None = None
         self._stream: sd.InputStream | None = None
         self._device_info: InputDeviceInfo | None = None
         self._dropped_chunks = 0
@@ -50,7 +49,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         if self._stream is not None:
             await self.stop()
         self._loop = asyncio.get_running_loop()
-        self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
         self._dropped_chunks = 0
         self.config.device_name = self._device_info.name
@@ -67,7 +65,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         if self.is_started:
             return
 
-        if self._loop is None or self._queue is None or self._device_info is None:
+        if self._loop is None or self._device_info is None:
             raise RuntimeError("麦克风音频源尚未初始化，请先调用 initialize()")
 
         stream = sd.InputStream(
@@ -99,8 +97,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             self.config.device_name = device_info.name
             self.config.device_index = device_info.index
         self._loop = None
-        self._queue = None
         self._device_info = None
+        self._clear_subscriptions()
         self.is_started = False
         logger.info("麦克风音频流已停止")
 
@@ -110,16 +108,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         await self.stop()
         await self.initialize()
         await self.start()
-
-    async def read_chunk(self, timeout: float | None = None) -> AudioChunk:
-        """读取下一段音频数据。"""
-
-        if self._queue is None:
-            raise RuntimeError("麦克风音频源尚未初始化")
-
-        if timeout is None:
-            return await self._queue.get()
-        return await asyncio.wait_for(self._queue.get(), timeout=timeout)
 
     async def list_input_devices(self) -> list[InputDeviceInfo]:
         """列出当前系统可用的输入设备。"""
@@ -152,7 +140,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         if was_started:
             await self.stop()
         self._loop = asyncio.get_running_loop()
-        self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = selected_device
         self.config.device_name = selected_device.name
         self.config.device_index = selected_device.index
@@ -175,7 +162,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             await self.stop()
 
         self._loop = asyncio.get_running_loop()
-        self._queue = asyncio.Queue(maxsize=self.config.queue_maxsize)
         self._device_info = await self._resolve_input_device()
         self._dropped_chunks = 0
         self.config.device_name = self._device_info.name
@@ -203,7 +189,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         status: sd.CallbackFlags,
     ) -> None:
         loop = self._loop
-        if loop is None or self._queue is None:
+        if loop is None:
             return
 
         chunk = AudioChunk(
@@ -223,16 +209,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         loop.call_soon_threadsafe(self._push_chunk_nowait, chunk)
 
     def _push_chunk_nowait(self, chunk: AudioChunk) -> None:
-        if self._queue is None:
-            return
-
-        try:
-            self._queue.put_nowait(chunk)
-        except asyncio.QueueFull:
-            self._dropped_chunks += 1
-            self._drop_status_line.update(
-                f"音频缓冲队列已满，丢弃 1 个音频块；累计丢弃: {self._dropped_chunks}",
-            )
+        self._publish_chunk(chunk)
 
     async def _resolve_input_device(self) -> InputDeviceInfo:
         devices = await self.list_input_devices()

@@ -9,7 +9,11 @@ from numpy.typing import NDArray
 
 from livestudio.log import logger
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
-from livestudio.services.audio_stream import AudioChunk, AudioStreamSource
+from livestudio.services.audio_stream import (
+    AudioChunk,
+    AudioChunkSubscription,
+    AudioStreamSource,
+)
 from livestudio.tween import TweenRequest
 
 from ..base import AnimationController
@@ -29,6 +33,9 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
     ) -> None:
         super().__init__(runtime, name, config)
         self._audio_stream = audio_stream
+        self._audio_subscription: AudioChunkSubscription = self._audio_stream.subscribe(
+            queue_maxsize=8,
+        )
         self._current_open = self._closed_open
 
     @property
@@ -42,7 +49,8 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
         target_open = self._closed_open
         try:
-            chunk = await self._audio_stream.read_chunk(
+            chunk = await asyncio.wait_for(
+                self._audio_subscription.queue.get(),
                 timeout=max(self.config.update_interval * 2.0, 0.1),
             )
             target_open = self._analyze_open(chunk)
@@ -61,6 +69,14 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         """idle 控制器不执行一次性动画。"""
 
         _ = kwargs
+
+    async def stop(self) -> None:
+        await super().stop()
+        self._audio_stream.unsubscribe(self._audio_subscription)
+
+    async def stop_without_wait(self) -> None:
+        await super().stop_without_wait()
+        self._audio_stream.unsubscribe(self._audio_subscription)
 
     @property
     def _closed_open(self) -> float:

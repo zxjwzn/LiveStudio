@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
+from uuid import UUID
 
 import numpy as np
 from numpy.typing import NDArray
@@ -36,3 +38,11 @@ class AudioChunk:
     data: NDArray[np.generic]
     overflowed: bool = False
     metadata: AudioChunkMetadata | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AudioChunkSubscription:
+    """音频块订阅句柄。"""
+
+    id: UUID
+    queue: asyncio.Queue[AudioChunk]

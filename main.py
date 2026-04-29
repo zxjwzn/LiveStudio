@@ -36,9 +36,10 @@ async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
     """持续读取当前活动音频流并原地显示实时音量信息。"""
 
     status_line = StatusLine()
+    subscription = audio_stream.subscribe(queue_maxsize=8)
     try:
         while True:
-            chunk = await audio_stream.read_chunk(timeout=5.0)
+            chunk = await asyncio.wait_for(subscription.queue.get(), timeout=5.0)
             rms, peak = _describe_audio_chunk(chunk)
             status_line.update(
                 "[AUDIO:{}] RMS={:.4f} {} | PEAK={:.4f} {} | overflowed={}".format(
@@ -51,6 +52,7 @@ async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
                 ),
             )
     finally:
+        audio_stream.unsubscribe(subscription)
         status_line.finish()
 
 
