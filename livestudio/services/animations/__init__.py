@@ -1,6 +1,5 @@
 from .controllers import (
     AnimationController,
-    AnimationControllerRegistry,
     AnimationType,
     BlinkController,
     BlinkControllerSettings,
@@ -8,9 +7,6 @@ from .controllers import (
     BodySwingControllerSettings,
     BreathingController,
     BreathingControllerSettings,
-    ControllerFactory,
-    ControllerKey,
-    ControllerRegistration,
     ControllerSettings,
     EyeFollowControllerSettings,
     MouthExpressionController,
@@ -29,7 +25,6 @@ from .templates import (
 
 __all__ = [
     "AnimationController",
-    "AnimationControllerRegistry",
     "AnimationManager",
     "AnimationTemplatePlayer",
     "AnimationType",
@@ -39,9 +34,6 @@ __all__ = [
     "BodySwingControllerSettings",
     "BreathingController",
     "BreathingControllerSettings",
-    "ControllerFactory",
-    "ControllerKey",
-    "ControllerRegistration",
     "ControllerSettings",
     "EyeFollowControllerSettings",
     "LoadedTemplateInfo",

@@ -11,12 +11,6 @@ from .config import (
     MouthSyncParameterMapping,
 )
 from .models import AnimationType
-from .registry import (
-    AnimationControllerRegistry,
-    ControllerFactory,
-    ControllerKey,
-    ControllerRegistration,
-)
 from .vtubestudio import (
     BlinkController,
     BodySwingController,
@@ -26,7 +20,6 @@ from .vtubestudio import (
 
 __all__ = [
     "AnimationController",
-    "AnimationControllerRegistry",
     "AnimationType",
     "BlinkController",
     "BlinkControllerSettings",
@@ -34,9 +27,6 @@ __all__ = [
     "BodySwingControllerSettings",
     "BreathingController",
     "BreathingControllerSettings",
-    "ControllerFactory",
-    "ControllerKey",
-    "ControllerRegistration",
     "ControllerSettings",
     "EyeFollowControllerSettings",
     "MouthExpressionController",
