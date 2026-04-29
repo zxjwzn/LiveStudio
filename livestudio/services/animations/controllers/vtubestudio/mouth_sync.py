@@ -19,6 +19,7 @@ from livestudio.tween import TweenRequest
 from ..base import AnimationController
 from ..config import MouthSyncControllerSettings
 from ..models import AnimationType
+from .constants import MOUTH_OPEN_PARAMETER
 
 
 class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
@@ -80,7 +81,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
     @property
     def _closed_open(self) -> float:
-        return self._clamp01(self.config.closed_pose.open)
+        return self._clamp01(0.0)
 
     def _analyze_open(self, chunk: AudioChunk) -> float:
         samples = self._to_mono_float32(chunk)
@@ -119,7 +120,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         )
         await self.runtime.platform.tween.tween(
             TweenRequest(
-                parameter_name=self.config.parameters.open,
+                parameter_name=MOUTH_OPEN_PARAMETER,
                 end_value=self._clamp01(open_value),
                 duration=duration,
                 easing="linear",

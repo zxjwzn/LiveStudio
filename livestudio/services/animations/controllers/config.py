@@ -73,33 +73,9 @@ class MouthExpressionControllerSettings(ControllerSettings):
     max_duration: float = Field(default=4.0, ge=0, description="变化最长持续时间。")
 
 
-class MouthSyncParameterMapping(BaseModel):
-    """嘴部开合到 VTube Studio 参数的映射。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    open: str = Field(default="MouthOpen", min_length=1, description="嘴部开合参数。")
-
-
-class MouthPoseConfig(BaseModel):
-    """嘴部开合目标配置。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    open: float = Field(default=0.0, ge=0.0, le=1.0, description="嘴部开合值。")
-
-
 class MouthSyncControllerSettings(ControllerSettings):
     """基于响度的嘴部开合同步控制器配置。"""
 
-    parameters: MouthSyncParameterMapping = Field(
-        default_factory=MouthSyncParameterMapping,
-        description="嘴部开合参数映射。",
-    )
-    closed_pose: MouthPoseConfig = Field(
-        default_factory=MouthPoseConfig,
-        description="静音或停止时的嘴部开合状态。",
-    )
     open_min: float = Field(default=0.1, description="说话时的最小开口值。")
     open_max: float = Field(default=0.85, description="最大开口值。")
     noise_floor: float = Field(default=0.01, ge=0.0, description="静音门限。")

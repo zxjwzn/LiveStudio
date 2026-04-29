@@ -6,9 +6,7 @@ from .config import (
     ControllerSettings,
     EyeFollowControllerSettings,
     MouthExpressionControllerSettings,
-    MouthPoseConfig,
     MouthSyncControllerSettings,
-    MouthSyncParameterMapping,
 )
 from .models import AnimationType
 from .vtubestudio import (
@@ -32,8 +30,6 @@ __all__ = [
     "EyeFollowControllerSettings",
     "MouthExpressionController",
     "MouthExpressionControllerSettings",
-    "MouthPoseConfig",
     "MouthSyncController",
     "MouthSyncControllerSettings",
-    "MouthSyncParameterMapping",
 ]
