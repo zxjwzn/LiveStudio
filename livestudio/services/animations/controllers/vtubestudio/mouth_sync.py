@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import asyncio
 
-import numpy as np
-from numpy.typing import NDArray
-
 from livestudio.log import logger
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.audio_stream import (
@@ -84,11 +81,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         return self._clamp01(0.0)
 
     def _analyze_open(self, chunk: AudioChunk) -> float:
-        samples = self._to_mono_float32(chunk)
-        if samples.size == 0:
-            return self._closed_open
-
-        rms = float(np.sqrt(np.mean(np.square(samples))))
+        rms = chunk.analysis.rms
         normalized_level = self._normalize_level(rms)
         if normalized_level <= 0.0:
             return self._closed_open
@@ -128,15 +121,6 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
                 keep_alive=True,
             ),
         )
-
-    @staticmethod
-    def _to_mono_float32(chunk: AudioChunk) -> NDArray[np.float32]:
-        samples = np.asarray(chunk.data, dtype=np.float32)
-        if samples.size == 0:
-            return np.asarray([], dtype=np.float32)
-        if samples.ndim == 1:
-            return samples.reshape(-1)
-        return np.mean(samples, axis=1, dtype=np.float32).reshape(-1)
 
     @staticmethod
     def _clamp01(value: float) -> float:

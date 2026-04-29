@@ -6,12 +6,18 @@ import asyncio
 import contextlib
 from pathlib import Path
 
+import numpy as np
+
 from livestudio.config import ConfigManager
 from livestudio.log import logger
 
 from .base import AudioStreamSource
 from .config import AudioStreamConfigFile, AudioStreamRouterConfig
-from .models import AudioChunkSubscription, AudioSourceKind
+from .models import (
+    AudioChunk,
+    AudioChunkSubscription,
+    AudioSourceKind,
+)
 from .sources import MicrophoneAudioStreamSource, TTSAudioStreamSource
 
 
@@ -182,8 +188,24 @@ class AudioStreamRouter(AudioStreamSource):
         try:
             while True:
                 chunk = await source_subscription.queue.get()
+                self._chunk_analysis(chunk)
                 self._publish_chunk(chunk)
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("音频流路由器转发任务异常")
+
+    @staticmethod
+    def _chunk_analysis(chunk: AudioChunk) -> None:
+        """补充音频块通用分析结果，避免下游消费者重复计算。"""
+
+        samples = np.asarray(chunk.data, dtype=np.float32)
+        if samples.size == 0:
+            rms = 0.0
+            peak = 0.0
+        else:
+            flattened = samples.reshape(-1)
+            rms = float(np.sqrt(np.mean(np.square(flattened))))
+            peak = float(np.max(np.abs(flattened)))
+        chunk.analysis.rms = rms
+        chunk.analysis.peak = peak

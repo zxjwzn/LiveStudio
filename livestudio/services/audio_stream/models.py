@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from uuid import UUID
 
@@ -29,6 +29,24 @@ class AudioChunkMetadata:
 
 
 @dataclass(slots=True)
+class AudioPhonemeAnnotation:
+    """音频块上的音素识别结果。"""
+
+    phoneme: str
+    confidence: float = 0.0
+    viseme: str | None = None
+
+
+@dataclass(slots=True)
+class AudioChunkAnalysis:
+    """音频块分析结果。"""
+
+    phoneme: AudioPhonemeAnnotation | None = None
+    rms: float = 0.0
+    peak: float = 0.0
+
+
+@dataclass(slots=True)
 class AudioChunk:
     """统一的音频数据块。"""
 
@@ -38,6 +56,7 @@ class AudioChunk:
     data: NDArray[np.generic]
     overflowed: bool = False
     metadata: AudioChunkMetadata | None = None
+    analysis: AudioChunkAnalysis = field(default_factory=AudioChunkAnalysis)
 
 
 @dataclass(frozen=True, slots=True)

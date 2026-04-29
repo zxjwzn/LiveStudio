@@ -3,11 +3,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 
-import numpy as np
-
 from livestudio.app import VTubeStudioApp
 from livestudio.log import StatusLine, logger
-from livestudio.services import AudioChunk, AudioSourceKind, AudioStreamRouter
+from livestudio.services import AudioSourceKind, AudioStreamRouter
 from livestudio.services.animations import AnimationManager
 
 
@@ -19,19 +17,6 @@ def _format_level_bar(level: float, *, width: int = 24) -> str:
     return "█" * filled + "·" * (width - filled)
 
 
-def _describe_audio_chunk(chunk: AudioChunk) -> tuple[float, float]:
-    """计算音频块的 RMS 与峰值强度。"""
-
-    samples = np.asarray(chunk.data, dtype=np.float32)
-    if samples.size == 0:
-        return 0.0, 0.0
-
-    flattened = samples.reshape(-1)
-    rms = float(np.sqrt(np.mean(np.square(flattened))))
-    peak = float(np.max(np.abs(flattened)))
-    return rms, peak
-
-
 async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
     """持续读取当前活动音频流并原地显示实时音量信息。"""
 
@@ -40,7 +25,7 @@ async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
     try:
         while True:
             chunk = await asyncio.wait_for(subscription.queue.get(), timeout=5.0)
-            rms, peak = _describe_audio_chunk(chunk)
+            rms, peak = chunk.analysis.rms, chunk.analysis.peak
             status_line.update(
                 "[AUDIO:{}] RMS={:.4f} {} | PEAK={:.4f} {} | overflowed={}".format(
                     audio_stream.active_source_kind,

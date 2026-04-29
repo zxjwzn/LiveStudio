@@ -2,7 +2,9 @@
 
 from .audio_stream import (
     AudioChunk,
+    AudioChunkAnalysis,
     AudioChunkSubscription,
+    AudioPhonemeAnnotation,
     AudioSourceKind,
     AudioStreamConfigFile,
     AudioStreamRouter,
@@ -19,7 +21,9 @@ from .platforms.vtubestudio import (
 
 __all__ = [
     "AudioChunk",
+    "AudioChunkAnalysis",
     "AudioChunkSubscription",
+    "AudioPhonemeAnnotation",
     "AudioSourceKind",
     "AudioStreamConfigFile",
     "AudioStreamRouter",

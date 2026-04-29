@@ -4,8 +4,10 @@ from .base import AudioStreamSource
 from .config import AudioStreamConfigFile, AudioStreamRouterConfig, TTSAudioStreamConfig
 from .models import (
     AudioChunk,
+    AudioChunkAnalysis,
     AudioChunkMetadata,
     AudioChunkSubscription,
+    AudioPhonemeAnnotation,
     AudioSourceKind,
 )
 from .service import AudioStreamRouter
@@ -18,8 +20,10 @@ from .sources import (
 
 __all__ = [
     "AudioChunk",
+    "AudioChunkAnalysis",
     "AudioChunkMetadata",
     "AudioChunkSubscription",
+    "AudioPhonemeAnnotation",
     "AudioSourceKind",
     "AudioStreamConfigFile",
     "AudioStreamRouter",
