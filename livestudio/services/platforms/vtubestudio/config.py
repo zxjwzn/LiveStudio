@@ -42,7 +42,7 @@ class VTubeStudioExpressionStateConfig(BaseModel):
 
     name: str = Field(default="", description="表情名称。")
     file: str = Field(default="", description="表情文件名。")
-    enable: bool = Field(default=False, description="模型加载时是否激活该表情。")
+    active: bool = Field(default=False, description="模型加载时是否激活该表情。")
 
 
 class VTubeStudioControllerSettingsConfig(BaseModel):

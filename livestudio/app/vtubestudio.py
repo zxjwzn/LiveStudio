@@ -113,7 +113,7 @@ class VTubeStudioApp:
             VTubeStudioExpressionStateConfig(
                 name=expression.name,
                 file=expression.file,
-                enable=expression.active,
+                active=expression.active,
             )
             for expression in expression_response.data.expressions
         ]
@@ -136,7 +136,7 @@ class VTubeStudioApp:
                 VTubeStudioExpressionStateConfig(
                     name=expression.name,
                     file=expression.file,
-                    enable=expression.active,
+                    active=expression.active,
                 )
                 for expression in expressions
             ]
@@ -155,7 +155,7 @@ class VTubeStudioApp:
             expression_config = VTubeStudioExpressionStateConfig(
                 name=expression.name,
                 file=expression.file,
-                enable=expression.active,
+                active=expression.active,
             )
             config.expressions.append(expression_config)
             config_by_file[expression.file] = expression_config
@@ -169,7 +169,7 @@ class VTubeStudioApp:
                 ExpressionActivationRequest(
                     data=ExpressionActivationRequestData(
                         expressionFile=expression_file,
-                        active=expression_config.enable,
+                        active=expression_config.active,
                     ),
                 ),
             )
