@@ -201,8 +201,5 @@ class Layout:
 class Typography:
     """字体常量。"""
 
-    default_font_family: Final[str] = "Microsoft YaHei UI"
+    default_font: Final[str] = "Microsoft YaHei UI"
     """Windows 桌面端优先使用的中文 UI 字体。"""
-
-    fallback_font_family: Final[str] = "Microsoft YaHei"
-    """中文 UI 字体不可用时的回退字体。"""
