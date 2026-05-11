@@ -67,10 +67,6 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
                 ),
             ),
         )
-
-        if self._stop_event.is_set():
-            return
-
         wait_time = random.uniform(
             self.config.min_interval,
             self.config.max_interval,
