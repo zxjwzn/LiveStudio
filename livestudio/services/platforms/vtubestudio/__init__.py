@@ -5,7 +5,6 @@ from .config import (
     VTubeStudioExpressionStateConfig,
     VTubeStudioModelConfig,
     VTubeStudioModelInfoConfig,
-    VTubeStudioPlatformModelSettings,
 )
 from .service import VTubeStudio
 
@@ -15,5 +14,4 @@ __all__ = [
     "VTubeStudioExpressionStateConfig",
     "VTubeStudioModelConfig",
     "VTubeStudioModelInfoConfig",
-    "VTubeStudioPlatformModelSettings",
 ]
