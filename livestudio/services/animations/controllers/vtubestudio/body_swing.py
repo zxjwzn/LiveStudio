@@ -14,10 +14,6 @@ from ..models import AnimationType
 from .constants import (
     BODY_SWING_X_PARAMETER,
     BODY_SWING_Z_PARAMETER,
-    EYE_LEFT_X_PARAMETER,
-    EYE_LEFT_Y_PARAMETER,
-    EYE_RIGHT_X_PARAMETER,
-    EYE_RIGHT_Y_PARAMETER,
     IDLE_PRIORITY,
 )
 
@@ -63,42 +59,6 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
             ),
         ]
 
-        if self.config.eye_follow.enabled:
-            eye_x, eye_y = self._resolve_eye_target(target_x, target_z)
-            logger.debug("眼睛跟随: 目标=({:.2f}, {:.2f})", eye_x, eye_y)
-            requests.extend(
-                [
-                    TweenRequest(
-                        parameter_name=EYE_LEFT_X_PARAMETER,
-                        end_value=eye_x,
-                        duration=duration,
-                        easing=easing,
-                        priority=IDLE_PRIORITY,
-                    ),
-                    TweenRequest(
-                        parameter_name=EYE_RIGHT_X_PARAMETER,
-                        end_value=eye_x,
-                        duration=duration,
-                        easing=easing,
-                        priority=IDLE_PRIORITY,
-                    ),
-                    TweenRequest(
-                        parameter_name=EYE_LEFT_Y_PARAMETER,
-                        end_value=eye_y,
-                        duration=duration,
-                        easing=easing,
-                        priority=IDLE_PRIORITY,
-                    ),
-                    TweenRequest(
-                        parameter_name=EYE_RIGHT_Y_PARAMETER,
-                        end_value=eye_y,
-                        duration=duration,
-                        easing=easing,
-                        priority=IDLE_PRIORITY,
-                    ),
-                ],
-            )
-
         await asyncio.gather(
             *(self.runtime.platform.tween.tween(request) for request in requests),
         )
@@ -107,22 +67,3 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
         """idle 控制器不执行一次性动画。"""
 
         _ = kwargs
-
-    def _resolve_eye_target(
-        self,
-        target_x: float,
-        target_z: float,
-    ) -> tuple[float, float]:
-        eye_config = self.config.eye_follow
-        x_range = self.config.x_max - self.config.x_min
-        x_norm = (target_x - self.config.x_min) / x_range if x_range else 0.0
-        eye_x = eye_config.x_min_range + x_norm * (
-            eye_config.x_max_range - eye_config.x_min_range
-        )
-
-        z_range = self.config.z_max - self.config.z_min
-        z_norm = (target_z - self.config.z_min) / z_range if z_range else 0.0
-        eye_y = eye_config.y_max_range - z_norm * (
-            eye_config.y_max_range - eye_config.y_min_range
-        )
-        return eye_x, eye_y

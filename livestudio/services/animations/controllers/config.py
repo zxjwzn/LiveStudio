@@ -38,15 +38,6 @@ class BreathingControllerSettings(ControllerSettings):
     exhale_duration: float = Field(default=2.0, ge=0, description="呼气持续时间。")
 
 
-class EyeFollowControllerSettings(ControllerSettings):
-    """身体摇摆时的眼睛跟随配置。"""
-
-    x_min_range: float = Field(default=-1.0, description="眼睛水平移动最小值。")
-    x_max_range: float = Field(default=1.0, description="眼睛水平移动最大值。")
-    y_min_range: float = Field(default=-1.0, description="眼睛垂直移动最小值。")
-    y_max_range: float = Field(default=1.0, description="眼睛垂直移动最大值。")
-
-
 class BodySwingControllerSettings(ControllerSettings):
     """身体摇摆控制器配置。"""
 
@@ -56,10 +47,6 @@ class BodySwingControllerSettings(ControllerSettings):
     z_max: float = Field(default=15.0, description="上肢旋转最大位置。")
     min_duration: float = Field(default=2.0, ge=0, description="摇摆最短持续时间。")
     max_duration: float = Field(default=8.0, ge=0, description="摇摆最长持续时间。")
-    eye_follow: EyeFollowControllerSettings = Field(
-        default_factory=EyeFollowControllerSettings,
-        description="眼睛跟随配置。",
-    )
 
 
 class MouthExpressionControllerSettings(ControllerSettings):
