@@ -24,17 +24,6 @@ class VTubeStudioModelInfoConfig(BaseModel):
     name: str = Field(default="", description="VTube Studio 模型显示名称。")
 
 
-class VTubeStudioPlatformModelSettings(BaseModel):
-    """随模型切换的 VTube Studio 平台层配置。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    parameter_overrides: dict[str, str] = Field(
-        default_factory=dict,
-        description="平台参数名映射覆盖表。",
-    )
-
-
 class VTubeStudioExpressionStateConfig(BaseModel):
     """VTube Studio 表情激活状态配置。"""
 
@@ -80,10 +69,6 @@ class VTubeStudioModelConfig(BaseModel):
     model: VTubeStudioModelInfoConfig = Field(
         default_factory=VTubeStudioModelInfoConfig,
         description="当前配置绑定的 VTube Studio 模型。",
-    )
-    platform: VTubeStudioPlatformModelSettings = Field(
-        default_factory=VTubeStudioPlatformModelSettings,
-        description="平台层随模型切换的配置。",
     )
     controllers: VTubeStudioControllerSettingsConfig = Field(
         default_factory=VTubeStudioControllerSettingsConfig,
