@@ -4,7 +4,6 @@ from .config import (
     BodySwingControllerSettings,
     BreathingControllerSettings,
     ControllerSettings,
-    EyeFollowControllerSettings,
     MouthExpressionControllerSettings,
     MouthSyncControllerSettings,
 )
@@ -27,7 +26,6 @@ __all__ = [
     "BreathingController",
     "BreathingControllerSettings",
     "ControllerSettings",
-    "EyeFollowControllerSettings",
     "MouthExpressionController",
     "MouthExpressionControllerSettings",
     "MouthSyncController",
