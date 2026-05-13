@@ -64,7 +64,7 @@ class MouthSyncControllerSettings(ControllerSettings):
     """基于响度的嘴部开合同步控制器配置。"""
 
     open_min: float = Field(default=0.1, description="说话时的最小开口值。")
-    open_max: float = Field(default=0.85, description="最大开口值。")
+    open_max: float = Field(default=1.0, description="说话时的最大开口值。")
     noise_floor: float = Field(default=0.01, ge=0.0, description="静音门限。")
     voice_ceiling: float = Field(default=0.2, gt=0.0, description="有效语音上限。")
     open_smoothing: float = Field(
