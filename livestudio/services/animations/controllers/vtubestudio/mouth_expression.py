@@ -6,12 +6,11 @@ import asyncio
 import random
 
 from livestudio.log import logger
-from livestudio.tween import TweenRequest
+from livestudio.tween import Easing, TweenRequest
 
 from ..base import AnimationController
 from ..config import MouthExpressionControllerSettings
 from ..models import AnimationType
-from .constants import IDLE_PRIORITY, MOUTH_OPEN_PARAMETER, MOUTH_SMILE_PARAMETER
 
 
 class MouthExpressionController(AnimationController[MouthExpressionControllerSettings]):
@@ -29,7 +28,9 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
         target_smile = random.uniform(self.config.smile_min, self.config.smile_max)
         target_open = random.uniform(self.config.open_min, self.config.open_max)
         duration = random.uniform(self.config.min_duration, self.config.max_duration)
-        easing = random.choice(["in_out_quad", "in_out_back", "in_out_sine"])
+        easing = random.choice(
+            [Easing.in_out_quad, Easing.in_out_back, Easing.in_out_sine],
+        )
 
         logger.debug(
             "嘴部表情: Smile: {:.2f}, Open: {:.2f}, 时长: {:.2f}s, 缓动: {}",
@@ -42,20 +43,11 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
         await asyncio.gather(
             self.runtime.platform.tween.tween(
                 TweenRequest(
-                    parameter_name=MOUTH_SMILE_PARAMETER,
+                    parameter_name="MouthSmile",
                     end_value=target_smile,
                     duration=duration,
                     easing=easing,
-                    priority=IDLE_PRIORITY,
-                ),
-            ),
-            self.runtime.platform.tween.tween(
-                TweenRequest(
-                    parameter_name=MOUTH_OPEN_PARAMETER,
-                    end_value=target_open,
-                    duration=duration,
-                    easing=easing,
-                    priority=IDLE_PRIORITY,
+                    priority=10,
                 ),
             ),
         )

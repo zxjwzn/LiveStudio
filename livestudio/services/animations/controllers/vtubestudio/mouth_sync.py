@@ -11,12 +11,11 @@ from livestudio.services.audio_stream import (
     AudioChunkSubscription,
     AudioStreamSource,
 )
-from livestudio.tween import TweenRequest
+from livestudio.tween import Easing, TweenRequest
 
 from ..base import AnimationController
 from ..config import MouthSyncControllerSettings
 from ..models import AnimationType
-from .constants import MOUTH_OPEN_PARAMETER
 
 
 class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
@@ -113,10 +112,10 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         )
         await self.runtime.platform.tween.tween(
             TweenRequest(
-                parameter_name=MOUTH_OPEN_PARAMETER,
+                parameter_name="MouthOpen",
                 end_value=self._clamp01(open_value),
                 duration=duration,
-                easing="linear",
+                easing=Easing.linear,
                 priority=self.config.priority,
                 keep_alive=True,
             ),

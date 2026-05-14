@@ -11,7 +11,6 @@ from livestudio.tween import Easing, TweenRequest
 from ..base import AnimationController
 from ..config import BlinkControllerSettings
 from ..models import AnimationType
-from .constants import BLINK_LEFT_PARAMETER, BLINK_RIGHT_PARAMETER, IDLE_PRIORITY
 
 
 class BlinkController(AnimationController[BlinkControllerSettings]):
@@ -29,20 +28,20 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
         await asyncio.gather(
             self.runtime.platform.tween.tween(
                 TweenRequest(
-                    parameter_name=BLINK_LEFT_PARAMETER,
+                    parameter_name="EyeOpenLeft",
                     end_value=0.0,
                     duration=self.config.close_duration,
                     easing=Easing.in_sine,
-                    priority=IDLE_PRIORITY,
+                    priority=10,
                 ),
             ),
             self.runtime.platform.tween.tween(
                 TweenRequest(
-                    parameter_name=BLINK_RIGHT_PARAMETER,
+                    parameter_name="EyeOpenRight",
                     end_value=0.0,
                     duration=self.config.close_duration,
                     easing=Easing.in_sine,
-                    priority=IDLE_PRIORITY,
+                    priority=10,
                 ),
             ),
         )
@@ -50,20 +49,20 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
         await asyncio.gather(
             self.runtime.platform.tween.tween(
                 TweenRequest(
-                    parameter_name=BLINK_LEFT_PARAMETER,
+                    parameter_name="EyeOpenLeft",
                     end_value=1.0,
                     duration=self.config.open_duration,
                     easing=Easing.out_sine,
-                    priority=IDLE_PRIORITY,
+                    priority=10,
                 ),
             ),
             self.runtime.platform.tween.tween(
                 TweenRequest(
-                    parameter_name=BLINK_RIGHT_PARAMETER,
+                    parameter_name="EyeOpenRight",
                     end_value=1.0,
                     duration=self.config.open_duration,
                     easing=Easing.out_sine,
-                    priority=IDLE_PRIORITY,
+                    priority=10,
                 ),
             ),
         )
