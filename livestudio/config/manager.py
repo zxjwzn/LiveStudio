@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar
 
 import json5
 import yaml
 from pydantic import BaseModel, ValidationError
+
+from livestudio.log import logger
 
 from .errors import (
     ConfigFormatError,
@@ -23,9 +27,16 @@ from .errors import (
 ConfigT = TypeVar("ConfigT", bound=BaseModel)
 ConfigFormat = Literal["json", "yaml"]
 
+_MAX_TOLERANT_ATTEMPTS = 64
+
 
 class ConfigManager(Generic[ConfigT]):
-    """管理经校验的配置快照，并提供显式保存语义。"""
+    """管理经校验的配置快照，并提供显式保存语义。
+
+    支持宽容加载：当配置文件中的字段不再被模型识别（字段被删除、重命名、
+    类型变更、枚举值失效等）时，丢弃不兼容字段、保留其余可用部分；
+    迁移成功后会先把原文件备份为 ``<name>.<timestamp>.bak``，再写回迁移后的配置。
+    """
 
     def __init__(
         self,
@@ -128,12 +139,120 @@ class ConfigManager(Generic[ConfigT]):
     def _load_from_disk(self) -> ConfigT:
         data = self._load_dict(self._path)
         try:
-            return self._model_type.model_validate(data, extra="ignore")
-        except ValidationError as exc:
-            raise ConfigValidationError(f"配置校验失败: {self._path}") from exc
+            return self._model_type.model_validate(data)
+        except ValidationError:
+            return self._migrate_and_load(data)
+
+    def _migrate_and_load(self, original_data: dict[str, Any]) -> ConfigT:
+        cleaned: Any = copy.deepcopy(original_data)
+        dropped: list[tuple[str | int, ...]] = []
+
+        for _ in range(_MAX_TOLERANT_ATTEMPTS):
+            try:
+                config = self._model_type.model_validate(cleaned)
+            except ValidationError as exc:
+                if not self._apply_one_fix(cleaned, exc, dropped):
+                    raise ConfigValidationError(
+                        f"配置校验失败且无法迁移: {self._path}",
+                    ) from exc
+                continue
+
+            self._on_migrated(config, dropped)
+            return config
+
+        raise ConfigValidationError(
+            f"配置迁移超过最大尝试次数: {self._path}",
+        )
+
+    @staticmethod
+    def _apply_one_fix(
+        data: Any,
+        error: ValidationError,
+        dropped: list[tuple[str | int, ...]],
+    ) -> bool:
+        for entry in error.errors():
+            loc = tuple(entry.get("loc", ()))
+            if not loc:
+                continue
+            if entry.get("type", "") == "missing":
+                # 必填字段缺失：模型本身没有默认值，无法靠丢弃修复，跳过该项继续看下一条。
+                continue
+            if _delete_at_path(data, loc):
+                dropped.append(loc)
+                return True
+        return False
+
+    def _on_migrated(
+        self,
+        config: ConfigT,
+        dropped: list[tuple[str | int, ...]],
+    ) -> None:
+        if not dropped:
+            return
+
+        formatted = ", ".join(
+            ".".join(str(part) for part in path) for path in dropped
+        )
+        logger.warning(
+            "配置文件 {} 含有不兼容字段，已自动迁移并丢弃: {}",
+            self._path,
+            formatted,
+        )
+
+        try:
+            self._backup_original()
+        except OSError as exc:
+            logger.warning("备份原配置文件失败 ({}): {}", self._path, exc)
+
+        with contextlib.suppress(ConfigSaveError):
+            self._persist_snapshot(config)
+
+    def _backup_original(self) -> None:
+        if not self._path.exists():
+            return
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = self._path.with_name(
+            f"{self._path.name}.{timestamp}.bak",
+        )
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        backup_path.write_bytes(self._path.read_bytes())
+        logger.info("原配置文件已备份: {}", backup_path)
 
     def _persist_snapshot(self, config: ConfigT) -> None:
         self._save_dict(
             self._path,
             config.model_dump(mode="json", exclude_none=True),
         )
+
+
+def _delete_at_path(data: Any, path: tuple[str | int, ...]) -> bool:
+    """按 Pydantic loc 路径在 dict/list 嵌套结构中删除一个节点。"""
+
+    if not path:
+        return False
+    cursor: Any = data
+    for key in path[:-1]:
+        if isinstance(cursor, dict):
+            if key not in cursor:
+                return False
+            cursor = cursor[key]
+            continue
+        if isinstance(cursor, list) and isinstance(key, int):
+            if key < 0 or key >= len(cursor):
+                return False
+            cursor = cursor[key]
+            continue
+        return False
+
+    last = path[-1]
+    if isinstance(cursor, dict):
+        if last not in cursor:
+            return False
+        del cursor[last]
+        return True
+    if isinstance(cursor, list) and isinstance(last, int):
+        if last < 0 or last >= len(cursor):
+            return False
+        del cursor[last]
+        return True
+    return False

@@ -30,10 +30,8 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
     ) -> None:
         super().__init__(runtime, name, config)
         self._audio_stream = audio_stream
-        self._audio_subscription: AudioChunkSubscription = self._audio_stream.subscribe(
-            queue_maxsize=8,
-        )
-        self._current_open = self._closed_open
+        self._audio_subscription: AudioChunkSubscription | None = None
+        self._current_open = 0.0
 
     @property
     def animation_type(self) -> AnimationType:
@@ -41,13 +39,29 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
         return AnimationType.IDLE
 
+    async def start(self, **kwargs: object) -> bool:
+        if not self.enabled or self.is_running:
+            return await super().start(**kwargs)
+
+        self._audio_subscription = self._audio_stream.subscribe(queue_maxsize=8)
+        self._current_open = self._closed_open
+        started = await super().start(**kwargs)
+        if not started:
+            self._release_subscription()
+        return started
+
     async def run_cycle(self) -> None:
         """读取一段音频并按响度更新嘴部开合。"""
+
+        subscription = self._audio_subscription
+        if subscription is None:
+            await asyncio.sleep(self.config.update_interval)
+            return
 
         target_open = self._closed_open
         try:
             chunk = await asyncio.wait_for(
-                self._audio_subscription.queue.get(),
+                subscription.queue.get(),
                 timeout=max(self.config.update_interval * 2.0, 0.1),
             )
             target_open = self._analyze_open(chunk)
@@ -69,11 +83,17 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
     async def stop(self) -> None:
         await super().stop()
-        self._audio_stream.unsubscribe(self._audio_subscription)
+        self._release_subscription()
 
     async def stop_without_wait(self) -> None:
         await super().stop_without_wait()
-        self._audio_stream.unsubscribe(self._audio_subscription)
+        self._release_subscription()
+
+    def _release_subscription(self) -> None:
+        subscription = self._audio_subscription
+        self._audio_subscription = None
+        if subscription is not None:
+            self._audio_stream.unsubscribe(subscription)
 
     @property
     def _closed_open(self) -> float:
