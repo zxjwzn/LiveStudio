@@ -45,7 +45,11 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
         self._audio_subscription = self._audio_stream.subscribe(queue_maxsize=8)
         self._current_open = self._closed_open
-        started = await super().start(**kwargs)
+        try:
+            started = await super().start(**kwargs)
+        except BaseException:
+            self._release_subscription()
+            raise
         if not started:
             self._release_subscription()
         return started

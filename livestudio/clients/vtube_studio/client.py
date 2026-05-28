@@ -12,6 +12,8 @@ from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
+from livestudio.log import logger
+
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .errors import (
     APIError,
@@ -213,7 +215,7 @@ class VTubeStudioClient:
         if not response.data.authenticated:
             raise AuthenticationError(response.data.reason)
         if self.config.auto_resubscribe and self._event_subscriptions:
-            for subscription_request in self._event_subscriptions.values():
+            for subscription_request in list(self._event_subscriptions.values()):
                 await self.send_request(subscription_request, EventSubscriptionResponse)
         return True
 
@@ -264,7 +266,14 @@ class VTubeStudioClient:
             async for raw_message in connection:
                 if not isinstance(raw_message, str):
                     continue
-                await self._route_message(raw_message)
+                try:
+                    await self._route_message(raw_message)
+                except asyncio.CancelledError:
+                    raise
+                except EventDispatchError:
+                    logger.exception("VTube Studio 事件分发失败，已忽略该消息")
+                except Exception:
+                    logger.exception("VTube Studio 消息处理异常，已忽略该消息")
         except asyncio.CancelledError:
             raise
         except ConnectionClosed:
@@ -273,8 +282,6 @@ class VTubeStudioClient:
             self._connection = None
             self._fail_pending_requests(ResponseError("后台接收 VTube Studio 消息失败"))
             raise VTubeStudioConnectionError("后台接收 VTube Studio 消息失败") from exc
-        except EventDispatchError:
-            pass
         finally:
             self._fail_pending_requests(
                 VTubeStudioConnectionError("VTube Studio 连接已关闭"),

@@ -23,6 +23,13 @@ dependencies = [
 ]
 
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -32,6 +39,10 @@ packages = ["livestudio"]
 
 [tool.black]
 line-length = 128
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
 
 [tool.ruff]
 extend-exclude = []

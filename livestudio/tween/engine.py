@@ -223,32 +223,21 @@ class ParameterTweenEngine:
                 value = start_value + (
                     request.end_value - start_value
                 ) * self._resolve_easing(request.easing)(t)
-                should_send = False
+                state_to_send: ControlledParameterState | None = None
 
                 async with self._lock:
                     active = self._active_tweens.get(request.parameter_name)
                     if active is not None and active.task is current_task:
-                        self._controlled_params[request.parameter_name] = (
-                            ControlledParameterState(
-                                name=request.parameter_name,
-                                value=value,
-                                mode=request.mode,
-                                keep_alive=request.keep_alive,
-                            )
+                        state_to_send = ControlledParameterState(
+                            name=request.parameter_name,
+                            value=value,
+                            mode=request.mode,
+                            keep_alive=request.keep_alive,
                         )
-                        should_send = True
+                        self._controlled_params[request.parameter_name] = state_to_send
 
-                if should_send:
-                    await self._send_parameter_values(
-                        [
-                            ControlledParameterState(
-                                name=request.parameter_name,
-                                value=value,
-                                mode=request.mode,
-                                keep_alive=request.keep_alive,
-                            ),
-                        ],
-                    )
+                if state_to_send is not None:
+                    await self._send_parameter_values([state_to_send])
         except asyncio.CancelledError:
             logger.debug("参数 {} 的缓动任务被取消", request.parameter_name)
             raise
@@ -335,4 +324,9 @@ class ParameterTweenEngine:
         parameter_states = list(states)
         if not parameter_states:
             return
-        await self._sender(parameter_states, parameter_states[0].mode)
+        set_states = [state for state in parameter_states if state.mode == "set"]
+        add_states = [state for state in parameter_states if state.mode == "add"]
+        if set_states:
+            await self._sender(set_states, "set")
+        if add_states:
+            await self._sender(add_states, "add")

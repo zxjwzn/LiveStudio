@@ -32,6 +32,7 @@ class AnimationController(ABC, Generic[ConfigT]):
         self._config = config
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
+        self._lifecycle_lock = asyncio.Lock()
 
     @property
     def runtime(self) -> PlatformAnimationRuntime:
@@ -62,25 +63,28 @@ class AnimationController(ABC, Generic[ConfigT]):
         if not self.enabled:
             logger.info("动画控制器 {} 未启用，跳过启动", self.name)
             return False
-        if self.is_running:
-            logger.debug("动画控制器 {} 已在运行", self.name)
-            return False
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run(**kwargs))
-        return True
+        async with self._lifecycle_lock:
+            if self.is_running:
+                logger.debug("动画控制器 {} 已在运行", self.name)
+                return False
+            self._stop_event.clear()
+            self._task = asyncio.create_task(self._run(**kwargs))
+            return True
 
     async def stop(self) -> None:
-        task = self._task
-        self._stop_event.set()
-        self._task = None
+        async with self._lifecycle_lock:
+            task = self._task
+            self._stop_event.set()
+            self._task = None
         if task is not None:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
     async def stop_without_wait(self) -> None:
-        task = self._task
-        self._stop_event.set()
-        self._task = None
+        async with self._lifecycle_lock:
+            task = self._task
+            self._stop_event.set()
+            self._task = None
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

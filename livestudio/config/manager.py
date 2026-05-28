@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import copy
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar
@@ -95,7 +94,7 @@ class ConfigManager(Generic[ConfigT]):
         file_format = self._detect_format(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         if file_format == "json":
-            content = json.dumps(data, ensure_ascii=False, indent=2) + os.linesep
+            content = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
         else:
             content = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
 

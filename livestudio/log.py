@@ -52,16 +52,20 @@ def _clear_status_line_unlocked(status_line: StatusLine) -> None:
     _ACTIVE_STATUS_LINES.discard(status_line)
 
 
-_logger.remove()
-_logger.add(
-    _log_sink,
-    format=_DEFAULT_FORMAT,
-    level="DEBUG",
-    colorize=True,
-    enqueue=True,
-    backtrace=False,
-    diagnose=False,
-)
+def _install_log_sink(level: str) -> None:
+    _logger.remove()
+    _logger.add(
+        _log_sink,
+        format=_DEFAULT_FORMAT,
+        level=level.upper(),
+        colorize=True,
+        enqueue=True,
+        backtrace=False,
+        diagnose=False,
+    )
+
+
+_install_log_sink("DEBUG")
 
 logger = _logger.bind(app="livestudio")
 
@@ -93,13 +97,4 @@ class StatusLine:
 def configure_logging(*, level: str = "DEBUG") -> None:
     """重新配置全局日志输出。"""
 
-    _logger.remove()
-    _logger.add(
-        _log_sink,
-        format=_DEFAULT_FORMAT,
-        level=level.upper(),
-        colorize=True,
-        enqueue=True,
-        backtrace=False,
-        diagnose=False,
-    )
+    _install_log_sink(level)
