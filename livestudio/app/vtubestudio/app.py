@@ -22,6 +22,11 @@ from livestudio.services.animations import (
     MouthSyncController,
 )
 from livestudio.services.audio_stream import AudioStreamSource
+from livestudio.services.expressions import (
+    BUILTIN_EXPRESSION_UNITS,
+    ExpressionSelector,
+    ExpressionService,
+)
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
     VTubeStudioExpressionStateConfig,
@@ -43,6 +48,15 @@ class VTubeStudioApp:
         self.animation_manager = animation_manager
         self.animation_manager.register_runtime(self.platform)
         self._model_subscription: EventSubscriptionResponse | None = None
+        self._expression_service: ExpressionService | None = None
+
+    @property
+    def expression_service(self) -> ExpressionService:
+        """返回当前模型的情绪驱动表情服务。"""
+
+        if self._expression_service is None:
+            raise RuntimeError("当前模型尚未加载表情服务")
+        return self._expression_service
 
     async def initialize(self) -> None:
         """初始化应用依赖。"""
@@ -64,6 +78,7 @@ class VTubeStudioApp:
         await self.animation_manager.stop()
         await self.platform.stop()
         self._model_subscription = None
+        self._expression_service = None
 
     async def _subscribe_model_events(self) -> None:
         """订阅 VTube Studio 模型加载事件。"""
@@ -198,3 +213,17 @@ class VTubeStudioApp:
             ),
         ]
         await runtime.reload_controllers(controllers)
+        await self._apply_expression_calibration(config)
+
+    async def _apply_expression_calibration(self, config: VTubeStudioModelConfig) -> None:
+        """按当前模型配置刷新情绪驱动表情服务。"""
+
+        selector = ExpressionSelector(
+            BUILTIN_EXPRESSION_UNITS,
+            config.expression_calibration,
+        )
+        self._expression_service = ExpressionService(
+            tween=self.platform.tween,
+            calibration=config.expression_calibration,
+            selector=selector,
+        )

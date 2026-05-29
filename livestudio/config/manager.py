@@ -32,8 +32,8 @@ _MAX_TOLERANT_ATTEMPTS = 64
 class ConfigManager(Generic[ConfigT]):
     """管理经校验的配置快照，并提供显式保存语义。
 
-    支持宽容加载：当配置文件中的字段不再被模型识别（字段被删除、重命名、
-    类型变更、枚举值失效等）时，丢弃不兼容字段、保留其余可用部分；
+    支持宽容加载：先以默认配置补齐缺失字段；当配置文件中的字段不再被模型识别
+    （字段被删除、重命名、类型变更、枚举值失效等）时，丢弃不兼容字段、保留其余可用部分；
     迁移成功后会先把原文件备份为 ``<name>.<timestamp>.bak``，再写回迁移后的配置。
     """
 
@@ -137,26 +137,25 @@ class ConfigManager(Generic[ConfigT]):
 
     def _load_from_disk(self) -> ConfigT:
         data = self._load_dict(self._path)
-        try:
-            return self._model_type.model_validate(data)
-        except ValidationError:
-            return self._migrate_and_load(data)
+        return self._migrate_and_load(data)
 
     def _migrate_and_load(self, original_data: dict[str, Any]) -> ConfigT:
-        cleaned: Any = copy.deepcopy(original_data)
+        default_data = self._model_type().model_dump(mode="json", exclude_none=True)
+        cleaned: Any = _merge_defaults(default_data, original_data)
         dropped: list[tuple[str | int, ...]] = []
+        defaults_added = cleaned != original_data
 
         for _ in range(_MAX_TOLERANT_ATTEMPTS):
             try:
                 config = self._model_type.model_validate(cleaned)
             except ValidationError as exc:
-                if not self._apply_one_fix(cleaned, exc, dropped):
+                if not self._apply_one_fix(cleaned, default_data, exc, dropped):
                     raise ConfigValidationError(
                         f"配置校验失败且无法迁移: {self._path}",
                     ) from exc
                 continue
 
-            self._on_migrated(config, dropped)
+            self._on_migrated(config, dropped, defaults_added=defaults_added)
             return config
 
         raise ConfigValidationError(
@@ -166,6 +165,7 @@ class ConfigManager(Generic[ConfigT]):
     @staticmethod
     def _apply_one_fix(
         data: Any,
+        default_data: Any,
         error: ValidationError,
         dropped: list[tuple[str | int, ...]],
     ) -> bool:
@@ -176,6 +176,9 @@ class ConfigManager(Generic[ConfigT]):
             if entry.get("type", "") == "missing":
                 # 必填字段缺失：模型本身没有默认值，无法靠丢弃修复，跳过该项继续看下一条。
                 continue
+            if _reset_to_default_at_path(data, default_data, loc):
+                dropped.append(loc)
+                return True
             if _delete_at_path(data, loc):
                 dropped.append(loc)
                 return True
@@ -185,16 +188,23 @@ class ConfigManager(Generic[ConfigT]):
         self,
         config: ConfigT,
         dropped: list[tuple[str | int, ...]],
+        *,
+        defaults_added: bool,
     ) -> None:
-        if not dropped:
+        if not dropped and not defaults_added:
             return
 
-        formatted = ", ".join(".".join(str(part) for part in path) for path in dropped)
-        logger.warning(
-            "配置文件 {} 含有不兼容字段，已自动迁移并丢弃: {}",
-            self._path,
-            formatted,
-        )
+        if dropped:
+            formatted = ", ".join(
+                ".".join(str(part) for part in path) for path in dropped
+            )
+            logger.warning(
+                "配置文件 {} 含有不兼容字段，已自动迁移并丢弃: {}",
+                self._path,
+                formatted,
+            )
+        if defaults_added:
+            logger.warning("配置文件 {} 缺少默认字段，已自动补齐", self._path)
 
         try:
             self._backup_original()
@@ -253,3 +263,60 @@ def _delete_at_path(data: Any, path: tuple[str | int, ...]) -> bool:
         del cursor[last]
         return True
     return False
+
+
+def _merge_defaults(default_data: Any, loaded_data: Any) -> Any:
+    """Deep-merge loaded config over defaults so missing fields are backfilled."""
+
+    if isinstance(default_data, dict) and isinstance(loaded_data, dict):
+        merged = copy.deepcopy(default_data)
+        for key, value in loaded_data.items():
+            if key in merged:
+                merged[key] = _merge_defaults(merged[key], value)
+            else:
+                merged[key] = copy.deepcopy(value)
+        return merged
+    return copy.deepcopy(loaded_data)
+
+
+def _reset_to_default_at_path(
+    data: Any,
+    default_data: Any,
+    path: tuple[str | int, ...],
+) -> bool:
+    """Reset a nested value to the current model default when available."""
+
+    if not path:
+        return False
+    cursor: Any = data
+    default_cursor: Any = default_data
+    for key in path[:-1]:
+        if isinstance(cursor, dict):
+            if key not in cursor:
+                return False
+            cursor = cursor[key]
+        elif isinstance(cursor, list) and isinstance(key, int):
+            if key < 0 or key >= len(cursor):
+                return False
+            cursor = cursor[key]
+        else:
+            return False
+
+        if (isinstance(default_cursor, dict) and key in default_cursor) or (
+            isinstance(default_cursor, list)
+            and isinstance(key, int)
+            and key < len(default_cursor)
+        ):
+            default_cursor = default_cursor[key]
+        else:
+            return False
+
+    last = path[-1]
+    if not isinstance(cursor, dict):
+        return False
+    if last not in cursor:
+        return False
+    if not isinstance(default_cursor, dict) or last not in default_cursor:
+        return False
+    cursor[last] = copy.deepcopy(default_cursor[last])
+    return True

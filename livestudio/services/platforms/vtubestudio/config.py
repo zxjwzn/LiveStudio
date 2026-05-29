@@ -13,6 +13,7 @@ from livestudio.services.animations.controllers import (
     MouthExpressionControllerSettings,
     MouthSyncControllerSettings,
 )
+from livestudio.services.expressions import CalibrationProfile
 
 
 class VTubeStudioModelInfoConfig(BaseModel):
@@ -78,6 +79,19 @@ class VTubeStudioModelConfig(BaseModel):
         default_factory=list,
         description="模型加载时需要同步的表情激活状态配置。",
     )
+    expression_calibration: CalibrationProfile = Field(
+        default_factory=CalibrationProfile.with_defaults,
+        description="通用表情语义参数到当前模型 VTS 参数的校准配置。",
+    )
+
+    @field_validator("expression_calibration", mode="before")
+    @classmethod
+    def migrate_expression_calibration(cls, value: Any) -> Any:
+        """容错处理空 profile，确保能生成默认校准配置。"""
+
+        if value in (None, {}, []):
+            return CalibrationProfile.with_defaults()
+        return value
 
     @field_validator("expressions", mode="before")
     @classmethod
@@ -87,3 +101,15 @@ class VTubeStudioModelConfig(BaseModel):
         if isinstance(value, dict):
             return list(value.values())
         return value
+
+    def ensure_expression_calibration_defaults(self) -> bool:
+        """补齐当前模型的表情校准默认值。"""
+
+        changed = False
+        if self.expression_calibration.model_id != self.model.id:
+            self.expression_calibration.model_id = self.model.id
+            changed = True
+        if self.expression_calibration.model_name != self.model.name:
+            self.expression_calibration.model_name = self.model.name
+            changed = True
+        return self.expression_calibration.ensure_defaults() or changed

@@ -94,7 +94,7 @@ class VTubeStudioConfig(BaseModel):
         description="重新认证成功后是否自动恢复事件订阅。",
     )
     model_config_dir: str = Field(
-        default="config/models/vtubestudio",
+        default="models/vtubestudio",
         exclude=True,
         description="按 VTube Studio 模型持久化的平台配置目录。",
     )

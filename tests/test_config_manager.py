@@ -2,7 +2,7 @@
 
 覆盖：
 - 自动创建默认配置文件
-- 容错迁移：丢弃不兼容字段、备份原文件
+- 容错迁移：补齐缺失字段、丢弃不兼容字段、备份原文件
 """
 
 from __future__ import annotations
@@ -66,6 +66,52 @@ async def test_load_migrates_dropping_unknown_fields(tmp_path: Path) -> None:
     rewritten = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     assert "removed_top_level" not in rewritten
     assert "obsolete_flag" not in rewritten["child"]
+
+
+async def test_load_migrates_backfilling_missing_fields(tmp_path: Path) -> None:
+    config_path = tmp_path / "cfg.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "child": {},
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    manager = ConfigManager(_RootConfig, config_path)
+    config = await manager.load()
+
+    assert config.name == "default"
+    assert config.child.threshold == 0.5
+
+    backups = list(config_path.parent.glob(f"{config_path.name}.*.bak"))
+    assert len(backups) == 1, "补齐缺失字段后应留有一份原文件备份"
+
+    rewritten = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert rewritten == {"name": "default", "child": {"threshold": 0.5}}
+
+
+async def test_load_recovers_invalid_leaf_from_default(tmp_path: Path) -> None:
+    config_path = tmp_path / "cfg.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "kept",
+                "child": {"threshold": "bad"},
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    manager = ConfigManager(_RootConfig, config_path)
+    config = await manager.load()
+
+    assert config.name == "kept"
+    assert config.child.threshold == 0.5
+
+    rewritten = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert rewritten == {"name": "kept", "child": {"threshold": 0.5}}
 
 
 async def test_save_roundtrip(tmp_path: Path) -> None:

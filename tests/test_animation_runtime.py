@@ -6,12 +6,18 @@ from collections.abc import Iterable
 from typing import Literal
 
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
-from livestudio.services.animations.templates import LoadedTemplateInfo
+from livestudio.services.animations.templates import (
+    AnimationTemplatePlayer,
+    LoadedTemplateInfo,
+)
 from livestudio.services.platforms import PlatformService
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 
 
-class _TemplatePlayer:
+class _TemplatePlayer(AnimationTemplatePlayer):
+    def __init__(self) -> None:
+        pass
+
     async def load(self) -> None:
         pass
 
@@ -54,7 +60,7 @@ class _Platform(PlatformService):
 async def test_runtime_stop_before_registering_controllers() -> None:
     runtime = PlatformAnimationRuntime(
         platform=_Platform(),
-        template_player=_TemplatePlayer(),  # type: ignore[arg-type]
+        template_player=_TemplatePlayer(),
     )
 
     await runtime.stop()

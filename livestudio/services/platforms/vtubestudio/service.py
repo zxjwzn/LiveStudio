@@ -204,6 +204,7 @@ class VTubeStudio(PlatformService):
         model_config = await model_config_manager.reload()
         model_config.model.id = model_id
         model_config.model.name = model_name
+        model_config.ensure_expression_calibration_defaults()
         await model_config_manager.save()
         self._model_config_manager = model_config_manager
         self._current_model = identity
