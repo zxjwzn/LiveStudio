@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from pathlib import Path
 
 import numpy as np
 
 from livestudio.config import ConfigManager
-from livestudio.log import logger
+from livestudio.utils.log import logger
+from livestudio.utils.paths import config_path
 
 from .base import AudioStreamSource
 from .config import AudioStreamConfigFile, AudioStreamRouterConfig
@@ -30,7 +30,7 @@ class AudioStreamRouter(AudioStreamSource):
         super().__init__()
         self.config_manager = ConfigManager(
             AudioStreamConfigFile,
-            Path("config") / "audio_stream.yaml",
+            config_path("audio_stream.yaml"),
         )
         self._microphone_source: MicrophoneAudioStreamSource | None = None
         self._tts_source: TTSAudioStreamSource | None = None

@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import random
 
-from livestudio.log import logger
 from livestudio.tween import Easing, TweenRequest
+from livestudio.utils.log import logger
 
 from ..base import AnimationController
 from ..config import MouthExpressionControllerSettings
@@ -26,16 +26,14 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
         """执行一次嘴部表情变化周期。"""
 
         target_smile = random.uniform(self.config.smile_min, self.config.smile_max)
-        target_open = random.uniform(self.config.open_min, self.config.open_max)
         duration = random.uniform(self.config.min_duration, self.config.max_duration)
         easing = random.choice(
             [Easing.in_out_quad, Easing.in_out_back, Easing.in_out_sine],
         )
 
         logger.debug(
-            "嘴部表情: Smile: {:.2f}, Open: {:.2f}, 时长: {:.2f}s, 缓动: {}",
+            "嘴部表情: Smile: {:.2f}, 时长: {:.2f}s, 缓动: {}",
             target_smile,
-            target_open,
             duration,
             easing,
         )

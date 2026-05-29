@@ -4,9 +4,9 @@ import asyncio
 import contextlib
 
 from livestudio.app import VTubeStudioApp
-from livestudio.log import StatusLine, logger
 from livestudio.services import AudioSourceKind, AudioStreamRouter
 from livestudio.services.animations import AnimationManager
+from livestudio.utils.log import StatusLine, logger
 
 
 def _format_level_bar(level: float, *, width: int = 24) -> str:

@@ -14,7 +14,7 @@ import json5
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from livestudio.log import logger
+from livestudio.utils.log import logger
 
 from .errors import (
     ConfigFormatError,
@@ -189,9 +189,7 @@ class ConfigManager(Generic[ConfigT]):
         if not dropped:
             return
 
-        formatted = ", ".join(
-            ".".join(str(part) for part in path) for path in dropped
-        )
+        formatted = ", ".join(".".join(str(part) for part in path) for path in dropped)
         logger.warning(
             "配置文件 {} 含有不兼容字段，已自动迁移并丢弃: {}",
             self._path,

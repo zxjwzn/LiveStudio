@@ -7,7 +7,7 @@ import contextlib
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from livestudio.log import logger
+from livestudio.utils.log import logger
 
 from .config import ControllerSettings
 from .models import AnimationType

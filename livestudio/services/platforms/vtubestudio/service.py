@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Literal
 
 from livestudio.config import ConfigManager
-from livestudio.log import logger
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
+from livestudio.utils.log import logger
+from livestudio.utils.paths import config_path, resolve_config_path
 
 from ....clients.vtube_studio.client import VTubeStudioClient
 from ....clients.vtube_studio.config import VTubeStudioConfig
@@ -43,7 +44,7 @@ class VTubeStudio(PlatformService):
     ) -> None:
         self.config_manager = ConfigManager(
             VTubeStudioConfig,
-            Path("config") / "vtube_studio.yaml",
+            config_path("vtube_studio.yaml"),
         )
         self._client: VTubeStudioClient | None = None
         self._events: VTSEventManager | None = None
@@ -218,7 +219,7 @@ class VTubeStudio(PlatformService):
         safe_name = self._sanitize_model_config_part(identity.model_name)
         safe_id = self._sanitize_model_config_part(identity.model_id)
         filename = f"{safe_name}_{safe_id}.yaml"
-        return Path(self.config.model_config_dir) / filename
+        return resolve_config_path(self.config.model_config_dir) / filename
 
     def _sanitize_model_config_part(self, value: str) -> str:
         sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", value).strip(" ._")

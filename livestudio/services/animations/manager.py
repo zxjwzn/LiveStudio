@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from livestudio.log import logger
 from livestudio.services.platforms import PlatformService
+from livestudio.utils.log import logger
+from livestudio.utils.paths import resource_path
 
 from .controllers import (
     AnimationController,
@@ -22,9 +23,9 @@ class AnimationManager:
     def __init__(
         self,
         *,
-        template_root: Path = Path("resources") / "animations",
+        template_root: Path | None = None,
     ) -> None:
-        self.template_root = template_root
+        self.template_root = template_root or resource_path("animations")
         self._runtimes: dict[str, PlatformAnimationRuntime] = {}
         self._initialized = False
         self._started = False

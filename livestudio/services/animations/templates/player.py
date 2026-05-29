@@ -11,8 +11,8 @@ from typing import Any, Final
 
 import json5
 
-from livestudio.log import logger
 from livestudio.tween import ParameterTweenEngine, TweenRequest
+from livestudio.utils.log import logger
 
 from .models import (
     AnimationTemplate,

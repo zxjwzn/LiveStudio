@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 
-from livestudio.log import logger
 from livestudio.services.platforms import PlatformService
+from livestudio.utils.log import logger
 
 from .controllers import AnimationController, AnimationType, ControllerSettings
 from .templates import AnimationTemplatePlayer, LoadedTemplateInfo

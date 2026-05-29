@@ -9,7 +9,7 @@ from typing import TypeGuard
 import numpy as np
 import sounddevice as sd
 
-from livestudio.log import StatusLine, logger
+from livestudio.utils.log import StatusLine, logger
 
 from ...base import AudioStreamSource
 from ...models import AudioChunk, AudioChunkMetadata

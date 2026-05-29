@@ -9,7 +9,7 @@
       "mcp__ide__getDiagnostics",
       "Bash(.venv/Scripts/python.exe -c ' *)",
       "Bash(.venv/Scripts/python.exe -c \"import ast; [ast.parse\\(open\\(p, encoding='utf-8'\\).read\\(\\)\\) for p in ['livestudio/log.py','livestudio/config/manager.py','livestudio/clients/vtube_studio/client.py','livestudio/tween/engine.py']]; print\\('OK'\\)\")",
-      "Bash(.venv/Scripts/python.exe -c \"import livestudio; from livestudio.tween.engine import ParameterTweenEngine; from livestudio.clients.vtube_studio.client import VTubeStudioClient; from livestudio.config.manager import ConfigManager; from livestudio.log import logger, configure_logging; print\\('IMPORT OK'\\)\")",
+      "Bash(.venv/Scripts/python.exe -c \"import livestudio; from livestudio.tween.engine import ParameterTweenEngine; from livestudio.clients.vtube_studio.client import VTubeStudioClient; from livestudio.config.manager import ConfigManager; from livestudio.utils.log import logger, configure_logging; print\\('IMPORT OK'\\)\")",
       "Bash(.venv/Scripts/python.exe -m pip install -q \"pytest>=8.0\" \"pytest-asyncio>=0.23\")",
       "Bash(uv --version)",
       "Bash(uv sync *)",

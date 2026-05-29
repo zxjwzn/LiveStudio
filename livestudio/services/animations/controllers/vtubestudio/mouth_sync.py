@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 
-from livestudio.log import logger
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.audio_stream import (
     AudioChunk,
@@ -12,6 +11,7 @@ from livestudio.services.audio_stream import (
     AudioStreamSource,
 )
 from livestudio.tween import Easing, TweenRequest
+from livestudio.utils.log import logger
 
 from ..base import AnimationController
 from ..config import MouthSyncControllerSettings

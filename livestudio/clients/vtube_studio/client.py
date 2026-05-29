@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar
 
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
-from livestudio.log import logger
+from livestudio.utils.log import logger
 
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .errors import (
@@ -129,6 +130,7 @@ class VTubeStudioClient:
         self._reader_task: asyncio.Task[None] | None = None
         self._event_handlers: dict[str, list[EventHandler]] = {}
         self._event_subscriptions: dict[str, EventSubscriptionRequest] = {}
+        self._event_tasks: set[asyncio.Task[None]] = set()
 
     @property
     def is_connected(self) -> bool:
@@ -172,12 +174,14 @@ class VTubeStudioClient:
         self._connection = None
         self._reader_task = None
         if connection is None:
+            await self._cancel_event_tasks()
             return
 
         if reader_task is not None:
             reader_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await reader_task
+        await self._cancel_event_tasks()
 
         try:
             await connection.close()
@@ -320,9 +324,45 @@ class VTubeStudioClient:
             raise EventDispatchError(f"无法解析事件 {message_type}") from exc
 
         for handler in list(handlers):
-            result = handler(envelope)
-            if asyncio.iscoroutine(result):
-                await cast(Awaitable[None], result)
+            try:
+                result = handler(envelope)
+            except Exception:
+                logger.exception(
+                    "VTube Studio 事件处理器同步执行失败: {}",
+                    message_type,
+                )
+                continue
+            if inspect.isawaitable(result):
+                self._track_event_task(
+                    asyncio.create_task(
+                        self._run_event_handler(message_type, result),
+                    ),
+                )
+
+    def _track_event_task(self, task: asyncio.Task[None]) -> None:
+        self._event_tasks.add(task)
+        task.add_done_callback(self._event_tasks.discard)
+
+    async def _run_event_handler(
+        self,
+        message_type: str,
+        result: Awaitable[None],
+    ) -> None:
+        try:
+            await result
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("VTube Studio 事件处理器异步执行失败: {}", message_type)
+
+    async def _cancel_event_tasks(self) -> None:
+        tasks = tuple(self._event_tasks)
+        self._event_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     def _fail_pending_requests(self, error: Exception) -> None:
         """使所有挂起请求失败。"""

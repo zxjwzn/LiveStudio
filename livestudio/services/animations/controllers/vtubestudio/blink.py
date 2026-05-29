@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import random
 
-from livestudio.log import logger
 from livestudio.tween import Easing, TweenRequest
+from livestudio.utils.log import logger
 
 from ..base import AnimationController
 from ..config import BlinkControllerSettings

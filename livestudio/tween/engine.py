@@ -7,7 +7,7 @@ import contextlib
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import Literal
 
-from livestudio.log import logger
+from livestudio.utils.log import logger
 
 from .easing import EASING_REGISTRY, Easing, EasingFunction
 from .models import ActiveTween, ControlledParameterState, TweenRequest
