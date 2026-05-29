@@ -302,11 +302,13 @@ def _reset_to_default_at_path(
         else:
             return False
 
-        if (isinstance(default_cursor, dict) and key in default_cursor) or (
-            isinstance(default_cursor, list)
-            and isinstance(key, int)
-            and key < len(default_cursor)
-        ):
+        if isinstance(default_cursor, dict):
+            if key not in default_cursor:
+                return False
+            default_cursor = default_cursor[key]
+        elif isinstance(default_cursor, list) and isinstance(key, int):
+            if key < 0 or key >= len(default_cursor):
+                return False
             default_cursor = default_cursor[key]
         else:
             return False

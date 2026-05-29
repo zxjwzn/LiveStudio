@@ -197,8 +197,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="情绪名称或 name=weight，可重复，例如 --emotion joy=0.8 --emotion shy=0.2。",
     )
     parser.add_argument("--intensity", type=float, default=0.7, help="表情强度 0~1。")
-    parser.add_argument("--randomness", type=float, default=0.25, help="组合随机度 0~1。")
-    parser.add_argument("--duration-scale", type=float, default=1.0, help="动作时长倍率。")
+    parser.add_argument(
+        "--randomness",
+        type=float,
+        default=0.25,
+        help="组合随机度 0~1。",
+    )
+    parser.add_argument(
+        "--duration-scale",
+        type=float,
+        default=1.0,
+        help="动作时长倍率。",
+    )
     parser.add_argument("--hold", type=float, default=1.2, help="AU 测试后保持秒数。")
     parser.add_argument(
         "--no-none-regions",
