@@ -16,12 +16,7 @@ def _default_home_dir() -> Path:
     if override:
         return Path(override).expanduser()
 
-    if sys.platform == "win32":
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            return Path(appdata) / "LiveStudio"
-
-    return Path.home() / ".config" / "livestudio"
+    return PROJECT_ROOT
 
 
 def _default_resource_dir() -> Path:
@@ -37,7 +32,7 @@ def _default_resource_dir() -> Path:
 
 
 HOME_DIR = _default_home_dir()
-CONFIG_DIR = HOME_DIR / "config"
+CONFIG_DIR = HOME_DIR / "configs"
 RESOURCE_DIR = _default_resource_dir()
 
 
@@ -60,7 +55,7 @@ def resolve_config_path(path: str | os.PathLike[str]) -> Path:
     if candidate.is_absolute():
         return candidate
 
-    if candidate.parts[:1] == ("config",):
+    if candidate.parts[:1] == ("configs",):
         return HOME_DIR / candidate
 
     return CONFIG_DIR / candidate
