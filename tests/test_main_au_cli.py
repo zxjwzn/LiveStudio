@@ -14,7 +14,7 @@ def test_au_cli_builds_emotion_request() -> None:
             "--emotion",
             "joy=0.8",
             "--emotion",
-            "shy=0.2",
+            "sadness=0.2",
             "--intensity",
             "0.6",
             "--randomness",
@@ -26,7 +26,7 @@ def test_au_cli_builds_emotion_request() -> None:
 
     assert request.emotions == {
         EmotionKind.JOY: 0.8,
-        EmotionKind.SHY: 0.2,
+        EmotionKind.SADNESS: 0.2,
     }
     assert request.intensity == 0.6
     assert request.randomness == 0.0

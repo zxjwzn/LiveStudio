@@ -194,7 +194,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--emotion",
         action="append",
         default=[],
-        help="情绪名称或 name=weight，可重复，例如 --emotion joy=0.8 --emotion shy=0.2。",
+        help="情绪名称或 name=weight，可重复，例如 --emotion joy=0.8 --emotion sadness=0.2。",
     )
     parser.add_argument("--intensity", type=float, default=0.7, help="表情强度 0~1。")
     parser.add_argument(

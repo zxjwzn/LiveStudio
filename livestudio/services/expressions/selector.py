@@ -164,7 +164,7 @@ class ExpressionSelector:
         return sum(
             weight
             for emotion, weight in request.emotions.items()
-            if emotion not in {EmotionKind.NEUTRAL, EmotionKind.RELAXED}
+            if emotion is not EmotionKind.NEUTRAL
         )
 
     def _score_combo(

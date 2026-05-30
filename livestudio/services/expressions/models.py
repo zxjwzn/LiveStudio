@@ -16,14 +16,7 @@ class EmotionKind(StrEnum):
     JOY = "joy"
     SADNESS = "sadness"
     ANGER = "anger"
-    FEAR = "fear"
-    SURPRISE = "surprise"
-    DISGUST = "disgust"
     NEUTRAL = "neutral"
-    RELAXED = "relaxed"
-    SHY = "shy"
-    CONFIDENT = "confident"
-    CONFUSED = "confused"
 
 
 class ExpressionRegion(StrEnum):
