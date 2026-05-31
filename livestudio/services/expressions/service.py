@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterable
 
-from livestudio.tween import (
-    ControlledParameterState,
-    ParameterTweenEngine,
-    TweenRequest,
+from livestudio.services.platforms import PlatformService
+from livestudio.services.semantic_actions import (
+    SemanticActionTarget,
+    SemanticTweenRequest,
 )
 
-from .calibration import CalibrationProfile
-from .models import EmotionRequest, ExpressionUnit, SelectedExpression, UnitTarget
+from .models import EmotionRequest, ExpressionUnit, SelectedExpression
 from .selector import ExpressionSelector
 
 
@@ -22,12 +20,10 @@ class ExpressionService:
     def __init__(
         self,
         *,
-        tween: ParameterTweenEngine,
-        calibration: CalibrationProfile,
+        platform: PlatformService,
         selector: ExpressionSelector,
     ) -> None:
-        self.tween = tween
-        self.calibration = calibration
+        self.platform = platform
         self.selector = selector
 
     async def express(self, request: EmotionRequest) -> SelectedExpression:
@@ -62,50 +58,24 @@ class ExpressionService:
 
     async def apply_targets(
         self,
-        targets: Iterable[UnitTarget],
+        targets: Iterable[SemanticActionTarget],
         *,
         duration_scale: float = 1.0,
         priority: int = 40,
         easing: str = "in_out_sine",
     ) -> None:
-        requests: list[TweenRequest] = []
-        current_states = self.tween.controlled_params
-        for target in targets:
-            for state in self.calibration.resolve(target.semantic_param, target.value):
-                requests.append(
-                    TweenRequest(
-                        parameter_name=state.name,
-                        end_value=state.value,
-                        start_value=self._resolve_start_value(
-                            state.name,
-                            state.start_value,
-                            current_states,
-                        ),
-                        duration=max(0.0, 0.35 * duration_scale),
-                        easing=easing,
-                        mode=state.mode,
-                        priority=priority,
-                        keep_alive=state.keep_alive,
-                    ),
-                )
-
-        if not requests:
-            return
-        await asyncio.gather(*(self.tween.tween(request) for request in requests))
+        await self.platform.tween_semantic(
+            SemanticTweenRequest(
+                targets=tuple(targets),
+                duration=0.35 * duration_scale,
+                easing=easing,
+                priority=priority,
+                keep_alive=True,
+            ),
+        )
 
     def _dominant_easing(self, selected: SelectedExpression) -> str:
         for unit in selected.units.values():
             if unit.targets:
                 return unit.easing
         return "in_out_sine"
-
-    def _resolve_start_value(
-        self,
-        parameter_name: str,
-        fallback_start_value: float,
-        current_states: dict[str, ControlledParameterState],
-    ) -> float:
-        current_state = current_states.get(parameter_name)
-        if current_state is not None:
-            return current_state.value
-        return fallback_start_value

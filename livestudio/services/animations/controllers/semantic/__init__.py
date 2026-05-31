@@ -1,4 +1,4 @@
-"""VTube Studio 动画控制器导出项。"""
+"""Platform-independent semantic animation controllers."""
 
 from .blink import BlinkController
 from .body_swing import BodySwingController

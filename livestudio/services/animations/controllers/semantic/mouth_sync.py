@@ -1,4 +1,4 @@
-"""基于音频响度的 VTube Studio 嘴部开合同步控制器。"""
+"""Platform-independent semantic mouth sync controller."""
 
 from __future__ import annotations
 
@@ -10,7 +10,12 @@ from livestudio.services.audio_stream import (
     AudioChunkSubscription,
     AudioStreamSource,
 )
-from livestudio.tween import Easing, TweenRequest
+from livestudio.services.semantic_actions import (
+    SemanticAction,
+    SemanticActionTarget,
+    SemanticTweenRequest,
+)
+from livestudio.tween import Easing
 from livestudio.utils.log import logger
 
 from ..base import AnimationController
@@ -19,7 +24,7 @@ from ..models import AnimationType
 
 
 class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
-    """根据音频响度实时驱动 MouthOpen。"""
+    """根据音频响度实时驱动嘴部张开语义动作。"""
 
     def __init__(
         self,
@@ -110,8 +115,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
             return self._closed_open
 
         return self._clamp01(
-            self.config.open_min
-            + normalized_level * (self.config.open_max - self.config.open_min),
+            normalized_level * self.config.open_amplitude,
         )
 
     def _normalize_level(self, rms: float) -> float:
@@ -134,10 +138,14 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         duration = (
             self.config.attack_duration if is_opening else self.config.release_duration
         )
-        await self.runtime.platform.tween.tween(
-            TweenRequest(
-                parameter_name="MouthOpen",
-                end_value=self._clamp01(open_value),
+        await self.runtime.platform.tween_semantic(
+            SemanticTweenRequest(
+                targets=(
+                    SemanticActionTarget(
+                        SemanticAction.MOUTH_OPEN.value,
+                        self._clamp01(open_value),
+                    ),
+                ),
                 duration=duration,
                 easing=Easing.linear,
                 priority=self.config.priority,

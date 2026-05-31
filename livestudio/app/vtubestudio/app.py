@@ -68,9 +68,20 @@ class VTubeStudioApp:
         """启动 VTube Studio 应用。"""
 
         await self.platform.start()
+        await self.load_current_model()
+        await self.animation_manager.start()
+
+    async def start_platform_for_expression_test(self) -> None:
+        """启动平台并加载当前模型，不启动 idle 动画控制器。"""
+
+        await self.platform.start()
+        await self.load_current_model()
+
+    async def load_current_model(self) -> None:
+        """订阅模型事件并加载当前模型配置。"""
+
         await self._subscribe_model_events()
         await self._load_active_model_config()
-        await self.animation_manager.start()
 
     async def stop(self) -> None:
         """停止应用并释放资源。"""
@@ -213,17 +224,16 @@ class VTubeStudioApp:
             ),
         ]
         await runtime.reload_controllers(controllers)
-        await self._apply_expression_calibration(config)
+        await self._apply_expression_semantics(config)
 
-    async def _apply_expression_calibration(self, config: VTubeStudioModelConfig) -> None:
+    async def _apply_expression_semantics(self, config: VTubeStudioModelConfig) -> None:
         """按当前模型配置刷新情绪驱动表情服务。"""
 
         selector = ExpressionSelector(
             BUILTIN_EXPRESSION_UNITS,
-            config.expression_calibration,
+            config.semantic_profile,
         )
         self._expression_service = ExpressionService(
-            tween=self.platform.tween,
-            calibration=config.expression_calibration,
+            platform=self.platform,
             selector=selector,
         )

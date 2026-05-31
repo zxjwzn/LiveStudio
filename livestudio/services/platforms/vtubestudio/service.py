@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from livestudio.config import ConfigManager
+from livestudio.services.semantic_actions import SemanticActionAdapter
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path, resolve_config_path
@@ -32,6 +33,7 @@ from ....clients.vtube_studio.models import (
 from ..base import PlatformService
 from ..model import PlatformModelIdentity
 from .config import VTubeStudioModelConfig
+from .semantic import VTubeStudioSemanticAdapter
 
 
 class VTubeStudio(PlatformService):
@@ -51,6 +53,7 @@ class VTubeStudio(PlatformService):
         self._discovery: VTubeStudioDiscovery | None = None
         self._model_config_manager: ConfigManager[VTubeStudioModelConfig] | None = None
         self._current_model: PlatformModelIdentity | None = None
+        self._semantic_adapter: VTubeStudioSemanticAdapter | None = None
         self._tween = ParameterTweenEngine(
             self._send_parameter_states,
         )
@@ -68,6 +71,12 @@ class VTubeStudio(PlatformService):
         """返回 VTube Studio 参数缓动引擎。"""
 
         return self._tween
+
+    @property
+    def semantic_adapter(self) -> SemanticActionAdapter | None:
+        """返回当前模型的 VTube Studio 语义动作适配器。"""
+
+        return self._semantic_adapter
 
     @property
     def config(self) -> VTubeStudioConfig:
@@ -165,6 +174,7 @@ class VTubeStudio(PlatformService):
         self._discovery = None
         self._model_config_manager = None
         self._current_model = None
+        self._semantic_adapter = None
         self._initialized = False
         self._started = False
 
@@ -204,10 +214,13 @@ class VTubeStudio(PlatformService):
         model_config = await model_config_manager.reload()
         model_config.model.id = model_id
         model_config.model.name = model_name
-        model_config.ensure_expression_calibration_defaults()
+        model_config.ensure_semantic_profile_defaults()
         await model_config_manager.save()
         self._model_config_manager = model_config_manager
         self._current_model = identity
+        self._semantic_adapter = VTubeStudioSemanticAdapter(
+            model_config.semantic_profile,
+        )
         logger.info(
             "已加载 VTube Studio 模型配置: {} ({}) -> {}",
             model_name,

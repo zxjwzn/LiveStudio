@@ -9,6 +9,8 @@ from typing import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from livestudio.services.semantic_actions import SemanticActionTarget
+
 
 class EmotionKind(StrEnum):
     """Supported emotion categories for expression selection."""
@@ -28,40 +30,13 @@ class ExpressionRegion(StrEnum):
     HEAD = "head"
 
 
-class SemanticParameter(StrEnum):
-    """Model-independent expression parameter names."""
-
-    BROW_INNER_UP = "brow.inner_up"
-    BROW_OUTER_UP = "brow.outer_up"
-    BROW_DOWN = "brow.down"
-    EYE_OPEN = "eye.open"
-    EYE_SQUINT = "eye.squint"
-    EYE_WIDE = "eye.wide"
-    MOUTH_OPEN = "mouth.open"
-    MOUTH_SMILE = "mouth.smile"
-    MOUTH_FROWN = "mouth.frown"
-    MOUTH_PUCKER = "mouth.pucker"
-    HEAD_YAW = "head.yaw"
-    HEAD_PITCH = "head.pitch"
-    HEAD_ROLL = "head.roll"
-
-
-@dataclass(frozen=True, slots=True)
-class UnitTarget:
-    """A semantic parameter target in an expression unit."""
-
-    semantic_param: str
-    value: float
-    weight: float = 1.0
-
-
 @dataclass(frozen=True, slots=True)
 class ExpressionUnit:
     """A reusable facial action unit inspired by FACS action units."""
 
     id: str
     region: ExpressionRegion
-    targets: tuple[UnitTarget, ...]
+    targets: tuple[SemanticActionTarget, ...]
     emotions: Mapping[EmotionKind, float]
     intensity: float
     naturalness: float = 1.0
@@ -114,7 +89,7 @@ class ScoredExpressionUnit:
     unit: ExpressionUnit
     score: float
     emotion_match: float
-    calibration_support: float
+    platform_support: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,4 +99,4 @@ class SelectedExpression:
     units: Mapping[ExpressionRegion, ExpressionUnit]
     score: float
     emotion_match: float
-    targets: tuple[UnitTarget, ...]
+    targets: tuple[SemanticActionTarget, ...]

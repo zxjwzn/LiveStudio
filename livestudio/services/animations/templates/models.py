@@ -1,8 +1,11 @@
 from typing import Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from livestudio.tween import TweenRequest
+from livestudio.services.semantic_actions import (
+    DEFAULT_SEMANTIC_ACTION_SPECS,
+    SemanticTweenRequest,
+)
 
 TemplatePrimitive: TypeAlias = float | int | bool | str
 TemplateValue: TypeAlias = TemplatePrimitive | dict[str, str | list[float | int]]
@@ -22,12 +25,12 @@ class TemplateParameterDefinition(BaseModel):
 
 
 class TemplateActionDefinition(BaseModel):
-    """模板中的单个参数动作。"""
+    """模板中的单个 AU 语义动作。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    parameter: str = Field(min_length=1, description="目标参数名。")
-    to: TemplateValue = Field(description="目标值。")
+    parameter: str = Field(min_length=1, description="目标 AU 动作名。")
+    to: TemplateValue = Field(description="目标 AU 归一化值。")
     duration: TemplateValue = Field(default=0.0, description="动作时长。")
     from_value: TemplateValue | None = Field(
         default=None,
@@ -36,7 +39,14 @@ class TemplateActionDefinition(BaseModel):
     )
     delay: TemplateValue = Field(default=0.0, description="动作延迟。")
     easing: str = Field(default="linear", description="缓动函数名。")
-    mode: Literal["set", "add"] = Field(default="set", description="参数写入模式。")
+    mode: Literal["set", "add"] = Field(default="set", description="AU 写入模式。")
+
+    @field_validator("parameter")
+    @classmethod
+    def validate_semantic_action(cls, value: str) -> str:
+        if value not in DEFAULT_SEMANTIC_ACTION_SPECS:
+            raise ValueError(f"未知 AU 动作名: {value}")
+        return value
 
 
 class TemplateDataDefinition(BaseModel):
@@ -108,7 +118,7 @@ class TemplatePlayback(BaseModel):
         default_factory=dict,
         description="求值上下文。",
     )
-    actions: list[TweenRequest] = Field(
+    actions: list[SemanticTweenRequest] = Field(
         default_factory=list,
         description="动作列表。",
     )

@@ -1,11 +1,15 @@
-"""VTube Studio 身体摇摆控制器。"""
+"""Platform-independent semantic body swing controller."""
 
 from __future__ import annotations
 
-import asyncio
 import random
 
-from livestudio.tween import Easing, TweenRequest
+from livestudio.services.semantic_actions import (
+    SemanticAction,
+    SemanticActionTarget,
+    SemanticTweenRequest,
+)
+from livestudio.tween import Easing
 from livestudio.utils.log import logger
 
 from ..base import AnimationController
@@ -14,7 +18,7 @@ from ..models import AnimationType
 
 
 class BodySwingController(AnimationController[BodySwingControllerSettings]):
-    """通过 FaceAngleX/Z 实现待机身体摇摆。"""
+    """通过头部偏转/侧倾语义动作实现待机身体摇摆。"""
 
     @property
     def animation_type(self) -> AnimationType:
@@ -25,39 +29,36 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
     async def run_cycle(self) -> None:
         """执行一次身体摇摆周期。"""
 
-        target_x = random.uniform(self.config.x_min, self.config.x_max)
-        target_z = random.uniform(self.config.z_min, self.config.z_max)
+        target_yaw = random.uniform(
+            -self.config.yaw_amplitude,
+            self.config.yaw_amplitude,
+        )
+        target_roll = random.uniform(
+            -self.config.roll_amplitude,
+            self.config.roll_amplitude,
+        )
         duration = random.uniform(self.config.min_duration, self.config.max_duration)
         easing = random.choice(
             [Easing.in_out_quad, Easing.in_out_back, Easing.in_out_sine],
         )
 
         logger.debug(
-            "身体摇摆: X: {:.2f}, Z: {:.2f}, 时长: {:.2f}s",
-            target_x,
-            target_z,
+            "身体摇摆: yaw: {:.2f}, roll: {:.2f}, 时长: {:.2f}s",
+            target_yaw,
+            target_roll,
             duration,
         )
 
-        requests = [
-            TweenRequest(
-                parameter_name="FaceAngleX",
-                end_value=target_x,
+        await self.runtime.platform.tween_semantic(
+            SemanticTweenRequest(
+                targets=(
+                    SemanticActionTarget(SemanticAction.HEAD_YAW.value, target_yaw),
+                    SemanticActionTarget(SemanticAction.HEAD_ROLL.value, target_roll),
+                ),
                 duration=duration,
                 easing=easing,
                 priority=10,
             ),
-            TweenRequest(
-                parameter_name="FaceAngleZ",
-                end_value=target_z,
-                duration=duration,
-                easing=easing,
-                priority=10,
-            ),
-        ]
-
-        await asyncio.gather(
-            *(self.runtime.platform.tween.tween(request) for request in requests),
         )
 
     async def execute(self, **kwargs: object) -> None:

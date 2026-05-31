@@ -1,11 +1,15 @@
-"""VTube Studio 嘴部表情控制器。"""
+"""Platform-independent semantic mouth expression controller."""
 
 from __future__ import annotations
 
-import asyncio
 import random
 
-from livestudio.tween import Easing, TweenRequest
+from livestudio.services.semantic_actions import (
+    SemanticAction,
+    SemanticActionTarget,
+    SemanticTweenRequest,
+)
+from livestudio.tween import Easing
 from livestudio.utils.log import logger
 
 from ..base import AnimationController
@@ -14,7 +18,7 @@ from ..models import AnimationType
 
 
 class MouthExpressionController(AnimationController[MouthExpressionControllerSettings]):
-    """随机改变微笑和嘴巴张开程度，增加待机生动性。"""
+    """随机改变嘴角上扬语义强度，增加待机生动性。"""
 
     @property
     def animation_type(self) -> AnimationType:
@@ -25,7 +29,7 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
     async def run_cycle(self) -> None:
         """执行一次嘴部表情变化周期。"""
 
-        target_smile = random.uniform(self.config.smile_min, self.config.smile_max)
+        target_smile = random.uniform(0.0, self.config.smile_amplitude)
         duration = random.uniform(self.config.min_duration, self.config.max_duration)
         easing = random.choice(
             [Easing.in_out_quad, Easing.in_out_back, Easing.in_out_sine],
@@ -38,15 +42,13 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
             easing,
         )
 
-        await asyncio.gather(
-            self.runtime.platform.tween.tween(
-                TweenRequest(
-                    parameter_name="MouthSmile",
-                    end_value=target_smile,
-                    duration=duration,
-                    easing=easing,
-                    priority=10,
-                ),
+        target = SemanticActionTarget(SemanticAction.MOUTH_SMILE.value, target_smile)
+        await self.runtime.platform.tween_semantic(
+            SemanticTweenRequest(
+                targets=(target,),
+                duration=duration,
+                easing=easing,
+                priority=10,
             ),
         )
 

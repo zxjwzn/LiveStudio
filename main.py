@@ -9,10 +9,13 @@ from livestudio.services import AudioSourceKind, AudioStreamRouter
 from livestudio.services.animations import AnimationManager
 from livestudio.services.expressions import (
     BUILTIN_EXPRESSION_UNITS,
-    CalibrationProfile,
     EmotionKind,
     EmotionRequest,
     ExpressionSelector,
+)
+from livestudio.services.platforms.vtubestudio import (
+    VTubeStudioSemanticAdapter,
+    default_vtube_studio_semantic_profile,
 )
 from livestudio.utils.log import StatusLine, logger
 
@@ -74,7 +77,7 @@ def _build_emotion_request(args: argparse.Namespace) -> EmotionRequest:
 
 def _log_selected_expression(
     selected,
-    calibration: CalibrationProfile,
+    adapter: VTubeStudioSemanticAdapter,
 ) -> None:
     logger.info(
         "[AU] score={:.3f}, emotion_match={:.3f}",
@@ -90,18 +93,18 @@ def _log_selected_expression(
             ",".join(sorted(unit.tags)) or "-",
         )
     for target in selected.targets:
-        states = calibration.resolve(target.semantic_param, target.value)
+        states = adapter.resolve(target)
         if not states:
             logger.warning(
-                "[AU] {}={:.3f} 未找到可用校准",
-                target.semantic_param,
+                "[AU] {}={:.3f} 未找到可用语义映射",
+                target.action,
                 target.value,
             )
             continue
         for state in states:
             logger.info(
                 "[AU] {}={:.3f} -> {} {:.3f}->{:.3f}",
-                target.semantic_param,
+                target.action,
                 target.value,
                 state.name,
                 state.start_value,
@@ -110,13 +113,14 @@ def _log_selected_expression(
 
 
 async def preview_au_system(args: argparse.Namespace) -> None:
-    """在不连接 VTS 的情况下预览 AU 选择与默认校准映射。"""
+    """在不连接 VTS 的情况下预览 AU 选择与默认语义映射。"""
 
-    calibration = CalibrationProfile.with_defaults()
-    selector = ExpressionSelector(BUILTIN_EXPRESSION_UNITS, calibration)
+    profile = default_vtube_studio_semantic_profile()
+    adapter = VTubeStudioSemanticAdapter(profile)
+    selector = ExpressionSelector(BUILTIN_EXPRESSION_UNITS, profile)
     request = _build_emotion_request(args)
     selected = selector.preview(request)
-    _log_selected_expression(selected, calibration)
+    _log_selected_expression(selected, adapter)
 
 
 async def test_au_system(args: argparse.Namespace) -> None:
@@ -131,14 +135,15 @@ async def test_au_system(args: argparse.Namespace) -> None:
 
     try:
         await vtubestudio_app.initialize()
-        await vtubestudio_app.platform.start()
-        await vtubestudio_app._subscribe_model_events()
-        await vtubestudio_app._load_active_model_config()
+        await vtubestudio_app.start_platform_for_expression_test()
         request = _build_emotion_request(args)
         selected = vtubestudio_app.expression_service.preview(request)
+        adapter = vtubestudio_app.platform.semantic_adapter
+        if adapter is None:
+            raise RuntimeError("当前平台未实现 AU 语义映射")
         _log_selected_expression(
             selected,
-            vtubestudio_app.expression_service.calibration,
+            adapter,
         )
         await vtubestudio_app.expression_service.express(request)
         logger.info("[AU] 已触发表情，保持 {:.2f} 秒", args.hold)
@@ -183,7 +188,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--au-preview",
         action="store_true",
-        help="只预览 AU 选择和默认校准映射，不连接 VTube Studio。",
+        help="只预览 AU 选择和默认语义映射，不连接 VTube Studio。",
     )
     parser.add_argument(
         "--au-test",

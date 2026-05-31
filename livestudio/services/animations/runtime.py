@@ -27,6 +27,12 @@ class PlatformAnimationRuntime:
         self._initialized = False
         self._started = False
 
+        if template_player.platform is not platform:
+            raise ValueError(
+                "动画模板播放器绑定的平台与运行时平台不一致: "
+                f"{template_player.platform.name} != {platform.name}",
+            )
+
         for controller in controllers or ():
             self.register_controller(controller)
 
@@ -143,6 +149,10 @@ class PlatformAnimationRuntime:
     ) -> None:
         """注册当前平台的控制器实例。"""
 
+        if controller.runtime is not self:
+            raise ValueError(
+                f"动画控制器绑定的运行时与目标运行时不一致: {controller.name}",
+            )
         if controller.name in self._controllers:
             raise ValueError(
                 f"平台 {self.platform_name} 已存在动画控制器: {controller.name}",

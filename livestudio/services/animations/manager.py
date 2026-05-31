@@ -58,7 +58,7 @@ class AnimationManager:
             raise ValueError(f"平台动画运行时已存在: {platform.name}")
 
         template_player = AnimationTemplatePlayer(
-            tween=platform.tween,
+            platform=platform,
             template_dir=self.template_root / platform.name,
         )
         runtime = PlatformAnimationRuntime(
@@ -92,6 +92,26 @@ class AnimationManager:
         self.get_runtime(platform_name).register_controller(
             controller,
         )
+
+    async def initialize_runtime(self, platform_name: str) -> None:
+        """初始化指定平台动画运行时。"""
+
+        await self.get_runtime(platform_name).initialize()
+
+    async def start_runtime(self, platform_name: str) -> None:
+        """启动指定平台动画运行时。"""
+
+        await self.get_runtime(platform_name).start()
+
+    async def stop_runtime(self, platform_name: str) -> None:
+        """停止指定平台动画运行时。"""
+
+        await self.get_runtime(platform_name).stop()
+
+    async def restart_runtime(self, platform_name: str) -> None:
+        """重启指定平台动画运行时。"""
+
+        await self.get_runtime(platform_name).restart()
 
     async def initialize(self) -> None:
         """初始化全部平台动画运行时。"""

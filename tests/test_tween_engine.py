@@ -22,7 +22,9 @@ class _SenderRecorder:
     """记录每次 sender 调用的参数与 mode。"""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[Literal["set", "add"], list[ControlledParameterState]]] = []
+        self.calls: list[
+            tuple[Literal["set", "add"], list[ControlledParameterState]]
+        ] = []
 
     async def __call__(
         self,

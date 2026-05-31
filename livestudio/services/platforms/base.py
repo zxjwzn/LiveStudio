@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from livestudio.services.semantic_actions import (
+    SemanticActionAdapter,
+    SemanticTweenRequest,
+)
 from livestudio.tween import ParameterTweenEngine
 
 
@@ -19,6 +23,20 @@ class PlatformService(ABC):
     @abstractmethod
     def tween(self) -> ParameterTweenEngine:
         """返回平台参数缓动引擎。"""
+
+    @property
+    def semantic_adapter(self) -> SemanticActionAdapter | None:
+        """返回平台语义动作适配器；未支持的平台可保持为空。"""
+
+        return None
+
+    async def tween_semantic(self, request: SemanticTweenRequest) -> None:
+        """将平台无关语义动作缓动解析并发送到底层参数缓动引擎。"""
+
+        adapter = self.semantic_adapter
+        if adapter is None:
+            raise NotImplementedError(f"平台 {self.name} 未实现语义动作适配器")
+        await adapter.tween(self.tween, request)
 
     @abstractmethod
     async def initialize(self) -> None:

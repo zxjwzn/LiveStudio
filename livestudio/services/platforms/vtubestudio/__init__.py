@@ -6,6 +6,13 @@ from .config import (
     VTubeStudioModelConfig,
     VTubeStudioModelInfoConfig,
 )
+from .semantic import (
+    VTubeStudioSemanticAdapter,
+    default_vtube_studio_parameter_specs,
+    default_vtube_studio_semantic_bindings,
+    default_vtube_studio_semantic_profile,
+    refreshed_vtube_studio_semantic_binding_ids,
+)
 from .service import VTubeStudio
 
 __all__ = [
@@ -14,4 +21,9 @@ __all__ = [
     "VTubeStudioExpressionStateConfig",
     "VTubeStudioModelConfig",
     "VTubeStudioModelInfoConfig",
+    "VTubeStudioSemanticAdapter",
+    "default_vtube_studio_parameter_specs",
+    "default_vtube_studio_semantic_bindings",
+    "default_vtube_studio_semantic_profile",
+    "refreshed_vtube_studio_semantic_binding_ids",
 ]

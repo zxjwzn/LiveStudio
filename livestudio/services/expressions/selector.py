@@ -8,7 +8,11 @@ import random
 from collections import deque
 from collections.abc import Iterable
 
-from .calibration import CalibrationProfile
+from livestudio.services.semantic_actions import (
+    SemanticActionProfile,
+    SemanticActionTarget,
+)
+
 from .models import (
     EmotionKind,
     EmotionRequest,
@@ -16,7 +20,6 @@ from .models import (
     ExpressionUnit,
     ScoredExpressionUnit,
     SelectedExpression,
-    UnitTarget,
 )
 
 REGION_ORDER: tuple[ExpressionRegion, ...] = (
@@ -33,14 +36,14 @@ class ExpressionSelector:
     def __init__(
         self,
         units: Iterable[ExpressionUnit],
-        calibration: CalibrationProfile,
+        semantic_profile: SemanticActionProfile,
         *,
         rng: random.Random | None = None,
         top_per_region: int = 5,
         recent_size: int = 16,
     ) -> None:
         self.units = tuple(units)
-        self.calibration = calibration
+        self.semantic_profile = semantic_profile
         self.rng = rng or random.Random()
         self.top_per_region = top_per_region
         self._recent_unit_ids: deque[str] = deque(maxlen=recent_size)
@@ -128,14 +131,14 @@ class ExpressionSelector:
             for emotion, request_weight in request.emotions.items()
         )
         intensity_match = 1.0 - abs(request.intensity - unit.intensity)
-        calibration_support = self.calibration.support_score(unit)
+        platform_support = self.semantic_profile.support_score(unit.targets)
         novelty = 0.2 if unit.id in self._recent_unit_ids else 1.0
         none_penalty = self._none_region_penalty(unit, request)
 
         score = (
             emotion_match * 0.45
             + intensity_match * 0.15
-            + calibration_support * 0.20
+            + platform_support * 0.20
             + unit.naturalness * 0.10
             + unit.base_weight * 0.05
             + novelty * 0.05
@@ -145,7 +148,7 @@ class ExpressionSelector:
             unit=unit,
             score=max(0.0, score),
             emotion_match=emotion_match,
-            calibration_support=calibration_support,
+            platform_support=platform_support,
         )
 
     def _none_region_penalty(
@@ -193,9 +196,7 @@ class ExpressionSelector:
         for scored in combo:
             total_intensity += scored.unit.intensity
             for target in scored.unit.targets:
-                target_params[target.semantic_param] = (
-                    target_params.get(target.semantic_param, 0) + 1
-                )
+                target_params[target.action] = target_params.get(target.action, 0) + 1
 
         collisions = sum(count - 1 for count in target_params.values() if count > 1)
         score -= collisions * 0.35
@@ -222,29 +223,29 @@ class ExpressionSelector:
     def _merge_targets(
         self,
         units: Iterable[ExpressionUnit],
-    ) -> tuple[UnitTarget, ...]:
+    ) -> tuple[SemanticActionTarget, ...]:
         merged: dict[str, tuple[float, float]] = {}
         order: list[str] = []
         for unit in units:
             for target in unit.targets:
-                if target.semantic_param not in merged:
-                    order.append(target.semantic_param)
-                    merged[target.semantic_param] = (0.0, 0.0)
-                weighted_value, total_weight = merged[target.semantic_param]
+                if target.action not in merged:
+                    order.append(target.action)
+                    merged[target.action] = (0.0, 0.0)
+                weighted_value, total_weight = merged[target.action]
                 weight = max(0.0, target.weight)
-                merged[target.semantic_param] = (
+                merged[target.action] = (
                     weighted_value + target.value * weight,
                     total_weight + weight,
                 )
 
-        targets: list[UnitTarget] = []
-        for semantic_param in order:
-            weighted_value, total_weight = merged[semantic_param]
+        targets: list[SemanticActionTarget] = []
+        for action in order:
+            weighted_value, total_weight = merged[action]
             if total_weight <= 0:
                 continue
             targets.append(
-                UnitTarget(
-                    semantic_param=semantic_param,
+                SemanticActionTarget(
+                    action=action,
                     value=weighted_value / total_weight,
                 ),
             )

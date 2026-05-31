@@ -8,7 +8,7 @@ from .config import (
     MouthSyncControllerSettings,
 )
 from .models import AnimationType
-from .vtubestudio import (
+from .semantic import (
     BlinkController,
     BodySwingController,
     BreathingController,
