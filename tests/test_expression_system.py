@@ -24,10 +24,7 @@ from livestudio.services.platforms.vtubestudio import (
 )
 from livestudio.services.platforms.vtubestudio.config import VTubeStudioModelConfig
 from livestudio.services.semantic_actions import SemanticAction
-from livestudio.services.semantic_actions.adapter import (
-    SemanticActionAdapter,
-    SemanticActionBinding,
-)
+from livestudio.services.semantic_actions.adapter import SemanticActionAdapter
 from livestudio.tween import (
     ControlledParameterState,
     ParameterTweenEngine,
@@ -275,24 +272,6 @@ def test_vtube_model_config_contains_semantic_profile_defaults() -> None:
     assert config.semantic_profile.model_id == "model-id"
     assert config.semantic_profile.model_name == "Model"
     assert SemanticAction.MOUTH_OPEN.value in config.semantic_profile.bindings
-
-
-def test_vtube_model_config_refreshes_unsafe_legacy_noop_bindings() -> None:
-    config = VTubeStudioModelConfig()
-    config.semantic_profile.bindings[SemanticAction.MOUTH_FROWN.value] = (
-        SemanticActionBinding(
-            action=SemanticAction.MOUTH_FROWN.value,
-            platform_params=["MouthSmile"],
-            enabled=True,
-        )
-    )
-
-    changed = config.ensure_semantic_profile_defaults()
-
-    assert changed
-    assert not config.semantic_profile.bindings[
-        SemanticAction.MOUTH_FROWN.value
-    ].enabled
 
 
 async def test_reload_model_config_persists_backfilled_semantic_profile(

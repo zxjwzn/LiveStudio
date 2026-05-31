@@ -18,7 +18,6 @@ from livestudio.services.semantic_actions import SemanticActionProfile
 from .semantic import (
     default_vtube_studio_semantic_bindings,
     default_vtube_studio_semantic_profile,
-    refreshed_vtube_studio_semantic_binding_ids,
 )
 
 
@@ -113,7 +112,6 @@ class VTubeStudioModelConfig(BaseModel):
         return (
             self.semantic_profile.ensure_defaults(
                 bindings=default_vtube_studio_semantic_bindings(),
-                replace_bindings=refreshed_vtube_studio_semantic_binding_ids(),
             )
             or changed
         )

@@ -15,16 +15,18 @@ from livestudio.services.semantic_actions import (
 )
 
 
-def test_vtube_semantic_adapter_closes_both_eyes() -> None:
+def test_vtube_semantic_adapter_maps_eye_open_state() -> None:
     adapter = VTubeStudioSemanticAdapter(default_vtube_studio_semantic_profile())
 
-    resolved = adapter.resolve(
-        SemanticActionTarget(SemanticAction.EYE_CLOSE.value, 1.0),
-    )
+    closed = adapter.resolve(SemanticActionTarget(SemanticAction.EYE_OPEN.value, 0.0))
+    neutral = adapter.resolve(SemanticActionTarget(SemanticAction.EYE_OPEN.value, 0.75))
+    open_ = adapter.resolve(SemanticActionTarget(SemanticAction.EYE_OPEN.value, 1.0))
 
-    assert {state.name for state in resolved} == {"EyeOpenLeft", "EyeOpenRight"}
-    assert [state.value for state in resolved] == [pytest.approx(0.0)] * 2
-    assert {state.start_value for state in resolved} == {0.75}
+    assert {state.name for state in closed} == {"EyeOpenLeft", "EyeOpenRight"}
+    assert [state.value for state in closed] == [pytest.approx(0.0)] * 2
+    assert [state.value for state in neutral] == [pytest.approx(0.75)] * 2
+    assert [state.value for state in open_] == [pytest.approx(1.0)] * 2
+    assert {state.start_value for state in closed} == {0.75}
 
 
 def test_vtube_semantic_adapter_maps_head_roll_to_platform_range() -> None:
@@ -39,17 +41,40 @@ def test_vtube_semantic_adapter_maps_head_roll_to_platform_range() -> None:
     assert resolved[0].value == pytest.approx(45.0)
 
 
-def test_vtube_default_adapter_does_not_fake_unsupported_brow_lower() -> None:
+def test_vtube_semantic_adapter_maps_brow_height_state() -> None:
+    adapter = VTubeStudioSemanticAdapter(default_vtube_studio_semantic_profile())
+    target = SemanticActionTarget
+
+    lowered = adapter.resolve(target(SemanticAction.BROW_HEIGHT.value, 0.0))
+    neutral = adapter.resolve(target(SemanticAction.BROW_HEIGHT.value, 0.5))
+    raised = adapter.resolve(target(SemanticAction.BROW_HEIGHT.value, 1.0))
+
+    assert {state.name for state in lowered} == {"BrowLeftY", "BrowRightY"}
+    assert [state.value for state in lowered] == [pytest.approx(0.0)] * 2
+    assert [state.value for state in neutral] == [pytest.approx(0.5)] * 2
+    assert [state.value for state in raised] == [pytest.approx(1.0)] * 2
+
+
+def test_vtube_semantic_adapter_maps_eye_gaze_axes() -> None:
+    adapter = VTubeStudioSemanticAdapter(default_vtube_studio_semantic_profile())
+    target = SemanticActionTarget
+
+    gaze_x = adapter.resolve(target(SemanticAction.EYE_GAZE_X.value, -0.6))
+    gaze_y = adapter.resolve(target(SemanticAction.EYE_GAZE_Y.value, 0.4))
+
+    assert {state.name for state in gaze_x} == {"EyeLeftX", "EyeRightX"}
+    assert [state.value for state in gaze_x] == [pytest.approx(-0.6)] * 2
+    assert {state.name for state in gaze_y} == {"EyeLeftY", "EyeRightY"}
+    assert [state.value for state in gaze_y] == [pytest.approx(0.4)] * 2
+
+
+def test_vtube_default_adapter_does_not_fake_unsupported_mouth_frown() -> None:
     adapter = VTubeStudioSemanticAdapter(default_vtube_studio_semantic_profile())
 
-    brow_lower = adapter.resolve(
-        SemanticActionTarget(SemanticAction.BROW_LOWER.value, 1.0),
-    )
     mouth_frown = adapter.resolve(
         SemanticActionTarget(SemanticAction.MOUTH_FROWN.value, 1.0),
     )
 
-    assert brow_lower == []
     assert mouth_frown == []
 
 
@@ -58,16 +83,31 @@ def test_semantic_support_score_is_binary_coverage() -> None:
 
     assert (
         profile.support_score(
-            (SemanticActionTarget(SemanticAction.EYE_CLOSE.value, 1.0),),
+            (SemanticActionTarget(SemanticAction.EYE_OPEN.value, 1.0),),
         )
         == 1.0
     )
     assert (
         profile.support_score(
-            (SemanticActionTarget(SemanticAction.BROW_LOWER.value, 1.0),),
+            (SemanticActionTarget(SemanticAction.MOUTH_FROWN.value, 1.0),),
         )
         == 0.0
     )
+
+
+def test_semantic_binding_rejects_unknown_fields() -> None:
+    from pydantic import ValidationError
+
+    from livestudio.services.semantic_actions import SemanticActionBinding
+
+    with pytest.raises(ValidationError):
+        SemanticActionBinding.model_validate(
+            {
+                "action": SemanticAction.EYE_OPEN.value,
+                "platform_params": ["EyeOpenLeft"],
+                "unknown": True,
+            },
+        )
 
 
 def test_semantic_adapter_merges_colliding_platform_parameters() -> None:
@@ -76,8 +116,8 @@ def test_semantic_adapter_merges_colliding_platform_parameters() -> None:
     requests = adapter.resolve_request(
         SemanticTweenRequest(
             targets=(
-                SemanticActionTarget(SemanticAction.EYE_CLOSE.value, 0.4),
-                SemanticActionTarget(SemanticAction.EYE_WIDEN.value, 0.2),
+                SemanticActionTarget(SemanticAction.EYE_OPEN.value, 0.5),
+                SemanticActionTarget(SemanticAction.EYE_OPEN.value, 1.0),
             ),
             duration=0.1,
             easing="linear",
@@ -87,7 +127,7 @@ def test_semantic_adapter_merges_colliding_platform_parameters() -> None:
 
     by_name = {request.parameter_name: request for request in requests}
     assert set(by_name) == {"EyeOpenLeft", "EyeOpenRight"}
-    assert by_name["EyeOpenLeft"].end_value == pytest.approx(0.625)
+    assert by_name["EyeOpenLeft"].end_value == pytest.approx(0.75)
 
 
 def test_semantic_adapter_maps_semantic_start_values_to_platform_range() -> None:

@@ -19,7 +19,7 @@ from ..models import AnimationType
 
 
 class BlinkController(AnimationController[BlinkControllerSettings]):
-    """使用眼睛闭合语义动作实现随机间隔眨眼。"""
+    """使用眼睛开合语义动作实现随机间隔眨眼。"""
 
     @property
     def animation_type(self) -> AnimationType:
@@ -32,7 +32,7 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
 
         await self.runtime.platform.tween_semantic(
             SemanticTweenRequest(
-                targets=(SemanticActionTarget(SemanticAction.EYE_CLOSE.value, 1.0),),
+                targets=(SemanticActionTarget(SemanticAction.EYE_OPEN.value, 0.0),),
                 duration=self.config.close_duration,
                 easing=Easing.in_sine,
                 priority=10,
@@ -42,7 +42,7 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
 
         await self.runtime.platform.tween_semantic(
             SemanticTweenRequest(
-                targets=(SemanticActionTarget(SemanticAction.EYE_CLOSE.value, 0.0),),
+                targets=(SemanticActionTarget(SemanticAction.EYE_OPEN.value, 1.0),),
                 duration=self.config.open_duration,
                 easing=Easing.out_sine,
                 priority=10,

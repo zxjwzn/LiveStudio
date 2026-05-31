@@ -31,7 +31,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
     ExpressionUnit(
         id="brow_inner_up_soft",
         region=ExpressionRegion.BROW,
-        targets=(_target(SemanticAction.BROW_RAISE, 0.45),),
+        targets=(_target(SemanticAction.BROW_HEIGHT, 0.72),),
         emotions={
             EmotionKind.SADNESS: 0.8,
         },
@@ -42,7 +42,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
     ExpressionUnit(
         id="brow_down_tense",
         region=ExpressionRegion.BROW,
-        targets=(_target(SemanticAction.BROW_LOWER, 0.65),),
+        targets=(_target(SemanticAction.BROW_HEIGHT, 0.18),),
         emotions={
             EmotionKind.ANGER: 0.9,
         },
@@ -54,7 +54,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
     ExpressionUnit(
         id="brow_outer_up_wide",
         region=ExpressionRegion.BROW,
-        targets=(_target(SemanticAction.BROW_RAISE, 0.75),),
+        targets=(_target(SemanticAction.BROW_HEIGHT, 0.88),),
         emotions={EmotionKind.NEUTRAL: 0.2},
         intensity=0.75,
         naturalness=0.75,
@@ -71,7 +71,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
     ExpressionUnit(
         id="eye_smile_soft",
         region=ExpressionRegion.EYE,
-        targets=(_target(SemanticAction.EYE_CLOSE, 0.35),),
+        targets=(_target(SemanticAction.EYE_OPEN, 0.5),),
         emotions={
             EmotionKind.JOY: 0.75,
         },
@@ -83,7 +83,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
     ExpressionUnit(
         id="eye_wide_alert",
         region=ExpressionRegion.EYE,
-        targets=(_target(SemanticAction.EYE_WIDEN, 0.75),),
+        targets=(_target(SemanticAction.EYE_OPEN, 0.94),),
         emotions={EmotionKind.NEUTRAL: 0.2},
         intensity=0.75,
         naturalness=0.7,
@@ -92,7 +92,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
     ExpressionUnit(
         id="eye_narrow_suspicious",
         region=ExpressionRegion.EYE,
-        targets=(_target(SemanticAction.EYE_CLOSE, 0.65),),
+        targets=(_target(SemanticAction.EYE_OPEN, 0.28),),
         emotions={
             EmotionKind.ANGER: 0.55,
         },

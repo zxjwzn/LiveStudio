@@ -77,7 +77,7 @@ def _runtime(platform: _SemanticPlatform) -> PlatformAnimationRuntime:
     )
 
 
-async def test_blink_controller_outputs_eye_close_semantic_actions(
+async def test_blink_controller_outputs_eye_open_semantic_actions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def no_sleep(_duration: float) -> None:
@@ -99,10 +99,10 @@ async def test_blink_controller_outputs_eye_close_semantic_actions(
     await controller.run_cycle()
 
     assert [request.targets[0].action for request in platform.requests[:2]] == [
-        SemanticAction.EYE_CLOSE.value,
-        SemanticAction.EYE_CLOSE.value,
+        SemanticAction.EYE_OPEN.value,
+        SemanticAction.EYE_OPEN.value,
     ]
-    assert [request.targets[0].value for request in platform.requests[:2]] == [1.0, 0.0]
+    assert [request.targets[0].value for request in platform.requests[:2]] == [0.0, 1.0]
 
 
 async def test_breathing_controller_uses_normalized_pitch_amplitude() -> None:
@@ -128,7 +128,12 @@ async def test_breathing_controller_uses_normalized_pitch_amplitude() -> None:
 
 def test_controller_settings_reject_legacy_parameter_ranges() -> None:
     with pytest.raises(ValidationError):
-        BreathingControllerSettings(min_value=-3.0, max_value=3.0)
+        BreathingControllerSettings.model_validate(
+            {
+                "min_value": -3.0,
+                "max_value": 3.0,
+            },
+        )
 
 
 async def test_mouth_expression_controller_uses_mouth_smile_semantic_action(

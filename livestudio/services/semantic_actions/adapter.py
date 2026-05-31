@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
@@ -15,7 +15,12 @@ from livestudio.tween import (
     TweenRequest,
 )
 
-from .models import SemanticActionTarget, SemanticTweenRequest, clamp_semantic_value
+from .models import (
+    DEFAULT_SEMANTIC_ACTION_SPECS,
+    SemanticActionTarget,
+    SemanticTweenRequest,
+    clamp_semantic_value,
+)
 
 CurveKind: TypeAlias = Literal["linear", "ease_in", "ease_out", "ease_in_out"]
 
@@ -61,7 +66,6 @@ class SemanticActionBinding(BaseModel):
 
     action: str = Field(min_length=1)
     platform_params: list[str] = Field(min_length=1)
-    inverted: bool = False
     curve: CurveKind = "linear"
     enabled: bool = True
 
@@ -83,23 +87,23 @@ class SemanticActionProfile(BaseModel):
         for action, binding in self.bindings.items():
             if binding.action != action:
                 raise ValueError("binding action must match its profile key")
+            if action not in DEFAULT_SEMANTIC_ACTION_SPECS:
+                raise ValueError(f"unknown semantic action: {action}")
         return self
 
     def ensure_defaults(
         self,
         *,
         bindings: Iterable[SemanticActionBinding],
-        replace_bindings: Iterable[str] = (),
     ) -> bool:
         """Synchronize this profile with platform default specs and bindings."""
 
         changed = False
         default_bindings = {binding.action: binding for binding in bindings}
-        replacements = set(replace_bindings)
 
         for action, binding in default_bindings.items():
             existing = self.bindings.get(action)
-            if existing is not None and action not in replacements:
+            if existing is not None:
                 continue
             if existing == binding:
                 continue
@@ -112,9 +116,8 @@ class SemanticActionProfile(BaseModel):
         binding = self.bindings.get(action)
         return binding is not None and binding.enabled
 
-    def support_score(self, targets: Iterable[SemanticActionTarget] | object) -> float:
-        target_values = getattr(targets, "targets", targets)
-        target_tuple = tuple(target_values)
+    def support_score(self, targets: Iterable[SemanticActionTarget]) -> float:
+        target_tuple = tuple(targets)
         if not target_tuple:
             return 1.0
         total_weight = sum(max(0.0, target.weight) for target in target_tuple)
@@ -137,15 +140,14 @@ class SemanticActionAdapter:
         profile: SemanticActionProfile,
         *,
         parameter_specs: Iterable[PlatformParameterSpec]
-        | Mapping[str, PlatformParameterSpec],
+        | dict[str, PlatformParameterSpec],
     ) -> None:
         self.profile = profile
         self.parameter_specs = _normalize_parameter_specs(parameter_specs)
         self._validate_profile()
 
-    def support_score(self, targets: Iterable[SemanticActionTarget] | object) -> float:
-        target_values = getattr(targets, "targets", targets)
-        return self.profile.support_score(target_values)
+    def support_score(self, targets: Iterable[SemanticActionTarget]) -> float:
+        return self.profile.support_score(targets)
 
     def resolve(
         self,
@@ -164,25 +166,19 @@ class SemanticActionAdapter:
             spec = self.parameter_specs.get(parameter_name)
             if spec is None:
                 continue
-            start_value = (
-                None
-                if target.start_value is None
-                else _resolve_bound_value(
+            start_value = spec.neutral
+            if target.start_value is not None:
+                start_value = _resolve_bound_value(
                     binding,
                     clamp_semantic_value(target.action, target.start_value),
                     spec,
                 )
-            )
             value = _resolve_bound_value(binding, action_value, spec)
             resolved.append(
                 ResolvedPlatformParameter(
                     name=parameter_name,
                     value=_clamp(value, spec.minimum, spec.maximum),
-                    start_value=(
-                        spec.neutral
-                        if target.start_value is None
-                        else _clamp(start_value, spec.minimum, spec.maximum)
-                    ),
+                    start_value=_clamp(start_value, spec.minimum, spec.maximum),
                     weight=max(0.0, target.weight),
                     mode=mode,
                     keep_alive=keep_alive,
@@ -279,7 +275,12 @@ class SemanticActionAdapter:
         current_state = current_states.get(resolved.name)
         if current_state is not None:
             return current_state.value
-        return resolved.start_value
+        if resolved.start_value is not None:
+            return resolved.start_value
+        spec = self.parameter_specs.get(resolved.name)
+        if spec is None:
+            raise KeyError(f"unknown platform parameter: {resolved.name}")
+        return spec.neutral
 
     def _validate_profile(self) -> None:
         for action, binding in self.profile.bindings.items():
@@ -292,11 +293,27 @@ def _resolve_bound_value(
     value: float,
     spec: PlatformParameterSpec,
 ) -> float:
-    normalized = max(-1.0, min(1.0, -value if binding.inverted else value))
-    curved = _apply_curve(abs(normalized), binding.curve)
-    if normalized >= 0:
-        return spec.neutral + curved * (spec.maximum - spec.neutral)
-    return spec.neutral - curved * (spec.neutral - spec.minimum)
+    semantic_spec = DEFAULT_SEMANTIC_ACTION_SPECS.get(binding.action)
+    if semantic_spec is None:
+        normalized = max(-1.0, min(1.0, value))
+        curved = _apply_curve(abs(normalized), binding.curve)
+        if normalized >= 0:
+            return spec.neutral + curved * (spec.maximum - spec.neutral)
+        return spec.neutral - curved * (spec.neutral - spec.minimum)
+
+    semantic_value = max(semantic_spec.minimum, min(semantic_spec.maximum, value))
+    if semantic_value >= semantic_spec.neutral:
+        span = semantic_spec.maximum - semantic_spec.neutral
+        ratio = 0.0 if span <= 0.0 else (semantic_value - semantic_spec.neutral) / span
+        return spec.neutral + _apply_curve(ratio, binding.curve) * (
+            spec.maximum - spec.neutral
+        )
+
+    span = semantic_spec.neutral - semantic_spec.minimum
+    ratio = 0.0 if span <= 0.0 else (semantic_spec.neutral - semantic_value) / span
+    return spec.neutral - _apply_curve(ratio, binding.curve) * (
+        spec.neutral - spec.minimum
+    )
 
 
 def _apply_curve(value: float, curve: CurveKind) -> float:
@@ -314,11 +331,17 @@ def _apply_curve(value: float, curve: CurveKind) -> float:
 
 
 def _normalize_parameter_specs(
-    parameter_specs: Iterable[PlatformParameterSpec]
-    | Mapping[str, PlatformParameterSpec],
+    parameter_specs: Iterable[PlatformParameterSpec] | dict[str, PlatformParameterSpec],
 ) -> dict[str, PlatformParameterSpec]:
-    if isinstance(parameter_specs, Mapping):
-        return dict(parameter_specs)
+    if isinstance(parameter_specs, dict):
+        normalized: dict[str, PlatformParameterSpec] = {}
+        for name, spec in parameter_specs.items():
+            if not isinstance(name, str):
+                raise TypeError("parameter spec mapping keys must be strings")
+            if not isinstance(spec, PlatformParameterSpec):
+                raise TypeError("parameter spec mapping values must be specs")
+            normalized[name] = spec
+        return normalized
     return {spec.name: spec for spec in parameter_specs}
 
 

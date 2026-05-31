@@ -59,7 +59,7 @@ class AnimationManager:
 
         template_player = AnimationTemplatePlayer(
             platform=platform,
-            template_dir=self.template_root / platform.name,
+            template_dir=self.template_root,
         )
         runtime = PlatformAnimationRuntime(
             platform=platform,

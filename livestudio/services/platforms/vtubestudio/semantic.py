@@ -85,22 +85,22 @@ def default_vtube_studio_parameter_specs() -> tuple[PlatformParameterSpec, ...]:
             name="Brows",
             minimum=0.0,
             maximum=1.0,
-            neutral=0.0,
-            default=0.0,
+            neutral=0.5,
+            default=0.5,
         ),
         PlatformParameterSpec(
             name="BrowLeftY",
             minimum=0.0,
             maximum=1.0,
-            neutral=0.0,
-            default=0.0,
+            neutral=0.5,
+            default=0.5,
         ),
         PlatformParameterSpec(
             name="BrowRightY",
             minimum=0.0,
             maximum=1.0,
-            neutral=0.0,
-            default=0.0,
+            neutral=0.5,
+            default=0.5,
         ),
         PlatformParameterSpec(
             name="EyeOpenLeft",
@@ -173,22 +173,20 @@ def default_vtube_studio_semantic_bindings() -> tuple[SemanticActionBinding, ...
 
     return (
         SemanticActionBinding(
-            action=SemanticAction.BROW_RAISE.value,
+            action=SemanticAction.BROW_HEIGHT.value,
             platform_params=["BrowLeftY", "BrowRightY"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.BROW_LOWER.value,
-            platform_params=["BrowLeftY", "BrowRightY"],
-            enabled=False,
+            action=SemanticAction.EYE_OPEN.value,
+            platform_params=["EyeOpenLeft", "EyeOpenRight"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.EYE_CLOSE.value,
-            platform_params=["EyeOpenLeft", "EyeOpenRight"],
-            inverted=True,
+            action=SemanticAction.EYE_GAZE_X.value,
+            platform_params=["EyeLeftX", "EyeRightX"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.EYE_WIDEN.value,
-            platform_params=["EyeOpenLeft", "EyeOpenRight"],
+            action=SemanticAction.EYE_GAZE_Y.value,
+            platform_params=["EyeLeftY", "EyeRightY"],
         ),
         SemanticActionBinding(
             action=SemanticAction.MOUTH_OPEN.value,
@@ -215,15 +213,6 @@ def default_vtube_studio_semantic_bindings() -> tuple[SemanticActionBinding, ...
             action=SemanticAction.HEAD_ROLL.value,
             platform_params=["FaceAngleZ"],
         ),
-    )
-
-
-def refreshed_vtube_studio_semantic_binding_ids() -> tuple[str, ...]:
-    """Return default bindings that should replace unsafe legacy no-op mappings."""
-
-    return (
-        SemanticAction.BROW_LOWER.value,
-        SemanticAction.MOUTH_FROWN.value,
     )
 
 

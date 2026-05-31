@@ -12,10 +12,10 @@ from livestudio.tween import EasingFunction
 class SemanticAction(StrEnum):
     """Platform-independent facial and head action identifiers."""
 
-    BROW_RAISE = "brow.raise"
-    BROW_LOWER = "brow.lower"
-    EYE_CLOSE = "eye.close"
-    EYE_WIDEN = "eye.widen"
+    BROW_HEIGHT = "brow.height"
+    EYE_OPEN = "eye.open"
+    EYE_GAZE_X = "eye.gaze.x"
+    EYE_GAZE_Y = "eye.gaze.y"
     MOUTH_OPEN = "mouth.open"
     MOUTH_SMILE = "mouth.smile"
     MOUTH_FROWN = "mouth.frown"
@@ -38,41 +38,41 @@ class SemanticActionSpec:
 
 
 DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
-    SemanticAction.BROW_RAISE.value: SemanticActionSpec(
-        id=SemanticAction.BROW_RAISE.value,
+    SemanticAction.BROW_HEIGHT.value: SemanticActionSpec(
+        id=SemanticAction.BROW_HEIGHT.value,
         minimum=0.0,
         maximum=1.0,
-        neutral=0.0,
-        default=0.0,
+        neutral=0.5,
+        default=0.5,
         region="brow",
-        description="Raise brows.",
+        description="Brow height from lowered to raised.",
     ),
-    SemanticAction.BROW_LOWER.value: SemanticActionSpec(
-        id=SemanticAction.BROW_LOWER.value,
+    SemanticAction.EYE_OPEN.value: SemanticActionSpec(
+        id=SemanticAction.EYE_OPEN.value,
         minimum=0.0,
         maximum=1.0,
-        neutral=0.0,
-        default=0.0,
-        region="brow",
-        description="Lower brows.",
+        neutral=0.75,
+        default=1.0,
+        region="eye",
+        description="Eye openness from closed to wide open.",
     ),
-    SemanticAction.EYE_CLOSE.value: SemanticActionSpec(
-        id=SemanticAction.EYE_CLOSE.value,
-        minimum=0.0,
+    SemanticAction.EYE_GAZE_X.value: SemanticActionSpec(
+        id=SemanticAction.EYE_GAZE_X.value,
+        minimum=-1.0,
         maximum=1.0,
         neutral=0.0,
         default=0.0,
         region="eye",
-        description="Close eyelids.",
+        description="Horizontal eye gaze direction.",
     ),
-    SemanticAction.EYE_WIDEN.value: SemanticActionSpec(
-        id=SemanticAction.EYE_WIDEN.value,
-        minimum=0.0,
+    SemanticAction.EYE_GAZE_Y.value: SemanticActionSpec(
+        id=SemanticAction.EYE_GAZE_Y.value,
+        minimum=-1.0,
         maximum=1.0,
         neutral=0.0,
         default=0.0,
         region="eye",
-        description="Open eyes wider than neutral.",
+        description="Vertical eye gaze direction.",
     ),
     SemanticAction.MOUTH_OPEN.value: SemanticActionSpec(
         id=SemanticAction.MOUTH_OPEN.value,

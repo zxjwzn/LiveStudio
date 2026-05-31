@@ -11,7 +11,6 @@ from .semantic import (
     default_vtube_studio_parameter_specs,
     default_vtube_studio_semantic_bindings,
     default_vtube_studio_semantic_profile,
-    refreshed_vtube_studio_semantic_binding_ids,
 )
 from .service import VTubeStudio
 
@@ -25,5 +24,4 @@ __all__ = [
     "default_vtube_studio_parameter_specs",
     "default_vtube_studio_semantic_bindings",
     "default_vtube_studio_semantic_profile",
-    "refreshed_vtube_studio_semantic_binding_ids",
 ]
