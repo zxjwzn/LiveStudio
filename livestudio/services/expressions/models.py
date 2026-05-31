@@ -48,10 +48,6 @@ class ExpressionUnit:
     priority: int = 40
     easing: str = "in_out_sine"
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "emotions", MappingProxyType(dict(self.emotions)))
-        object.__setattr__(self, "synergies", MappingProxyType(dict(self.synergies)))
-
 
 class EmotionRequest(BaseModel):
     """A request to synthesize an expression from an emotion vector."""
