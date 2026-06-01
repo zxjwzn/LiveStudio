@@ -11,16 +11,20 @@ from collections.abc import Iterable
 from livestudio.services.semantic_actions import (
     SemanticActionProfile,
     SemanticActionTarget,
+    clamp_semantic_value,
 )
 
 from .models import (
     EmotionKind,
     EmotionRequest,
+    ExpressionCombinationRule,
     ExpressionRegion,
+    ExpressionSignature,
     ExpressionUnit,
     ScoredExpressionUnit,
     SelectedExpression,
 )
+from .rules import BUILTIN_COMBINATION_RULES
 
 REGION_ORDER: tuple[ExpressionRegion, ...] = (
     ExpressionRegion.BROW,
@@ -41,12 +45,17 @@ class ExpressionSelector:
         rng: random.Random | None = None,
         top_per_region: int = 5,
         recent_size: int = 16,
+        combination_rules: Iterable[
+            ExpressionCombinationRule
+        ] = BUILTIN_COMBINATION_RULES,
     ) -> None:
         self.units = tuple(units)
         self.semantic_profile = semantic_profile
         self.rng = rng or random.Random()
         self.top_per_region = top_per_region
         self._recent_unit_ids: deque[str] = deque(maxlen=recent_size)
+        self._recent_expressions: deque[ExpressionSignature] = deque(maxlen=recent_size)
+        self.combination_rules = tuple(combination_rules)
 
     def select(self, request: EmotionRequest) -> SelectedExpression:
         regional_candidates = [
@@ -59,14 +68,23 @@ class ExpressionSelector:
         if not combos:
             raise ValueError("no expression units are available for selection")
 
-        scored_combos = [(self._score_combo(combo, request), combo) for combo in combos]
+        scored_combos = [
+            (score, combo)
+            for combo in combos
+            if math.isfinite(score := self._score_combo(combo, request))
+        ]
+        if not scored_combos:
+            raise ValueError("no compatible expression unit combinations are available")
         scored_combos.sort(key=lambda item: item[0], reverse=True)
         selected_score, selected_combo = self._sample_combo(scored_combos, request)
         units = {scored.unit.region: scored.unit for scored in selected_combo}
         for unit in units.values():
             self._recent_unit_ids.append(unit.id)
 
-        targets = self._merge_targets(unit for unit in units.values())
+        targets = self._merge_targets((unit for unit in units.values()), request)
+        self._recent_expressions.append(
+            self._build_signature(selected_combo, targets, request),
+        )
         emotion_match = sum(scored.emotion_match for scored in selected_combo) / len(
             selected_combo,
         )
@@ -79,11 +97,16 @@ class ExpressionSelector:
 
     def preview(self, request: EmotionRequest) -> SelectedExpression:
         state = tuple(self._recent_unit_ids)
+        expression_state = tuple(self._recent_expressions)
+        rng_state = self.rng.getstate()
         try:
             return self.select(request)
         finally:
             self._recent_unit_ids.clear()
             self._recent_unit_ids.extend(state)
+            self._recent_expressions.clear()
+            self._recent_expressions.extend(expression_state)
+            self.rng.setstate(rng_state)
 
     def _rank_region(
         self,
@@ -179,6 +202,11 @@ class ExpressionSelector:
         unit_ids = {scored.unit.id for scored in combo}
         tags = set().union(*(scored.unit.tags for scored in combo))
 
+        rule_penalty = self._combination_rule_penalty(unit_ids, tags, request)
+        if math.isinf(rule_penalty):
+            return -math.inf
+        score -= rule_penalty
+
         for scored in combo:
             unit = scored.unit
             score += sum(
@@ -189,7 +217,12 @@ class ExpressionSelector:
             if unit.conflicts.intersection(unit_ids) or unit.conflicts.intersection(
                 tags,
             ):
-                score -= 0.75
+                return -math.inf
+            score -= sum(
+                penalty
+                for target_id, penalty in unit.soft_conflicts.items()
+                if target_id in unit_ids or target_id in tags
+            )
 
         target_params: dict[str, int] = {}
         total_intensity = 0.0
@@ -203,7 +236,53 @@ class ExpressionSelector:
 
         expected_intensity = request.intensity * len(REGION_ORDER)
         score -= max(0.0, total_intensity - expected_intensity - 0.8) * 0.25
+        score -= self._history_penalty(combo, request)
         return score
+
+    def _combination_rule_penalty(
+        self,
+        unit_ids: set[str],
+        tags: set[str],
+        request: EmotionRequest,
+    ) -> float:
+        active_emotions = {
+            emotion for emotion, weight in request.emotions.items() if weight > 0.0
+        }
+        penalty = 0.0
+        for rule in self.combination_rules:
+            if rule.emotions and not rule.emotions.intersection(active_emotions):
+                continue
+            if rule.require_tags and not rule.require_tags.issubset(tags):
+                continue
+            if rule.require_unit_ids and not rule.require_unit_ids.issubset(unit_ids):
+                continue
+            if rule.forbid_tags and not rule.forbid_tags.intersection(tags):
+                continue
+            if rule.forbid_unit_ids and not rule.forbid_unit_ids.intersection(unit_ids):
+                continue
+            if math.isinf(rule.penalty):
+                return math.inf
+            penalty += max(0.0, rule.penalty)
+        return penalty
+
+    def _history_penalty(
+        self,
+        combo: tuple[ScoredExpressionUnit, ...],
+        request: EmotionRequest,
+    ) -> float:
+        if request.history_avoidance <= 0.0 or not self._recent_expressions:
+            return 0.0
+
+        unit_ids = tuple(scored.unit.id for scored in combo)
+        targets = self._merge_targets((scored.unit for scored in combo), request=None)
+        signature = self._build_signature(combo, targets, request)
+        recent_count = len(self._recent_expressions)
+        max_similarity = 0.0
+        for index, recent in enumerate(self._recent_expressions):
+            recency = (index + 1) / recent_count
+            similarity = self._signature_similarity(signature, recent, unit_ids)
+            max_similarity = max(max_similarity, similarity * recency)
+        return max_similarity * request.history_avoidance
 
     def _sample_combo(
         self,
@@ -223,16 +302,23 @@ class ExpressionSelector:
     def _merge_targets(
         self,
         units: Iterable[ExpressionUnit],
+        request: EmotionRequest | None = None,
     ) -> tuple[SemanticActionTarget, ...]:
         merged: dict[str, tuple[float, float]] = {}
         order: list[str] = []
+        jitter_by_action: dict[str, float] = {}
         for unit in units:
             for target in unit.targets:
                 if target.action not in merged:
                     order.append(target.action)
                     merged[target.action] = (0.0, 0.0)
+                    jitter_by_action[target.action] = 0.0
                 weighted_value, total_weight = merged[target.action]
                 weight = max(0.0, target.weight)
+                jitter_by_action[target.action] = max(
+                    jitter_by_action[target.action],
+                    unit.jitter_by_action.get(target.action, unit.value_jitter),
+                )
                 merged[target.action] = (
                     weighted_value + target.value * weight,
                     total_weight + weight,
@@ -246,7 +332,80 @@ class ExpressionSelector:
             targets.append(
                 SemanticActionTarget(
                     action=action,
-                    value=weighted_value / total_weight,
+                    value=self._apply_target_jitter(
+                        action,
+                        weighted_value / total_weight,
+                        jitter_by_action[action],
+                        request,
+                    ),
                 ),
             )
         return tuple(targets)
+
+    def _apply_target_jitter(
+        self,
+        action: str,
+        value: float,
+        jitter: float,
+        request: EmotionRequest | None,
+    ) -> float:
+        if request is None:
+            return clamp_semantic_value(action, value)
+        jitter = max(0.0, jitter) * request.randomness
+        if request.value_jitter > 0.0:
+            jitter = max(jitter, request.value_jitter * request.randomness)
+        if jitter <= 0.0:
+            return clamp_semantic_value(action, value)
+        return clamp_semantic_value(action, value + self.rng.uniform(-jitter, jitter))
+
+    def _build_signature(
+        self,
+        combo: tuple[ScoredExpressionUnit, ...],
+        targets: tuple[SemanticActionTarget, ...],
+        request: EmotionRequest,
+    ) -> ExpressionSignature:
+        dominant_emotion = max(request.emotions.items(), key=lambda item: item[1])[0]
+        return ExpressionSignature(
+            unit_ids=tuple(scored.unit.id for scored in combo),
+            target_values={target.action: target.value for target in targets},
+            dominant_emotion=dominant_emotion,
+            intensity=request.intensity,
+        )
+
+    def _signature_similarity(
+        self,
+        current: ExpressionSignature,
+        recent: ExpressionSignature,
+        current_unit_ids: tuple[str, ...],
+    ) -> float:
+        current_units = set(current_unit_ids)
+        recent_units = set(recent.unit_ids)
+        unit_similarity = len(current_units & recent_units) / max(
+            len(current_units | recent_units),
+            1,
+        )
+
+        shared_actions = set(current.target_values).intersection(recent.target_values)
+        if shared_actions:
+            target_similarity = sum(
+                max(
+                    0.0,
+                    1.0
+                    - abs(current.target_values[action] - recent.target_values[action])
+                    / 2.0,
+                )
+                for action in shared_actions
+            ) / len(shared_actions)
+        else:
+            target_similarity = 0.0
+
+        emotion_similarity = (
+            1.0 if current.dominant_emotion is recent.dominant_emotion else 0.0
+        )
+        intensity_similarity = max(0.0, 1.0 - abs(current.intensity - recent.intensity))
+        return (
+            unit_similarity * 0.45
+            + target_similarity * 0.30
+            + emotion_similarity * 0.15
+            + intensity_similarity * 0.10
+        )

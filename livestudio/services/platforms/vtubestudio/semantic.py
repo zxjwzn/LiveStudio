@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from livestudio.services.semantic_actions import (
     PlatformParameterSpec,
     SemanticAction,
@@ -14,10 +16,16 @@ from livestudio.services.semantic_actions import (
 class VTubeStudioSemanticAdapter(SemanticActionAdapter):
     """Resolve semantic actions to VTube Studio tracking parameters."""
 
-    def __init__(self, profile: SemanticActionProfile) -> None:
+    def __init__(
+        self,
+        profile: SemanticActionProfile,
+        parameter_specs: Iterable[PlatformParameterSpec]
+        | dict[str, PlatformParameterSpec]
+        | None = None,
+    ) -> None:
         super().__init__(
             profile,
-            parameter_specs=default_vtube_studio_parameter_specs(),
+            parameter_specs=_merge_parameter_specs(parameter_specs),
         )
 
 
@@ -166,6 +174,23 @@ def default_vtube_studio_parameter_specs() -> tuple[PlatformParameterSpec, ...]:
             default=0.0,
         ),
     )
+
+
+def _merge_parameter_specs(
+    parameter_specs: Iterable[PlatformParameterSpec]
+    | dict[str, PlatformParameterSpec]
+    | None,
+) -> dict[str, PlatformParameterSpec]:
+    merged = {spec.name: spec for spec in default_vtube_studio_parameter_specs()}
+    if parameter_specs is None:
+        return merged
+    overrides = (
+        parameter_specs.values()
+        if isinstance(parameter_specs, dict)
+        else parameter_specs
+    )
+    merged.update({spec.name: spec for spec in overrides})
+    return merged
 
 
 def default_vtube_studio_semantic_bindings() -> tuple[SemanticActionBinding, ...]:

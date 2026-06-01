@@ -13,9 +13,13 @@ from livestudio.services.animations.controllers import (
     MouthExpressionControllerSettings,
     MouthSyncControllerSettings,
 )
-from livestudio.services.semantic_actions import SemanticActionProfile
+from livestudio.services.semantic_actions import (
+    PlatformParameterSpec,
+    SemanticActionProfile,
+)
 
 from .semantic import (
+    default_vtube_studio_parameter_specs,
     default_vtube_studio_semantic_bindings,
     default_vtube_studio_semantic_profile,
 )
@@ -88,6 +92,10 @@ class VTubeStudioModelConfig(BaseModel):
         default_factory=default_vtube_studio_semantic_profile,
         description="语义动作到当前 VTube Studio 模型参数的映射配置。",
     )
+    parameter_specs: list[PlatformParameterSpec] = Field(
+        default_factory=lambda: list(default_vtube_studio_parameter_specs()),
+        description="当前 VTube Studio 模型的参数范围规格。",
+    )
 
     @field_validator("expressions", mode="before")
     @classmethod
@@ -115,3 +123,17 @@ class VTubeStudioModelConfig(BaseModel):
             )
             or changed
         )
+
+    def ensure_parameter_spec_defaults(self) -> bool:
+        """补齐当前模型缺失的 VTube Studio 参数范围默认值。"""
+
+        existing_names = {spec.name for spec in self.parameter_specs}
+        missing = [
+            spec
+            for spec in default_vtube_studio_parameter_specs()
+            if spec.name not in existing_names
+        ]
+        if not missing:
+            return False
+        self.parameter_specs.extend(missing)
+        return True

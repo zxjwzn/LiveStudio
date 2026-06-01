@@ -16,6 +16,7 @@ from livestudio.services.expressions import (
     ExpressionRegion,
     ExpressionSelector,
     ExpressionService,
+    ExpressionUnit,
 )
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
@@ -23,8 +24,8 @@ from livestudio.services.platforms.vtubestudio import (
     default_vtube_studio_semantic_profile,
 )
 from livestudio.services.platforms.vtubestudio.config import VTubeStudioModelConfig
-from livestudio.services.semantic_actions import SemanticAction
-from livestudio.services.semantic_actions.adapter import SemanticActionAdapter
+from livestudio.services.semantic_actions import SemanticAction, SemanticActionTarget
+from livestudio.services.semantic_actions.adapter import PlatformParameterSpec
 from livestudio.tween import (
     ControlledParameterState,
     ParameterTweenEngine,
@@ -51,7 +52,7 @@ class _SemanticVtsPlatform(VTubeStudio):
         self,
         *,
         tween: ParameterTweenEngine,
-        adapter: SemanticActionAdapter,
+        adapter: VTubeStudioSemanticAdapter,
     ) -> None:
         self._tween = tween
         self._semantic_adapter = adapter
@@ -61,7 +62,7 @@ class _SemanticVtsPlatform(VTubeStudio):
         return self._tween
 
     @property
-    def semantic_adapter(self) -> SemanticActionAdapter | None:
+    def semantic_adapter(self) -> VTubeStudioSemanticAdapter | None:
         return self._semantic_adapter
 
     async def initialize(self) -> None:
@@ -95,6 +96,129 @@ def test_anger_selects_tense_mouth_without_smile_action() -> None:
     assert all(
         target.action != SemanticAction.MOUTH_SMILE.value for target in selected.targets
     )
+
+
+def test_hard_conflicts_exclude_otherwise_best_combo() -> None:
+    units = (
+        ExpressionUnit(
+            id="brow_tense",
+            region=ExpressionRegion.BROW,
+            targets=(),
+            emotions={EmotionKind.ANGER: 1.0},
+            intensity=0.7,
+            tags=frozenset({"tense"}),
+            conflicts=frozenset({"friendly"}),
+        ),
+        ExpressionUnit(
+            id="brow_fallback",
+            region=ExpressionRegion.BROW,
+            targets=(),
+            emotions={EmotionKind.ANGER: 0.4},
+            intensity=0.7,
+        ),
+        ExpressionUnit(
+            id="eye_friendly",
+            region=ExpressionRegion.EYE,
+            targets=(),
+            emotions={EmotionKind.ANGER: 1.0},
+            intensity=0.7,
+            tags=frozenset({"friendly"}),
+        ),
+        ExpressionUnit(
+            id="mouth_none",
+            region=ExpressionRegion.MOUTH,
+            targets=(),
+            emotions={EmotionKind.ANGER: 1.0},
+            intensity=0.7,
+        ),
+        ExpressionUnit(
+            id="head_none",
+            region=ExpressionRegion.HEAD,
+            targets=(),
+            emotions={EmotionKind.ANGER: 1.0},
+            intensity=0.7,
+        ),
+    )
+    selector = ExpressionSelector(
+        units,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+        combination_rules=(),
+    )
+
+    selected = selector.select(
+        EmotionRequest(emotions={EmotionKind.ANGER: 1.0}, randomness=0.0),
+    )
+
+    assert selected.units[ExpressionRegion.BROW].id == "brow_fallback"
+
+
+def test_expression_rules_exclude_inconsistent_emotion_tags() -> None:
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+    )
+
+    selected = selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.ANGER: 1.0},
+            intensity=0.7,
+            randomness=0.0,
+        ),
+    )
+
+    assert all("friendly" not in unit.tags for unit in selected.units.values())
+
+
+def test_selector_jitters_targets_within_semantic_range() -> None:
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(2),
+    )
+
+    stable = selector.preview(
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 1.0},
+            intensity=0.7,
+            randomness=1.0,
+            value_jitter=0.0,
+        ),
+    )
+    jittered = selector.preview(
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 1.0},
+            intensity=0.7,
+            randomness=1.0,
+            value_jitter=0.1,
+        ),
+    )
+
+    stable_values = {target.action: target.value for target in stable.targets}
+    jittered_values = {target.action: target.value for target in jittered.targets}
+    assert stable_values != jittered_values
+    assert all(-1.0 <= value <= 1.0 for value in jittered_values.values())
+
+
+def test_history_avoidance_penalizes_repeated_expression() -> None:
+    profile = default_vtube_studio_semantic_profile()
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        profile,
+        rng=random.Random(1),
+    )
+    request = EmotionRequest(
+        emotions={EmotionKind.JOY: 1.0},
+        intensity=0.7,
+        randomness=0.0,
+        history_avoidance=1.0,
+    )
+
+    first = selector.select(request)
+    second = selector.preview(request)
+
+    assert second.score < first.score
 
 
 def test_selector_builds_full_expression_for_emotion() -> None:
@@ -272,6 +396,46 @@ def test_vtube_model_config_contains_semantic_profile_defaults() -> None:
     assert config.semantic_profile.model_id == "model-id"
     assert config.semantic_profile.model_name == "Model"
     assert SemanticAction.MOUTH_OPEN.value in config.semantic_profile.bindings
+
+
+def test_vtube_model_config_contains_parameter_spec_defaults() -> None:
+    config = VTubeStudioModelConfig(parameter_specs=[])
+
+    changed = config.ensure_parameter_spec_defaults()
+
+    assert changed
+    assert any(spec.name == "MouthOpen" for spec in config.parameter_specs)
+
+
+def test_vtube_semantic_adapter_uses_model_parameter_specs() -> None:
+    profile = default_vtube_studio_semantic_profile()
+    adapter = VTubeStudioSemanticAdapter(
+        profile,
+        [
+            PlatformParameterSpec(
+                name="EyeOpenLeft",
+                minimum=10.0,
+                maximum=20.0,
+                neutral=15.0,
+                default=20.0,
+            ),
+            PlatformParameterSpec(
+                name="EyeOpenRight",
+                minimum=30.0,
+                maximum=50.0,
+                neutral=40.0,
+                default=50.0,
+            ),
+        ],
+    )
+
+    resolved = adapter.resolve(
+        SemanticActionTarget(SemanticAction.EYE_OPEN.value, 0.75),
+    )
+
+    by_name = {state.name: state for state in resolved}
+    assert by_name["EyeOpenLeft"].value == 15.0
+    assert by_name["EyeOpenRight"].value == 40.0
 
 
 async def test_reload_model_config_persists_backfilled_semantic_profile(

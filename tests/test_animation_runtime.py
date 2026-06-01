@@ -120,12 +120,7 @@ def test_runtime_rejects_controller_bound_to_another_runtime() -> None:
 
 async def test_animation_manager_can_start_one_platform_runtime(
     tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def no_load(self: AnimationTemplatePlayer) -> None:
-        self._loaded = True
-
-    monkeypatch.setattr(AnimationTemplatePlayer, "load", no_load)
     manager = AnimationManager(template_root=tmp_path)
     left = _Platform("left")
     right = _Platform("right")

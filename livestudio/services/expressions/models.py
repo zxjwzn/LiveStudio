@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from types import MappingProxyType
 from typing import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -43,10 +42,36 @@ class ExpressionUnit:
     base_weight: float = 1.0
     tags: frozenset[str] = frozenset()
     conflicts: frozenset[str] = frozenset()
+    soft_conflicts: Mapping[str, float] = field(default_factory=dict)
     synergies: Mapping[str, float] = field(default_factory=dict)
+    value_jitter: float = 0.0
+    jitter_by_action: Mapping[str, float] = field(default_factory=dict)
     duration: float = 0.35
     priority: int = 40
     easing: str = "in_out_sine"
+
+
+@dataclass(frozen=True, slots=True)
+class ExpressionCombinationRule:
+    """A high-level compatibility rule for expression unit combinations."""
+
+    id: str
+    emotions: frozenset[EmotionKind] = frozenset()
+    require_tags: frozenset[str] = frozenset()
+    forbid_tags: frozenset[str] = frozenset()
+    require_unit_ids: frozenset[str] = frozenset()
+    forbid_unit_ids: frozenset[str] = frozenset()
+    penalty: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class ExpressionSignature:
+    """Compact history record used to avoid repetitive expressions."""
+
+    unit_ids: tuple[str, ...]
+    target_values: Mapping[str, float]
+    dominant_emotion: EmotionKind
+    intensity: float
 
 
 class EmotionRequest(BaseModel):
@@ -60,6 +85,8 @@ class EmotionRequest(BaseModel):
     )
     intensity: float = Field(default=0.7, ge=0.0, le=1.0)
     randomness: float = Field(default=0.25, ge=0.0, le=1.0)
+    value_jitter: float = Field(default=0.0, ge=0.0, le=1.0)
+    history_avoidance: float = Field(default=0.35, ge=0.0, le=1.0)
     duration_scale: float = Field(default=1.0, gt=0.0)
     allow_none_regions: bool = True
 

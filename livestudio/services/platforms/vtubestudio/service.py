@@ -215,11 +215,13 @@ class VTubeStudio(PlatformService):
         model_config.model.id = model_id
         model_config.model.name = model_name
         model_config.ensure_semantic_profile_defaults()
+        model_config.ensure_parameter_spec_defaults()
         await model_config_manager.save()
         self._model_config_manager = model_config_manager
         self._current_model = identity
         self._semantic_adapter = VTubeStudioSemanticAdapter(
             model_config.semantic_profile,
+            model_config.parameter_specs,
         )
         logger.info(
             "已加载 VTube Studio 模型配置: {} ({}) -> {}",

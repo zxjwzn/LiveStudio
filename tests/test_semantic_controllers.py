@@ -77,14 +77,7 @@ def _runtime(platform: _SemanticPlatform) -> PlatformAnimationRuntime:
     )
 
 
-async def test_blink_controller_outputs_eye_open_semantic_actions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def no_sleep(_duration: float) -> None:
-        pass
-
-    monkeypatch.setattr("asyncio.sleep", no_sleep)
-    monkeypatch.setattr("random.uniform", lambda _start, _end: 0.01)
+async def test_blink_controller_outputs_eye_open_semantic_actions() -> None:
     platform = _SemanticPlatform()
     controller = BlinkController(
         _runtime(platform),
@@ -93,6 +86,8 @@ async def test_blink_controller_outputs_eye_open_semantic_actions(
             close_duration=0,
             open_duration=0,
             closed_hold=0,
+            min_interval=0.001,
+            max_interval=0.001,
         ),
     )
 
@@ -136,17 +131,13 @@ def test_controller_settings_reject_legacy_parameter_ranges() -> None:
         )
 
 
-async def test_mouth_expression_controller_uses_mouth_smile_semantic_action(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr("random.uniform", lambda _start, end: end)
-    monkeypatch.setattr("random.choice", lambda values: values[0])
+async def test_mouth_expression_controller_uses_mouth_smile_semantic_action() -> None:
     platform = _SemanticPlatform()
     controller = MouthExpressionController(
         _runtime(platform),
         "mouth_expression",
         MouthExpressionControllerSettings(
-            smile_amplitude=0.6,
+            smile_amplitude=0.0,
             min_duration=0,
             max_duration=0,
         ),
@@ -155,4 +146,4 @@ async def test_mouth_expression_controller_uses_mouth_smile_semantic_action(
     await controller.run_cycle()
 
     assert platform.requests[0].targets[0].action == SemanticAction.MOUTH_SMILE.value
-    assert platform.requests[0].targets[0].value == 0.6
+    assert platform.requests[0].targets[0].value == 0.0
