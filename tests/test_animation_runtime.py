@@ -39,7 +39,7 @@ class _TemplatePlayer(AnimationTemplatePlayer):
 class _Platform(PlatformService):
     def __init__(self, name: str = "test") -> None:
         self._name = name
-        self._tween = ParameterTweenEngine(self._send)
+        self._tween = ParameterTweenEngine(self.send_parameter_states)
 
     @property
     def name(self) -> str:
@@ -58,21 +58,44 @@ class _Platform(PlatformService):
     async def stop(self) -> None:
         pass
 
-    async def _send(
+    async def _send_parameter_states(
         self,
         states: Iterable[ControlledParameterState],
-        mode: Literal["set", "add"],
+        mode: Literal["set", "add"] = "set",
     ) -> None:
         _ = states, mode
 
 
 class _Controller(AnimationController[ControllerSettings]):
+    def __init__(
+        self,
+        runtime: PlatformAnimationRuntime,
+        name: str,
+        config: ControllerSettings,
+        *,
+        animation_type: AnimationType = AnimationType.ONESHOT,
+        fail_start: bool = False,
+    ) -> None:
+        super().__init__(runtime, name, config)
+        self._animation_type = animation_type
+        self.fail_start = fail_start
+        self.stop_without_wait_calls = 0
+
     @property
     def animation_type(self) -> AnimationType:
-        return AnimationType.ONESHOT
+        return self._animation_type
+
+    async def start(self, **kwargs: object) -> bool:
+        if self.fail_start:
+            raise RuntimeError("start failed")
+        return await super().start(**kwargs)
+
+    async def stop_without_wait(self) -> None:
+        self.stop_without_wait_calls += 1
+        await super().stop_without_wait()
 
     async def run_cycle(self) -> None:
-        pass
+        await self._stop_event.wait()
 
     async def execute(self, **kwargs: object) -> None:
         _ = kwargs
@@ -131,3 +154,33 @@ async def test_animation_manager_can_start_one_platform_runtime(
 
     assert manager.get_runtime("left").is_started
     assert not manager.get_runtime("right").is_started
+
+
+async def test_runtime_rolls_back_started_idle_controllers_on_start_failure() -> None:
+    platform = _Platform()
+    runtime = PlatformAnimationRuntime(
+        platform=platform,
+        template_player=_TemplatePlayer(platform),
+    )
+    started = _Controller(
+        runtime,
+        "started",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    failed = _Controller(
+        runtime,
+        "failed",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+        fail_start=True,
+    )
+    runtime.register_controller(started)
+    runtime.register_controller(failed)
+
+    with pytest.raises(RuntimeError, match="start failed"):
+        await runtime.start()
+
+    assert not runtime.is_started
+    assert not started.is_running
+    assert started.stop_without_wait_calls == 1

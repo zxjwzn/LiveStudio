@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Iterable
 
 from livestudio.services.platforms import PlatformService
+from livestudio.services.semantic_actions import SemanticActionState
 from livestudio.utils.log import logger
 
 from .controllers import AnimationController, AnimationType, ControllerSettings
@@ -60,6 +61,11 @@ class PlatformAnimationRuntime:
 
         return dict(self._controllers)
 
+    async def get_semantic_value(self, action: str) -> SemanticActionState | None:
+        """通过 AU/语义层查询当前平台真实参数值。"""
+
+        return await self._platform.get_semantic_value(action)
+
     @property
     def is_initialized(self) -> bool:
         """运行时是否已初始化。"""
@@ -99,9 +105,17 @@ class PlatformAnimationRuntime:
             for controller in self._controllers.values()
             if controller.animation_type is AnimationType.IDLE
         ]
-        results = await asyncio.gather(
-            *(controller.start() for controller in idle_controllers),
-        )
+        try:
+            results = await asyncio.gather(
+                *(controller.start() for controller in idle_controllers),
+            )
+        except Exception:
+            await asyncio.gather(
+                *(controller.stop_without_wait() for controller in idle_controllers),
+                return_exceptions=True,
+            )
+            self._started = False
+            raise
         self._started = True
         logger.info(
             "平台动画运行时已启动: {}，启动 idle 控制器 {} 个",

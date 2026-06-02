@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Sequence
 from typing import TypeGuard
 
@@ -78,7 +79,12 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             latency=self.config.latency,
             callback=self._handle_audio_callback,
         )
-        await asyncio.to_thread(stream.start)
+        try:
+            await asyncio.to_thread(stream.start)
+        except Exception:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(stream.close)
+            raise
         self._stream = stream
         self.is_started = True
         logger.info("麦克风音频流已启动")
@@ -90,17 +96,19 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self._stream = None
         device_info = self._device_info
         self._drop_status_line.finish()
-        if stream is not None:
-            await asyncio.to_thread(stream.stop)
-            await asyncio.to_thread(stream.close)
-        if device_info is not None:
-            self.config.device_name = device_info.name
-            self.config.device_index = device_info.index
-        self._loop = None
-        self._device_info = None
-        self._clear_subscriptions()
-        self.is_started = False
-        logger.info("麦克风音频流已停止")
+        try:
+            if stream is not None:
+                await asyncio.to_thread(stream.stop)
+                await asyncio.to_thread(stream.close)
+        finally:
+            if device_info is not None:
+                self.config.device_name = device_info.name
+                self.config.device_index = device_info.index
+            self._loop = None
+            self._device_info = None
+            self._clear_subscriptions()
+            self.is_started = False
+            logger.info("麦克风音频流已停止")
 
     async def restart(self) -> None:
         """重启麦克风音频源。"""

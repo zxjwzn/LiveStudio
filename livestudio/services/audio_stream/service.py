@@ -151,6 +151,7 @@ class AudioStreamRouter(AudioStreamSource):
             await self.initialize()
 
         was_started = self.is_started
+        previous_source_kind = self._active_source_kind
         if was_started:
             await self._stop_forward_task()
             await self.active_source.stop()
@@ -165,7 +166,22 @@ class AudioStreamRouter(AudioStreamSource):
         await self.config_manager.save()
 
         if was_started:
-            await self.active_source.start()
+            try:
+                await self.active_source.start()
+            except Exception:
+                if self._source_subscription is not None:
+                    self.active_source.unsubscribe(self._source_subscription)
+                    self._source_subscription = None
+                self._active_source_kind = previous_source_kind
+                self.config.source = previous_source_kind
+                if self._active_source_kind is not None:
+                    self._source_subscription = self.active_source.subscribe(
+                        queue_maxsize=self.config.microphone.queue_maxsize,
+                    )
+                    await self.active_source.start()
+                    self._forward_task = asyncio.create_task(self._forward_chunks())
+                await self.config_manager.save()
+                raise
             self._forward_task = asyncio.create_task(self._forward_chunks())
 
         logger.info("音频流路由器已切换音频源: {}", source_kind)
@@ -194,6 +210,7 @@ class AudioStreamRouter(AudioStreamSource):
             raise
         except Exception:
             logger.exception("音频流路由器转发任务异常")
+            self.is_started = False
 
     @staticmethod
     def _chunk_analysis(chunk: AudioChunk) -> None:

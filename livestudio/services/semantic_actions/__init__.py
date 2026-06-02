@@ -7,6 +7,7 @@ from .adapter import (
     SemanticActionAdapter,
     SemanticActionBinding,
     SemanticActionProfile,
+    SemanticActionState,
 )
 from .models import (
     DEFAULT_SEMANTIC_ACTION_SPECS,
@@ -27,6 +28,7 @@ __all__ = [
     "SemanticActionBinding",
     "SemanticActionProfile",
     "SemanticActionSpec",
+    "SemanticActionState",
     "SemanticActionTarget",
     "SemanticTweenRequest",
     "clamp_semantic_value",

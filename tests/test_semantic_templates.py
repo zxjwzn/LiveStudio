@@ -19,7 +19,7 @@ from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 class _SemanticPlatform(PlatformService):
     def __init__(self) -> None:
         self.requests: list[SemanticTweenRequest] = []
-        self._tween = ParameterTweenEngine(self._send)
+        self._tween = ParameterTweenEngine(self.send_parameter_states)
 
     @property
     def name(self) -> str:
@@ -41,10 +41,10 @@ class _SemanticPlatform(PlatformService):
     async def stop(self) -> None:
         pass
 
-    async def _send(
+    async def _send_parameter_states(
         self,
         states: Iterable[ControlledParameterState],
-        mode: Literal["set", "add"],
+        mode: Literal["set", "add"] = "set",
     ) -> None:
         _ = states, mode
 

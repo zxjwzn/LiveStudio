@@ -42,7 +42,14 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
             easing,
         )
 
-        target = SemanticActionTarget(SemanticAction.MOUTH_SMILE.value, target_smile)
+        current_smile = await self.runtime.get_semantic_value(
+            SemanticAction.MOUTH_SMILE.value,
+        )
+        target = SemanticActionTarget(
+            SemanticAction.MOUTH_SMILE.value,
+            target_smile,
+            start_value=current_smile.value if current_smile is not None else None,
+        )
         await self.runtime.platform.tween_semantic(
             SemanticTweenRequest(
                 targets=(target,),

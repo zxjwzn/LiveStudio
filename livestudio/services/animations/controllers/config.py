@@ -67,6 +67,40 @@ class BodySwingControllerSettings(ControllerSettings):
         return self
 
 
+class EyeCenteringControllerSettings(ControllerSettings):
+    """基于头部姿态的眼球居中补偿控制器配置。"""
+
+    yaw_compensation: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=2.0,
+        description="头部左右偏转对眼球 X 轴的反向补偿强度。",
+    )
+    pitch_compensation: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=2.0,
+        description="头部俯仰对眼球 Y 轴的反向补偿强度。",
+    )
+    roll_to_x_compensation: float = Field(
+        default=0.0,
+        ge=-2.0,
+        le=2.0,
+        description="头部侧倾对眼球 X 轴的补偿强度。",
+    )
+    roll_to_y_compensation: float = Field(
+        default=0.0,
+        ge=-2.0,
+        le=2.0,
+        description="头部侧倾对眼球 Y 轴的补偿强度。",
+    )
+    update_interval: float = Field(default=0.05, gt=0.0, description="更新间隔")
+    duration: float = Field(default=0.05, ge=0.0, description="补偿缓动时长")
+    smoothing: float = Field(default=0.35, ge=0.0, le=1.0, description="补偿平滑系数")
+    deadzone: float = Field(default=0.01, ge=0.0, le=1.0, description="小幅变化死区")
+    priority: int = Field(default=15, description="眼球居中参数控制优先级")
+
+
 class MouthExpressionControllerSettings(ControllerSettings):
     """嘴部表情控制器配置。"""
 

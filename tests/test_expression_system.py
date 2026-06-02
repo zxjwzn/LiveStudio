@@ -75,6 +75,21 @@ class _SemanticVtsPlatform(VTubeStudio):
         pass
 
 
+class _ParameterValueClient:
+    def __init__(self, values: dict[str, float]) -> None:
+        self.values = values
+        self.requested: list[str] = []
+
+    async def get_parameter_value(self, request: object) -> object:
+        name = request.data.name
+        self.requested.append(name)
+        return type(
+            "Response",
+            (),
+            {"data": type("Data", (), {"value": self.values[name]})()},
+        )()
+
+
 def test_anger_selects_tense_mouth_without_smile_action() -> None:
     profile = default_vtube_studio_semantic_profile()
     selector = ExpressionSelector(
@@ -436,6 +451,21 @@ def test_vtube_semantic_adapter_uses_model_parameter_specs() -> None:
     by_name = {state.name: state for state in resolved}
     assert by_name["EyeOpenLeft"].value == 15.0
     assert by_name["EyeOpenRight"].value == 40.0
+
+
+async def test_vtube_platform_queries_real_values_as_semantic_state() -> None:
+    profile = default_vtube_studio_semantic_profile()
+    platform = VTubeStudio()
+    platform._client = _ParameterValueClient(  # noqa: SLF001
+        {"EyeOpenLeft": 0.5, "EyeOpenRight": 1.0},
+    )
+    platform._semantic_adapter = VTubeStudioSemanticAdapter(profile)  # noqa: SLF001
+
+    state = await platform.get_semantic_value(SemanticAction.EYE_OPEN.value)
+
+    assert state is not None
+    assert state.value == 0.75
+    assert platform.client.requested == ["EyeOpenLeft", "EyeOpenRight"]
 
 
 async def test_reload_model_config_persists_backfilled_semantic_profile(

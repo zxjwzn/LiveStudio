@@ -18,6 +18,7 @@ from livestudio.services.animations import (
     BodySwingController,
     BreathingController,
     ControllerSettings,
+    EyeCenteringController,
     MouthExpressionController,
     MouthSyncController,
 )
@@ -211,6 +212,11 @@ class VTubeStudioApp:
             BlinkController(runtime, "blink", config.controllers.blink),
             BreathingController(runtime, "breathing", config.controllers.breathing),
             BodySwingController(runtime, "body_swing", config.controllers.body_swing),
+            EyeCenteringController(
+                runtime,
+                "eye_centering",
+                config.controllers.eye_centering,
+            ),
             MouthExpressionController(
                 runtime,
                 "mouth_expression",

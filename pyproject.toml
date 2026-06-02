@@ -46,6 +46,8 @@ testpaths = ["tests"]
 
 [tool.ruff]
 extend-exclude = []
+
+[tool.ruff.lint]
 ignore = [
     "E402",
     "E501",

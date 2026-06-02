@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
@@ -35,6 +36,16 @@ class ResolvedPlatformParameter:
     weight: float = 1.0
     mode: Literal["set", "add"] = "set"
     keep_alive: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticActionState:
+    """A semantic action value normalized from concrete platform parameters."""
+
+    action: str
+    value: float
+    platform_values: dict[str, float]
+    weight: float = 1.0
 
 
 class PlatformParameterSpec(BaseModel):
@@ -149,6 +160,16 @@ class SemanticActionAdapter:
     def support_score(self, targets: Iterable[SemanticActionTarget]) -> float:
         return self.profile.support_score(targets)
 
+    def platform_parameters_for(self, action: str) -> tuple[str, ...]:
+        binding = self.profile.bindings.get(action)
+        if binding is None or not binding.enabled:
+            return ()
+        return tuple(
+            parameter_name
+            for parameter_name in binding.platform_params
+            if parameter_name in self.parameter_specs
+        )
+
     def resolve(
         self,
         target: SemanticActionTarget,
@@ -185,6 +206,39 @@ class SemanticActionAdapter:
                 ),
             )
         return resolved
+
+    def normalize_platform_values(
+        self,
+        action: str,
+        platform_values: dict[str, float],
+    ) -> SemanticActionState | None:
+        binding = self.profile.bindings.get(action)
+        if binding is None or not binding.enabled:
+            return None
+
+        weighted_value = 0.0
+        total_weight = 0.0
+        used_values: dict[str, float] = {}
+        for parameter_name in binding.platform_params:
+            spec = self.parameter_specs.get(parameter_name)
+            if spec is None or parameter_name not in platform_values:
+                continue
+            used_values[parameter_name] = platform_values[parameter_name]
+            weighted_value += _normalize_bound_value(
+                binding,
+                platform_values[parameter_name],
+                spec,
+            )
+            total_weight += 1.0
+
+        if total_weight <= 0.0:
+            return None
+        return SemanticActionState(
+            action=action,
+            value=clamp_semantic_value(action, weighted_value / total_weight),
+            platform_values=used_values,
+            weight=total_weight,
+        )
 
     def resolve_request(
         self,
@@ -316,6 +370,36 @@ def _resolve_bound_value(
     )
 
 
+def _normalize_bound_value(
+    binding: SemanticActionBinding,
+    value: float,
+    spec: PlatformParameterSpec,
+) -> float:
+    platform_value = _clamp(value, spec.minimum, spec.maximum)
+    semantic_spec = DEFAULT_SEMANTIC_ACTION_SPECS.get(binding.action)
+    if semantic_spec is None:
+        if platform_value >= spec.neutral:
+            span = spec.maximum - spec.neutral
+            ratio = 0.0 if span <= 0.0 else (platform_value - spec.neutral) / span
+            return _unapply_curve(ratio, binding.curve)
+        span = spec.neutral - spec.minimum
+        ratio = 0.0 if span <= 0.0 else (spec.neutral - platform_value) / span
+        return -_unapply_curve(ratio, binding.curve)
+
+    if platform_value >= spec.neutral:
+        span = spec.maximum - spec.neutral
+        ratio = 0.0 if span <= 0.0 else (platform_value - spec.neutral) / span
+        return semantic_spec.neutral + _unapply_curve(ratio, binding.curve) * (
+            semantic_spec.maximum - semantic_spec.neutral
+        )
+
+    span = spec.neutral - spec.minimum
+    ratio = 0.0 if span <= 0.0 else (spec.neutral - platform_value) / span
+    return semantic_spec.neutral - _unapply_curve(ratio, binding.curve) * (
+        semantic_spec.neutral - semantic_spec.minimum
+    )
+
+
 def _apply_curve(value: float, curve: CurveKind) -> float:
     if curve == "linear":
         return value
@@ -327,6 +411,21 @@ def _apply_curve(value: float, curve: CurveKind) -> float:
         if value < 0.5:
             return 2.0 * value * value
         return 1.0 - pow(-2.0 * value + 2.0, 2) / 2.0
+    return value
+
+
+def _unapply_curve(value: float, curve: CurveKind) -> float:
+    value = max(0.0, min(1.0, value))
+    if curve == "linear":
+        return value
+    if curve == "ease_in":
+        return math.sqrt(value)
+    if curve == "ease_out":
+        return 1.0 - math.sqrt(1.0 - value)
+    if curve == "ease_in_out":
+        if value < 0.5:
+            return math.sqrt(value / 2.0)
+        return 1.0 - math.sqrt((1.0 - value) / 2.0)
     return value
 
 

@@ -151,3 +151,31 @@ def test_semantic_adapter_maps_semantic_start_values_to_platform_range() -> None
     assert requests[0].parameter_name == "FaceAngleZ"
     assert requests[0].start_value == pytest.approx(-45.0)
     assert requests[0].end_value == pytest.approx(45.0)
+
+
+def test_semantic_adapter_normalizes_platform_values_to_semantic_range() -> None:
+    adapter = VTubeStudioSemanticAdapter(default_vtube_studio_semantic_profile())
+
+    eye_open = adapter.normalize_platform_values(
+        SemanticAction.EYE_OPEN.value,
+        {"EyeOpenLeft": 0.5, "EyeOpenRight": 1.0},
+    )
+    head_roll = adapter.normalize_platform_values(
+        SemanticAction.HEAD_ROLL.value,
+        {"FaceAngleZ": -45.0},
+    )
+
+    assert eye_open is not None
+    assert eye_open.value == pytest.approx(0.75)
+    assert eye_open.platform_values == {"EyeOpenLeft": 0.5, "EyeOpenRight": 1.0}
+    assert head_roll is not None
+    assert head_roll.value == pytest.approx(-0.5)
+
+
+def test_semantic_adapter_reports_bound_platform_parameters() -> None:
+    adapter = VTubeStudioSemanticAdapter(default_vtube_studio_semantic_profile())
+
+    assert adapter.platform_parameters_for(SemanticAction.MOUTH_SMILE.value) == (
+        "MouthSmile",
+    )
+    assert adapter.platform_parameters_for(SemanticAction.MOUTH_FROWN.value) == ()

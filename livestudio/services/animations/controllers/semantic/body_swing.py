@@ -49,11 +49,26 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
             duration,
         )
 
+        current_yaw = await self.runtime.get_semantic_value(SemanticAction.HEAD_YAW.value)
+        current_roll = await self.runtime.get_semantic_value(
+            SemanticAction.HEAD_ROLL.value,
+        )
+
         await self.runtime.platform.tween_semantic(
             SemanticTweenRequest(
                 targets=(
-                    SemanticActionTarget(SemanticAction.HEAD_YAW.value, target_yaw),
-                    SemanticActionTarget(SemanticAction.HEAD_ROLL.value, target_roll),
+                    SemanticActionTarget(
+                        SemanticAction.HEAD_YAW.value,
+                        target_yaw,
+                        start_value=current_yaw.value if current_yaw is not None else None,
+                    ),
+                    SemanticActionTarget(
+                        SemanticAction.HEAD_ROLL.value,
+                        target_roll,
+                        start_value=(
+                            current_roll.value if current_roll is not None else None
+                        ),
+                    ),
                 ),
                 duration=duration,
                 easing=easing,

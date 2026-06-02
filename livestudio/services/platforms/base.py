@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
+from typing import Literal
 
 from livestudio.services.semantic_actions import (
     SemanticActionAdapter,
+    SemanticActionState,
     SemanticTweenRequest,
 )
-from livestudio.tween import ParameterTweenEngine
+from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 
 
 class PlatformService(ABC):
@@ -37,6 +40,29 @@ class PlatformService(ABC):
         if adapter is None:
             raise NotImplementedError(f"平台 {self.name} 未实现语义动作适配器")
         await adapter.tween(self.tween, request)
+
+    async def get_semantic_value(self, action: str) -> SemanticActionState | None:
+        """查询平台真实参数值并归一化为语义动作值。"""
+
+        _ = action
+        return None
+
+    async def send_parameter_states(
+        self,
+        states: Iterable[ControlledParameterState],
+        mode: Literal["set", "add"] = "set",
+    ) -> None:
+        """发送一批底层平台参数状态。"""
+
+        await self._send_parameter_states(states, mode)
+
+    @abstractmethod
+    async def _send_parameter_states(
+        self,
+        states: Iterable[ControlledParameterState],
+        mode: Literal["set", "add"] = "set",
+    ) -> None:
+        """平台实现的底层参数发送逻辑。"""
 
     @abstractmethod
     async def initialize(self) -> None:

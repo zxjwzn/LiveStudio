@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Literal
 
 from livestudio.config import ConfigManager
-from livestudio.services.semantic_actions import SemanticActionAdapter
+from livestudio.services.semantic_actions import (
+    SemanticActionAdapter,
+    SemanticActionState,
+)
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path, resolve_config_path
@@ -27,6 +30,8 @@ from ....clients.vtube_studio.models import (
     InjectParameterDataRequest,
     InjectParameterDataRequestData,
     InjectParameterValue,
+    ParameterValueRequest,
+    ParameterValueRequestData,
     VTSEventEnvelope,
     VTubeStudioAPIStateBroadcast,
 )
@@ -55,7 +60,7 @@ class VTubeStudio(PlatformService):
         self._current_model: PlatformModelIdentity | None = None
         self._semantic_adapter: VTubeStudioSemanticAdapter | None = None
         self._tween = ParameterTweenEngine(
-            self._send_parameter_states,
+            self.send_parameter_states,
         )
         self._initialized = False
         self._started = False
@@ -185,10 +190,17 @@ class VTubeStudio(PlatformService):
             return
         if not self._initialized:
             await self.initialize()
-        await self.connect()
-        await self.authenticate()
-        self.tween.start()
-        self._started = True
+        try:
+            await self.connect()
+            await self.authenticate()
+            self.tween.start()
+            self._started = True
+        except Exception:
+            await self.tween.stop()
+            if self._client is not None:
+                await self._client.disconnect()
+            self._started = False
+            raise
 
     async def restart(self) -> None:
         """重启 VTube Studio 服务并重新加载配置。"""
@@ -356,3 +368,24 @@ class VTubeStudio(PlatformService):
             ),
         )
         await self.client.inject_parameter_data(request)
+
+    async def get_semantic_value(self, action: str) -> SemanticActionState | None:
+        """查询 VTube Studio 真实参数并归一化为语义动作值。"""
+
+        adapter = self.semantic_adapter
+        if adapter is None:
+            return None
+        parameter_names = adapter.platform_parameters_for(action)
+        if not parameter_names:
+            return None
+
+        platform_values: dict[str, float] = {}
+        for parameter_name in parameter_names:
+            response = await self.client.get_parameter_value(
+                ParameterValueRequest(
+                    data=ParameterValueRequestData(name=parameter_name),
+                ),
+            )
+            platform_values[parameter_name] = response.data.value
+
+        return adapter.normalize_platform_values(action, platform_values)
