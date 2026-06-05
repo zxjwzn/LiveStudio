@@ -152,6 +152,8 @@ class AudioStreamRouter(AudioStreamSource):
 
         was_started = self.is_started
         previous_source_kind = self._active_source_kind
+        if previous_source_kind is None:
+            raise RuntimeError("音频流路由器当前没有可回滚的活动音频源")
         if was_started:
             await self._stop_forward_task()
             await self.active_source.stop()
@@ -174,12 +176,11 @@ class AudioStreamRouter(AudioStreamSource):
                     self._source_subscription = None
                 self._active_source_kind = previous_source_kind
                 self.config.source = previous_source_kind
-                if self._active_source_kind is not None:
-                    self._source_subscription = self.active_source.subscribe(
-                        queue_maxsize=self.config.microphone.queue_maxsize,
-                    )
-                    await self.active_source.start()
-                    self._forward_task = asyncio.create_task(self._forward_chunks())
+                self._source_subscription = self.active_source.subscribe(
+                    queue_maxsize=self.config.microphone.queue_maxsize,
+                )
+                await self.active_source.start()
+                self._forward_task = asyncio.create_task(self._forward_chunks())
                 await self.config_manager.save()
                 raise
             self._forward_task = asyncio.create_task(self._forward_chunks())

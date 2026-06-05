@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Literal
+from typing import Any, Literal
 
 import pytest
 
@@ -69,7 +69,7 @@ class _Platform(PlatformService):
 class _Controller(AnimationController[ControllerSettings]):
     def __init__(
         self,
-        runtime: PlatformAnimationRuntime,
+        runtime: Any,
         name: str,
         config: ControllerSettings,
         *,
