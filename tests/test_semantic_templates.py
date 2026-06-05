@@ -1,4 +1,4 @@
-"""Semantic animation template tests."""
+"""测试通用动作动画模板"""
 
 from __future__ import annotations
 

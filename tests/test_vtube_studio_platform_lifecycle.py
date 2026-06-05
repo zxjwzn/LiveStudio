@@ -1,4 +1,4 @@
-"""VTube Studio platform lifecycle tests."""
+"""测试 VTube Studio 平台服务能不能正常开始和结束"""
 
 from __future__ import annotations
 

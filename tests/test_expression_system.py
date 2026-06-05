@@ -1,4 +1,4 @@
-"""Expression system tests."""
+"""测试表情系统能不能正常工作"""
 
 from __future__ import annotations
 
@@ -402,8 +402,8 @@ async def test_expression_service_falls_back_to_platform_neutral_start_values() 
 
 def test_vtube_model_config_contains_semantic_profile_defaults() -> None:
     config = VTubeStudioModelConfig()
-    config.model.id = "model-id"
-    config.model.name = "Model"
+    config.model.model_id = "model-id"
+    config.model.model_name = "Model"
 
     changed = config.ensure_semantic_profile_defaults()
 
@@ -477,7 +477,11 @@ async def test_reload_model_config_persists_backfilled_semantic_profile(
     config_path.write_text(
         yaml.safe_dump(
             {
-                "model": {"id": "", "name": ""},
+                "model": {
+                    "platform_name": "",
+                    "model_id": "",
+                    "model_name": "",
+                },
                 "controllers": {},
                 "expressions": [],
             },

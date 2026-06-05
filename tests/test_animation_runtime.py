@@ -1,4 +1,4 @@
-"""PlatformAnimationRuntime lifecycle tests."""
+"""测试动画运行流程能不能正常开始和结束"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""High-level expression synthesis service."""
+"""高层的表情生成服务"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from .selector import ExpressionSelector
 
 
 class ExpressionService:
-    """Selects and applies calibrated expression units."""
+    """挑出调好的表情动作并应用"""
 
     def __init__(
         self,

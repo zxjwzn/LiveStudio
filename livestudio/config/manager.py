@@ -1,4 +1,4 @@
-"""核心配置管理器。"""
+"""核心配置管理器"""
 
 from __future__ import annotations
 
@@ -30,11 +30,11 @@ _MAX_TOLERANT_ATTEMPTS = 64
 
 
 class ConfigManager(Generic[ConfigT]):
-    """管理经校验的配置快照，并提供显式保存语义。
+    """管理检查过的配置快照，并明确控制什么时候保存
 
     支持宽容加载：先以默认配置补齐缺失字段；当配置文件中的字段不再被模型识别
     （字段被删除、重命名、类型变更、枚举值失效等）时，丢弃不兼容字段、保留其余可用部分；
-    迁移成功后会先把原文件备份为 ``<name>.<timestamp>.bak``，再写回迁移后的配置。
+    迁移成功后会先把原文件备份为 ``<name>.<timestamp>.bak``，再写回迁移后的配置
     """
 
     def __init__(
@@ -52,13 +52,13 @@ class ConfigManager(Generic[ConfigT]):
 
     @property
     def config(self) -> ConfigT:
-        """返回最新的已校验配置快照。"""
+        """返回最新的已校验配置快照"""
 
         return self._current
 
     @property
     def path(self) -> Path:
-        """返回配置文件路径。"""
+        """返回配置文件路径"""
 
         return self._path
 
@@ -110,7 +110,7 @@ class ConfigManager(Generic[ConfigT]):
                     temp_path.unlink()
 
     async def load(self) -> ConfigT:
-        """从磁盘加载配置，或按默认值自动创建配置文件。"""
+        """从磁盘加载配置，或按默认值自动创建配置文件"""
 
         async with self._lock:
             if self._path.exists():
@@ -125,12 +125,12 @@ class ConfigManager(Generic[ConfigT]):
             return self._current
 
     async def reload(self) -> ConfigT:
-        """重新从磁盘加载配置。"""
+        """重新从磁盘加载配置"""
 
         return await self.load()
 
     async def save(self) -> None:
-        """将当前快照持久化到磁盘。"""
+        """将当前快照持久化到磁盘"""
 
         async with self._lock:
             self._persist_snapshot(self._current)
@@ -174,7 +174,7 @@ class ConfigManager(Generic[ConfigT]):
             if not loc:
                 continue
             if entry.get("type", "") == "missing":
-                # 必填字段缺失：模型本身没有默认值，无法靠丢弃修复，跳过该项继续看下一条。
+                # 必填字段缺失：模型本身没有默认值，无法靠丢弃修复，跳过该项继续看下一条
                 continue
             if _reset_to_default_at_path(data, default_data, loc):
                 dropped.append(loc)
@@ -233,7 +233,7 @@ class ConfigManager(Generic[ConfigT]):
 
 
 def _delete_at_path(data: Any, path: tuple[str | int, ...]) -> bool:
-    """按 Pydantic loc 路径在 dict/list 嵌套结构中删除一个节点。"""
+    """按 Pydantic loc 路径在 dict/list 嵌套结构中删除一个节点"""
 
     if not path:
         return False
@@ -266,7 +266,7 @@ def _delete_at_path(data: Any, path: tuple[str | int, ...]) -> bool:
 
 
 def _merge_defaults(default_data: Any, loaded_data: Any) -> Any:
-    """Deep-merge loaded config over defaults so missing fields are backfilled."""
+    """把读到的配置合到默认配置上，这样缺的字段会自动补上"""
 
     if isinstance(default_data, dict) and isinstance(loaded_data, dict):
         merged = copy.deepcopy(default_data)
@@ -284,7 +284,7 @@ def _reset_to_default_at_path(
     default_data: Any,
     path: tuple[str | int, ...],
 ) -> bool:
-    """Reset a nested value to the current model default when available."""
+    """如果当前模型有默认值，就把里面的某个值重置回默认值"""
 
     if not path:
         return False

@@ -1,4 +1,4 @@
-"""Built-in expression combination compatibility rules."""
+"""内置的表情组合兼容规则"""
 
 from __future__ import annotations
 

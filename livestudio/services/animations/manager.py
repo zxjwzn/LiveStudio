@@ -1,4 +1,4 @@
-"""动画运行时管理器。"""
+"""动画运行时管理器"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from .templates import AnimationTemplatePlayer
 
 
 class AnimationManager:
-    """管理全部平台动画运行时。"""
+    """管理全部平台动画运行时"""
 
     def __init__(
         self,
@@ -32,19 +32,19 @@ class AnimationManager:
 
     @property
     def runtimes(self) -> dict[str, PlatformAnimationRuntime]:
-        """返回平台动画运行时快照。"""
+        """返回平台动画运行时快照"""
 
         return dict(self._runtimes)
 
     @property
     def is_initialized(self) -> bool:
-        """动画管理器是否已初始化。"""
+        """动画管理器是否已初始化"""
 
         return self._initialized
 
     @property
     def is_started(self) -> bool:
-        """动画管理器是否已启动。"""
+        """动画管理器是否已启动"""
 
         return self._started
 
@@ -52,7 +52,7 @@ class AnimationManager:
         self,
         platform: PlatformService,
     ) -> None:
-        """为平台创建并注册动画运行时。"""
+        """为平台创建并注册动画运行时"""
 
         if platform.name in self._runtimes:
             raise ValueError(f"平台动画运行时已存在: {platform.name}")
@@ -68,14 +68,14 @@ class AnimationManager:
         self._runtimes[platform.name] = runtime
 
     async def unregister_runtime(self, platform_name: str) -> None:
-        """停止并移除平台动画运行时。"""
+        """停止并移除平台动画运行时"""
 
         runtime = self._runtimes.pop(platform_name, None)
         if runtime is not None:
             await runtime.stop()
 
     def get_runtime(self, platform_name: str) -> PlatformAnimationRuntime:
-        """获取指定平台动画运行时。"""
+        """获取指定平台动画运行时"""
 
         runtime = self._runtimes.get(platform_name)
         if runtime is None:
@@ -87,34 +87,34 @@ class AnimationManager:
         platform_name: str,
         controller: AnimationController[ControllerSettings],
     ) -> None:
-        """向指定平台运行时注册控制器实例。"""
+        """向指定平台运行时注册控制器实例"""
 
         self.get_runtime(platform_name).register_controller(
             controller,
         )
 
     async def initialize_runtime(self, platform_name: str) -> None:
-        """初始化指定平台动画运行时。"""
+        """初始化指定平台动画运行时"""
 
         await self.get_runtime(platform_name).initialize()
 
     async def start_runtime(self, platform_name: str) -> None:
-        """启动指定平台动画运行时。"""
+        """启动指定平台动画运行时"""
 
         await self.get_runtime(platform_name).start()
 
     async def stop_runtime(self, platform_name: str) -> None:
-        """停止指定平台动画运行时。"""
+        """停止指定平台动画运行时"""
 
         await self.get_runtime(platform_name).stop()
 
     async def restart_runtime(self, platform_name: str) -> None:
-        """重启指定平台动画运行时。"""
+        """重启指定平台动画运行时"""
 
         await self.get_runtime(platform_name).restart()
 
     async def initialize(self) -> None:
-        """初始化全部平台动画运行时。"""
+        """初始化全部平台动画运行时"""
 
         await asyncio.gather(
             *(runtime.initialize() for runtime in self._runtimes.values()),
@@ -123,7 +123,7 @@ class AnimationManager:
         logger.info("动画管理器已初始化，平台运行时 {} 个", len(self._runtimes))
 
     async def start(self) -> None:
-        """启动全部平台动画运行时。"""
+        """启动全部平台动画运行时"""
 
         if self._started:
             return
@@ -134,21 +134,21 @@ class AnimationManager:
         logger.info("动画管理器已启动")
 
     async def stop(self) -> None:
-        """停止全部平台动画运行时。"""
+        """停止全部平台动画运行时"""
 
         await asyncio.gather(*(runtime.stop() for runtime in self._runtimes.values()))
         self._started = False
         logger.info("动画管理器已停止")
 
     async def restart(self) -> None:
-        """重启动画管理器。"""
+        """重启动画管理器"""
 
         await self.stop()
         await self.initialize()
         await self.start()
 
     async def reload_templates(self, platform_name: str | None = None) -> None:
-        """重载指定平台或全部平台的动画模板。"""
+        """重载指定平台或全部平台的动画模板"""
 
         if platform_name is not None:
             await self.get_runtime(platform_name).reload_templates()

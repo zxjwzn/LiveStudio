@@ -1,4 +1,4 @@
-"""应用编排层。"""
+"""应用编排层"""
 
 from .vtubestudio.app import VTubeStudioApp
 

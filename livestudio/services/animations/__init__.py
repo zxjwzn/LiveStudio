@@ -1,5 +1,6 @@
 from .controllers import (
     AnimationController,
+    AnimationControllerSettingsConfig,
     AnimationType,
     BlinkController,
     BlinkControllerSettings,
@@ -25,6 +26,7 @@ from .templates import (
 
 __all__ = [
     "AnimationController",
+    "AnimationControllerSettingsConfig",
     "AnimationManager",
     "AnimationTemplatePlayer",
     "AnimationType",

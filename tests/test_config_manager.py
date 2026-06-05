@@ -1,4 +1,4 @@
-"""ConfigManager 测试。
+"""测试 ConfigManager
 
 覆盖：
 - 自动创建默认配置文件

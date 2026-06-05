@@ -1,4 +1,4 @@
-"""Built-in expression units."""
+"""内置的表情动作单元"""
 
 from __future__ import annotations
 

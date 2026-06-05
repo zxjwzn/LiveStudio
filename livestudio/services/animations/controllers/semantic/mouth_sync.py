@@ -1,4 +1,4 @@
-"""Platform-independent semantic mouth sync controller."""
+"""各平台都能用的口型同步控制器"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from ..models import AnimationType
 
 
 class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
-    """根据音频响度实时驱动嘴部张开语义动作。"""
+    """根据音频响度实时驱动嘴部张开语义动作"""
 
     def __init__(
         self,
@@ -40,7 +40,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
     @property
     def animation_type(self) -> AnimationType:
-        """控制器类型。"""
+        """控制器类型"""
 
         return AnimationType.IDLE
 
@@ -60,7 +60,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         return started
 
     async def run_cycle(self) -> None:
-        """读取一段音频并按响度更新嘴部开合。"""
+        """读取一段音频并按响度更新嘴部开合"""
 
         subscription = self._audio_subscription
         if subscription is None:
@@ -86,7 +86,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         await asyncio.sleep(self.config.update_interval)
 
     async def execute(self, **kwargs: object) -> None:
-        """idle 控制器不执行一次性动画。"""
+        """idle 控制器不执行一次性动画"""
 
         _ = kwargs
 

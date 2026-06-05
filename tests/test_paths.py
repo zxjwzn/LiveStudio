@@ -1,4 +1,4 @@
-"""Filesystem path helper tests."""
+"""测试文件路径小工具"""
 
 from __future__ import annotations
 

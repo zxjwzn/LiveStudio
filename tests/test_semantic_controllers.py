@@ -1,4 +1,4 @@
-"""Semantic controller output tests."""
+"""测试通用动作控制器的输出"""
 
 from __future__ import annotations
 

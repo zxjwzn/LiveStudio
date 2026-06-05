@@ -1,4 +1,4 @@
-"""Platform-independent semantic mouth expression controller."""
+"""各平台都能用的嘴部表情控制器"""
 
 from __future__ import annotations
 
@@ -18,16 +18,16 @@ from ..models import AnimationType
 
 
 class MouthExpressionController(AnimationController[MouthExpressionControllerSettings]):
-    """随机改变嘴角上扬语义强度，增加待机生动性。"""
+    """随机改变嘴角上扬语义强度，增加待机生动性"""
 
     @property
     def animation_type(self) -> AnimationType:
-        """控制器类型。"""
+        """控制器类型"""
 
         return AnimationType.IDLE
 
     async def run_cycle(self) -> None:
-        """执行一次嘴部表情变化周期。"""
+        """执行一次嘴部表情变化周期"""
 
         target_smile = random.uniform(0.0, self.config.smile_amplitude)
         duration = random.uniform(self.config.min_duration, self.config.max_duration)
@@ -60,6 +60,6 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
         )
 
     async def execute(self, **kwargs: object) -> None:
-        """idle 控制器不执行一次性动画。"""
+        """idle 控制器不执行一次性动画"""
 
         _ = kwargs

@@ -1,144 +1,76 @@
-"""VTube Studio 平台服务配置模型。"""
+"""VTube Studio 平台服务配置模型"""
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from livestudio.services.animations.controllers import (
-    BlinkControllerSettings,
-    BodySwingControllerSettings,
-    BreathingControllerSettings,
-    EyeCenteringControllerSettings,
-    MouthExpressionControllerSettings,
-    MouthSyncControllerSettings,
-)
+from livestudio.services.platforms.model_config import PlatformModelConfig
 from livestudio.services.semantic_actions import (
     PlatformParameterSpec,
-    SemanticActionProfile,
+    SemanticActionBinding,
 )
 
 from .semantic import (
     default_vtube_studio_parameter_specs,
     default_vtube_studio_semantic_bindings,
-    default_vtube_studio_semantic_profile,
 )
 
 
-class VTubeStudioModelInfoConfig(BaseModel):
-    """写入模型配置文件的 VTube Studio 模型标识。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(default="", description="VTube Studio 模型唯一 ID。")
-    name: str = Field(default="", description="VTube Studio 模型显示名称。")
-
-
 class VTubeStudioExpressionStateConfig(BaseModel):
-    """VTube Studio 表情激活状态配置。"""
+    """VTube Studio 表情激活状态配置"""
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(default="", description="表情名称。")
-    file: str = Field(default="", description="表情文件名。")
-    active: bool = Field(default=False, description="模型加载时是否激活该表情。")
+    name: str = Field(default="", description="表情名称")
+    file: str = Field(default="", description="表情文件名")
+    active: bool = Field(default=False, description="模型加载时是否激活该表情")
 
 
-class VTubeStudioControllerSettingsConfig(BaseModel):
-    """随模型切换的 VTube Studio 动画控制器配置。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    blink: BlinkControllerSettings = Field(
-        default_factory=BlinkControllerSettings,
-        description="眨眼控制器配置。",
-    )
-    breathing: BreathingControllerSettings = Field(
-        default_factory=BreathingControllerSettings,
-        description="呼吸控制器配置。",
-    )
-    body_swing: BodySwingControllerSettings = Field(
-        default_factory=BodySwingControllerSettings,
-        description="身体摇摆控制器配置。",
-    )
-    eye_centering: EyeCenteringControllerSettings = Field(
-        default_factory=EyeCenteringControllerSettings,
-        description="眼球居中补偿控制器配置。",
-    )
-    mouth_expression: MouthExpressionControllerSettings = Field(
-        default_factory=MouthExpressionControllerSettings,
-        description="嘴部表情控制器配置。",
-    )
-    mouth_sync: MouthSyncControllerSettings = Field(
-        default_factory=MouthSyncControllerSettings,
-        description="基于响度的嘴部开合同步控制器配置。",
-    )
-
-
-class VTubeStudioModelConfig(BaseModel):
-    """按 VTube Studio 模型持久化的完整平台配置。"""
+class VTubeStudioModelConfig(PlatformModelConfig):
+    """按 VTube Studio 模型持久化的完整平台配置"""
 
     model_config = ConfigDict(extra="forbid")
 
-    model: VTubeStudioModelInfoConfig = Field(
-        default_factory=VTubeStudioModelInfoConfig,
-        description="当前配置绑定的 VTube Studio 模型。",
-    )
-    controllers: VTubeStudioControllerSettingsConfig = Field(
-        default_factory=VTubeStudioControllerSettingsConfig,
-        description="动画控制器配置。",
-    )
     expressions: list[VTubeStudioExpressionStateConfig] = Field(
         default_factory=list,
-        description="模型加载时需要同步的表情激活状态配置。",
-    )
-    semantic_profile: SemanticActionProfile = Field(
-        default_factory=default_vtube_studio_semantic_profile,
-        description="语义动作到当前 VTube Studio 模型参数的映射配置。",
-    )
-    parameter_specs: list[PlatformParameterSpec] = Field(
-        default_factory=lambda: list(default_vtube_studio_parameter_specs()),
-        description="当前 VTube Studio 模型的参数范围规格。",
+        description="模型加载时需要同步的表情激活状态配置",
     )
 
     @field_validator("expressions", mode="before")
     @classmethod
     def migrate_expression_mapping(cls, value: Any) -> Any:
-        """兼容旧版按文件名索引的表情配置。"""
+        """兼容旧版按文件名索引的表情配置"""
 
         if isinstance(value, dict):
             return list(value.values())
         return value
 
-    def ensure_semantic_profile_defaults(self) -> bool:
-        """补齐当前模型的语义动作映射默认值。"""
+    def ensure_semantic_profile_defaults(
+        self,
+        bindings: Iterable[SemanticActionBinding] | None = None,
+    ) -> bool:
+        """补齐当前模型的语义动作映射默认值"""
 
         changed = False
-        if self.semantic_profile.model_id != self.model.id:
-            self.semantic_profile.model_id = self.model.id
+        if self.semantic_profile.model_id != self.model.model_id:
+            self.semantic_profile.model_id = self.model.model_id
             changed = True
-        if self.semantic_profile.model_name != self.model.name:
-            self.semantic_profile.model_name = self.model.name
+        if self.semantic_profile.model_name != self.model.model_name:
+            self.semantic_profile.model_name = self.model.model_name
             changed = True
+        return super().ensure_semantic_profile_defaults(
+            bindings or default_vtube_studio_semantic_bindings(),
+        ) or changed
 
-        return (
-            self.semantic_profile.ensure_defaults(
-                bindings=default_vtube_studio_semantic_bindings(),
-            )
-            or changed
+    def ensure_parameter_spec_defaults(
+        self,
+        specs: Iterable[PlatformParameterSpec] | None = None,
+    ) -> bool:
+        """补齐当前模型缺失的 VTube Studio 参数范围默认值"""
+
+        return super().ensure_parameter_spec_defaults(
+            specs or default_vtube_studio_parameter_specs(),
         )
-
-    def ensure_parameter_spec_defaults(self) -> bool:
-        """补齐当前模型缺失的 VTube Studio 参数范围默认值。"""
-
-        existing_names = {spec.name for spec in self.parameter_specs}
-        missing = [
-            spec
-            for spec in default_vtube_studio_parameter_specs()
-            if spec.name not in existing_names
-        ]
-        if not missing:
-            return False
-        self.parameter_specs.extend(missing)
-        return True

@@ -1,4 +1,4 @@
-"""LiveStudio 包。"""
+"""LiveStudio 这个包"""
 
 from .services.platforms.vtubestudio import VTubeStudio
 from .tween import Easing, ParameterTweenEngine

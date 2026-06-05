@@ -1,4 +1,4 @@
-"""用于 VTube Studio 公共 API 的异步 WebSocket 客户端。"""
+"""用 WebSocket 异步连接 VTube Studio 公共接口的客户端"""
 
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ EventHandler = Callable[[VTSEventEnvelope], Awaitable[None] | None]
 
 
 class VTubeStudioClient:
-    """基于 WebSocket 的异步 VTube Studio API 客户端。"""
+    """用 WebSocket 异步连接 VTube Studio 的客户端"""
 
     def __init__(
         self,
@@ -134,7 +134,7 @@ class VTubeStudioClient:
 
     @property
     def is_connected(self) -> bool:
-        """当前是否已建立 WebSocket 连接。"""
+        """现在有没有连上 WebSocket"""
 
         return (
             self._connection is not None
@@ -143,7 +143,7 @@ class VTubeStudioClient:
         )
 
     async def connect(self) -> None:
-        """建立到 VTube Studio 的 WebSocket 连接。"""
+        """连上 VTube Studio 的 WebSocket"""
 
         if self._connection is not None:
             return
@@ -167,7 +167,7 @@ class VTubeStudioClient:
             ) from exc
 
     async def disconnect(self) -> None:
-        """关闭 WebSocket 连接。"""
+        """断开 WebSocket 连接"""
 
         connection = self._connection
         reader_task = self._reader_task
@@ -193,7 +193,7 @@ class VTubeStudioClient:
             )
 
     async def request_token(self) -> str:
-        """请求插件认证令牌。"""
+        """请求插件认证令牌"""
 
         request = AuthenticationTokenRequest(
             data=AuthenticationTokenRequestData(
@@ -206,7 +206,7 @@ class VTubeStudioClient:
         return response.data.authentication_token
 
     async def authenticate(self, authentication_token: str) -> bool:
-        """使用令牌认证当前会话。"""
+        """使用令牌认证当前会话"""
 
         request = AuthenticationRequest(
             data=AuthenticationRequestData(
@@ -228,7 +228,7 @@ class VTubeStudioClient:
         request: VTSRequestEnvelope[Any],
         response_model: type[ResponseT],
     ) -> ResponseT:
-        """发送请求并解析响应。"""
+        """发送请求并解析响应"""
 
         future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
         async with self._lock:
@@ -260,7 +260,7 @@ class VTubeStudioClient:
         return self._parse_response(raw_response, request.request_id, response_model)
 
     async def _reader_loop(self) -> None:
-        """后台读取所有消息，并按 requestID 或事件类型路由。"""
+        """在后台读消息，并按请求编号或事件类型分给对应处理逻辑"""
 
         connection = self._connection
         if connection is None:
@@ -292,7 +292,7 @@ class VTubeStudioClient:
             )
 
     async def _route_message(self, raw_message: str) -> None:
-        """路由收到的文本消息。"""
+        """路由收到的文本消息"""
 
         try:
             payload = json.loads(raw_message)
@@ -312,7 +312,7 @@ class VTubeStudioClient:
         await self._dispatch_event(message_type, raw_message)
 
     async def _dispatch_event(self, message_type: str, raw_message: str) -> None:
-        """分发事件到已注册监听器。"""
+        """分发事件到已注册监听器"""
 
         handlers = self._event_handlers.get(message_type, [])
         if not handlers:
@@ -365,7 +365,7 @@ class VTubeStudioClient:
                 await task
 
     def _fail_pending_requests(self, error: Exception) -> None:
-        """使所有挂起请求失败。"""
+        """使所有挂起请求失败"""
 
         pending_requests = list(self._pending_requests.values())
         self._pending_requests.clear()
@@ -379,7 +379,7 @@ class VTubeStudioClient:
         request_id: str,
         response_model: type[ResponseT],
     ) -> ResponseT:
-        """解析 JSON 响应并处理 APIError。"""
+        """解析 JSON 返回内容，并处理 API 错误"""
 
         if not isinstance(raw_response, str):
             raise ResponseError("收到的响应不是文本消息")
@@ -413,12 +413,12 @@ class VTubeStudioClient:
             raise ResponseError(f"响应无法解析为 {response_model.__name__}") from exc
 
     def add_event_handler(self, event_name: str, handler: EventHandler) -> None:
-        """注册事件回调。"""
+        """注册事件回调"""
 
         self._event_handlers.setdefault(event_name, []).append(handler)
 
     def remove_event_handler(self, event_name: str, handler: EventHandler) -> None:
-        """移除事件回调。"""
+        """移除事件回调"""
 
         handlers = self._event_handlers.get(event_name)
         if handlers is None:
@@ -429,7 +429,7 @@ class VTubeStudioClient:
             self._event_handlers.pop(event_name, None)
 
     def has_event_handlers(self, event_name: str) -> bool:
-        """返回指定事件当前是否仍有本地处理器。"""
+        """返回指定事件当前是否仍有本地处理器"""
 
         return bool(self._event_handlers.get(event_name))
 
@@ -437,7 +437,7 @@ class VTubeStudioClient:
         self,
         request: PermissionRequest,
     ) -> PermissionResponse:
-        """请求或查询插件权限。"""
+        """请求或查询插件权限"""
 
         return await self.send_request(request, PermissionResponse)
 
@@ -445,7 +445,7 @@ class VTubeStudioClient:
         self,
         request: EventSubscriptionRequest,
     ) -> EventSubscriptionResponse:
-        """订阅事件。"""
+        """订阅事件"""
 
         response = await self.send_request(request, EventSubscriptionResponse)
         event_name = request.data.event_name
@@ -461,7 +461,7 @@ class VTubeStudioClient:
         self,
         event_name: str | None = None,
     ) -> EventSubscriptionResponse:
-        """退订指定事件或全部事件。"""
+        """退订指定事件或全部事件"""
 
         request = EventSubscriptionRequest(
             data=EventSubscriptionRequestData(

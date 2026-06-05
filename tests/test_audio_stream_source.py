@@ -1,6 +1,6 @@
-"""AudioStreamSource 订阅与广播测试。
+"""测试 AudioStreamSource 的订阅和广播
 
-演示如何对一个抽象基类做最小子类化来测纯逻辑。
+演示如何对一个抽象基类做最小子类化来测纯逻辑
 """
 
 # ruff: noqa: SLF001
@@ -33,7 +33,7 @@ from livestudio.services.audio_stream.sources.microphone.models import InputDevi
 
 
 class _DummySource(AudioStreamSource):
-    """最小化实现：不接真实设备，只暴露 _publish_chunk 入口。"""
+    """最小化实现：不接真实设备，只暴露 _publish_chunk 入口"""
 
     def __init__(self, *, fail_start: bool = False) -> None:
         super().__init__()

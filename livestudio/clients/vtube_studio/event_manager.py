@@ -1,4 +1,4 @@
-"""VTube Studio 的高层事件订阅管理器。"""
+"""VTube Studio 的事件订阅管理器"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ ListenerHandler = Callable[[VTSEventEnvelope], Awaitable[None] | None]
 
 
 class VTSEventManager:
-    """管理事件订阅、回调与队列监听。"""
+    """管理事件订阅、回调与队列监听"""
 
     def __init__(self, client: VTubeStudioClient, queue_size: int) -> None:
         self._client = client

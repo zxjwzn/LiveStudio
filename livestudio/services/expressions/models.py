@@ -1,4 +1,4 @@
-"""Expression system domain models."""
+"""表情系统用到的数据模型"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from livestudio.services.semantic_actions import SemanticActionTarget
 
 
 class EmotionKind(StrEnum):
-    """Supported emotion categories for expression selection."""
+    """选表情时支持的情绪类型"""
 
     JOY = "joy"
     SADNESS = "sadness"
@@ -21,7 +21,7 @@ class EmotionKind(StrEnum):
 
 
 class ExpressionRegion(StrEnum):
-    """Facial regions used to compose a complete expression."""
+    """组成完整表情时会用到的脸部区域"""
 
     BROW = "brow"
     EYE = "eye"
@@ -31,7 +31,7 @@ class ExpressionRegion(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ExpressionUnit:
-    """A reusable facial action unit inspired by FACS action units."""
+    """可以重复使用的脸部动作单元，参考了 FACS 的动作单元"""
 
     id: str
     region: ExpressionRegion
@@ -53,7 +53,7 @@ class ExpressionUnit:
 
 @dataclass(frozen=True, slots=True)
 class ExpressionCombinationRule:
-    """A high-level compatibility rule for expression unit combinations."""
+    """表情动作组合时要遵守的兼容规则"""
 
     id: str
     emotions: frozenset[EmotionKind] = frozenset()
@@ -66,7 +66,7 @@ class ExpressionCombinationRule:
 
 @dataclass(frozen=True, slots=True)
 class ExpressionSignature:
-    """Compact history record used to avoid repetitive expressions."""
+    """简短记录之前用过的表情，避免一直重复"""
 
     unit_ids: tuple[str, ...]
     target_values: Mapping[str, float]
@@ -75,13 +75,13 @@ class ExpressionSignature:
 
 
 class EmotionRequest(BaseModel):
-    """A request to synthesize an expression from an emotion vector."""
+    """根据情绪数值生成表情的请求"""
 
     model_config = ConfigDict(extra="forbid")
 
     emotions: dict[EmotionKind, float] = Field(
         default_factory=lambda: {EmotionKind.NEUTRAL: 1.0},
-        description="Emotion vector used to select expression units.",
+        description="用来挑选表情动作的情绪数值",
     )
     intensity: float = Field(default=0.7, ge=0.0, le=1.0)
     randomness: float = Field(default=0.25, ge=0.0, le=1.0)
@@ -107,7 +107,7 @@ class EmotionRequest(BaseModel):
 
 @dataclass(frozen=True, slots=True)
 class ScoredExpressionUnit:
-    """An expression unit with the selector score that produced it."""
+    """带有选择得分的表情动作单元"""
 
     unit: ExpressionUnit
     score: float
@@ -117,7 +117,7 @@ class ScoredExpressionUnit:
 
 @dataclass(frozen=True, slots=True)
 class SelectedExpression:
-    """A selected facial expression composed from regional units."""
+    """由各脸部区域动作组成的已选表情"""
 
     units: Mapping[ExpressionRegion, ExpressionUnit]
     score: float

@@ -1,5 +1,6 @@
 from .base import AnimationController
 from .config import (
+    AnimationControllerSettingsConfig,
     BlinkControllerSettings,
     BodySwingControllerSettings,
     BreathingControllerSettings,
@@ -20,6 +21,7 @@ from .semantic import (
 
 __all__ = [
     "AnimationController",
+    "AnimationControllerSettingsConfig",
     "AnimationType",
     "BlinkController",
     "BlinkControllerSettings",

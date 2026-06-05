@@ -1,4 +1,4 @@
-"""Platform-independent semantic blink controller."""
+"""各平台都能用的眨眼控制器"""
 
 from __future__ import annotations
 
@@ -19,16 +19,16 @@ from ..models import AnimationType
 
 
 class BlinkController(AnimationController[BlinkControllerSettings]):
-    """使用眼睛开合语义动作实现随机间隔眨眼。"""
+    """使用眼睛开合语义动作实现随机间隔眨眼"""
 
     @property
     def animation_type(self) -> AnimationType:
-        """控制器类型。"""
+        """控制器类型"""
 
         return AnimationType.IDLE
 
     async def run_cycle(self) -> None:
-        """执行一次眨眼周期。"""
+        """执行一次眨眼周期"""
 
         current_eye_open = await self.runtime.get_semantic_value(
             SemanticAction.EYE_OPEN.value,
@@ -78,6 +78,6 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
         await asyncio.sleep(wait_time)
 
     async def execute(self, **kwargs: object) -> None:
-        """idle 控制器不执行一次性动画。"""
+        """idle 控制器不执行一次性动画"""
 
         _ = kwargs

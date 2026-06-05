@@ -33,7 +33,7 @@ def main(page: ft.Page) -> None:
         dialog = ft.AlertDialog(
             modal=True,
             title=ft.Text("AlertDialog"),
-            content=ft.Text("这是 Material 弹窗组件。"),
+            content=ft.Text("这是 Material 弹窗组件"),
             actions=[],
         )
         dialog.actions = [ft.TextButton("关闭", on_click=lambda __: page.close(dialog))]
@@ -45,7 +45,7 @@ def main(page: ft.Page) -> None:
         banner = ft.Banner(
             bgcolor=ft.Colors.AMBER_100,
             leading=ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED),
-            content=ft.Text("Banner：顶部提示条。"),
+            content=ft.Text("Banner：顶部提示条"),
             actions=[],
         )
         banner.actions = [ft.TextButton("关闭", on_click=lambda __: page.close(banner))]
@@ -58,7 +58,7 @@ def main(page: ft.Page) -> None:
             tight=True,
             controls=[
                 ft.Text("BottomSheet", size=20, weight=ft.FontWeight.BOLD),
-                ft.Text("底部弹出层。"),
+                ft.Text("底部弹出层"),
             ],
         )
         bottom_sheet = ft.BottomSheet(
@@ -494,7 +494,7 @@ def main(page: ft.Page) -> None:
                 ),
                 tile(
                     "HapticFeedback / SemanticsService",
-                    ft.Text("服务型控件通常通过方法调用触发，移动端更常用。"),
+                    ft.Text("服务型控件通常通过方法调用触发，移动端更常用"),
                 ),
             ],
         ),
@@ -611,7 +611,7 @@ def main(page: ft.Page) -> None:
                     "SafeArea / SelectionArea",
                     ft.SafeArea(
                         content=ft.SelectionArea(
-                            content=ft.Text("这段文字可选择复制。"),
+                            content=ft.Text("这段文字可选择复制"),
                         ),
                     ),
                 ),
@@ -622,7 +622,7 @@ def main(page: ft.Page) -> None:
                         appbar=ft.AppBar(title=ft.Text("Pagelet")),
                         content=ft.Container(
                             alignment=ft.alignment.center,
-                            content=ft.Text("局部页面容器；View 用于路由页面栈。"),
+                            content=ft.Text("局部页面容器；View 用于路由页面栈"),
                         ),
                     ),
                 ),
@@ -697,7 +697,7 @@ def main(page: ft.Page) -> None:
                 tile(
                     "ChartAxis / ChartAxisLabel",
                     ft.Text(
-                        "ChartAxis、ChartAxisLabel 用于配置 BarChart/LineChart 坐标轴。",
+                        "ChartAxis、ChartAxisLabel 用于配置 BarChart/LineChart 坐标轴",
                     ),
                 ),
             ],
@@ -708,7 +708,7 @@ def main(page: ft.Page) -> None:
                 tile(
                     "AnimatedSwitcher",
                     ft.AnimatedSwitcher(
-                        content=ft.Text("AnimatedSwitcher 会在 content 变化时过渡。"),
+                        content=ft.Text("AnimatedSwitcher 会在 content 变化时过渡"),
                         duration=500,
                     ),
                 ),
@@ -846,7 +846,7 @@ def main(page: ft.Page) -> None:
                 tile(
                     "CupertinoPicker / TimerPicker",
                     ft.Text(
-                        "CupertinoPicker、CupertinoDatePicker、CupertinoTimerPicker 适合在 Cupertino 弹窗或底部层里使用。",
+                        "CupertinoPicker、CupertinoDatePicker、CupertinoTimerPicker 适合在 Cupertino 弹窗或底部层里使用",
                     ),
                 ),
                 tile(
@@ -949,7 +949,7 @@ def main(page: ft.Page) -> None:
                     ft.Column(
                         [
                             ft.Text(
-                                "FilePicker 是 overlay 控件，需加入 page.overlay 后调用。",
+                                "FilePicker 是 overlay 控件，需加入 page.overlay 后调用",
                             ),
                             ft.ElevatedButton(
                                 "示例占位",
@@ -981,12 +981,12 @@ def main(page: ft.Page) -> None:
                 ),
                 tile(
                     "ShakeDetector",
-                    ft.Text("ShakeDetector 主要用于移动端摇一摇事件。"),
+                    ft.Text("ShakeDetector 主要用于移动端摇一摇事件"),
                 ),
                 tile(
                     "FletApp / Page / AdaptiveControl",
                     ft.Text(
-                        "FletApp、Page 是应用宿主；AdaptiveControl 是自适应控件基类/能力。",
+                        "FletApp、Page 是应用宿主；AdaptiveControl 是自适应控件基类/能力",
                     ),
                 ),
             ],
@@ -1007,7 +1007,7 @@ def main(page: ft.Page) -> None:
                                 weight=ft.FontWeight.BOLD,
                             ),
                             ft.Text(
-                                "当前项目固定依赖：flet[all] == 0.28.3。此 demo 覆盖公开 Control 类中的主要可视控件；部分服务型、宿主型、移动端传感器控件以说明形式展示。",
+                                "当前项目固定依赖：flet[all] == 0.28.3此 demo 覆盖公开 Control 类中的主要可视控件；部分服务型、宿主型、移动端传感器控件以说明形式展示",
                             ),
                             output,
                         ],

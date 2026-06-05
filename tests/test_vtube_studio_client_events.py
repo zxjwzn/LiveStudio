@@ -1,4 +1,4 @@
-"""VTubeStudioClient event dispatch behavior tests."""
+"""测试 VTube Studio 客户端分发事件是否正常"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Emotion-driven expression synthesis service."""
+"""按情绪生成表情的服务"""
 
 from .models import (
     EmotionKind,

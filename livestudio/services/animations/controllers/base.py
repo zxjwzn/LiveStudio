@@ -1,4 +1,4 @@
-"""动画控制器抽象。"""
+"""动画控制器抽象"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ ConfigT = TypeVar("ConfigT", bound=ControllerSettings, covariant=True)
 
 
 class AnimationController(ABC, Generic[ConfigT]):
-    """动画控制器统一抽象。"""
+    """动画控制器统一抽象"""
 
     def __init__(
         self,
@@ -57,7 +57,7 @@ class AnimationController(ABC, Generic[ConfigT]):
     @property
     @abstractmethod
     def animation_type(self) -> AnimationType:
-        """控制器类型。"""
+        """控制器类型"""
 
     async def start(self, **kwargs: object) -> bool:
         if not self.enabled:
@@ -109,8 +109,8 @@ class AnimationController(ABC, Generic[ConfigT]):
 
     @abstractmethod
     async def run_cycle(self) -> None:
-        """执行一个循环周期，仅循环控制器需要实现。"""
+        """执行一个循环周期，仅循环控制器需要实现"""
 
     @abstractmethod
     async def execute(self, **kwargs: object) -> None:
-        """执行一次动画，仅一次性控制器需要实现。"""
+        """执行一次动画，仅一次性控制器需要实现"""

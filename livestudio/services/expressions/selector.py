@@ -1,4 +1,4 @@
-"""Emotion-driven expression unit selector."""
+"""按情绪挑表情动作的选择器"""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ REGION_ORDER: tuple[ExpressionRegion, ...] = (
 
 
 class ExpressionSelector:
-    """Selects compatible expression units for an emotion request."""
+    """根据情绪请求挑出能搭配的表情动作"""
 
     def __init__(
         self,

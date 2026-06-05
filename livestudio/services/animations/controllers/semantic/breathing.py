@@ -1,4 +1,4 @@
-"""Platform-independent semantic breathing controller."""
+"""各平台都能用的呼吸控制器"""
 
 from __future__ import annotations
 
@@ -15,16 +15,16 @@ from ..models import AnimationType
 
 
 class BreathingController(AnimationController[BreathingControllerSettings]):
-    """通过头部俯仰语义动作模拟呼吸。"""
+    """通过头部俯仰语义动作模拟呼吸"""
 
     @property
     def animation_type(self) -> AnimationType:
-        """控制器类型。"""
+        """控制器类型"""
 
         return AnimationType.IDLE
 
     async def run_cycle(self) -> None:
-        """执行一次呼吸周期。"""
+        """执行一次呼吸周期"""
 
         current_pitch = await self.runtime.get_semantic_value(
             SemanticAction.HEAD_PITCH.value,
@@ -66,6 +66,6 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
         )
 
     async def execute(self, **kwargs: object) -> None:
-        """idle 控制器不执行一次性动画。"""
+        """idle 控制器不执行一次性动画"""
 
         _ = kwargs

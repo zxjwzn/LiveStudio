@@ -1,4 +1,4 @@
-"""Semantic action adapter tests."""
+"""测试通用动作转换工具"""
 
 from __future__ import annotations
 

@@ -1,20 +1,21 @@
-"""VTube Studio 服务。"""
+"""VTube Studio 服务"""
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Literal
 
 from livestudio.config import ConfigManager
+from livestudio.services.platforms.model_config_service import (
+    PlatformModelConfigService,
+)
 from livestudio.services.semantic_actions import (
     SemanticActionAdapter,
     SemanticActionState,
 )
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 from livestudio.utils.log import logger
-from livestudio.utils.paths import config_path, resolve_config_path
+from livestudio.utils.paths import config_path
 
 from ....clients.vtube_studio.client import VTubeStudioClient
 from ....clients.vtube_studio.config import VTubeStudioConfig
@@ -38,11 +39,15 @@ from ....clients.vtube_studio.models import (
 from ..base import PlatformService
 from ..model import PlatformModelIdentity
 from .config import VTubeStudioModelConfig
-from .semantic import VTubeStudioSemanticAdapter
+from .semantic import (
+    VTubeStudioSemanticAdapter,
+    default_vtube_studio_parameter_specs,
+    default_vtube_studio_semantic_bindings,
+)
 
 
 class VTubeStudio(PlatformService):
-    """对外暴露稳定业务接口的服务层。"""
+    """对外暴露稳定业务接口的服务层"""
 
     platform_name = "vtubestudio"
 
@@ -56,8 +61,7 @@ class VTubeStudio(PlatformService):
         self._client: VTubeStudioClient | None = None
         self._events: VTSEventManager | None = None
         self._discovery: VTubeStudioDiscovery | None = None
-        self._model_config_manager: ConfigManager[VTubeStudioModelConfig] | None = None
-        self._current_model: PlatformModelIdentity | None = None
+        self._model_config_service: PlatformModelConfigService[VTubeStudioModelConfig] | None = None
         self._semantic_adapter: VTubeStudioSemanticAdapter | None = None
         self._tween = ParameterTweenEngine(
             self.send_parameter_states,
@@ -67,86 +71,86 @@ class VTubeStudio(PlatformService):
 
     @property
     def name(self) -> str:
-        """平台唯一名称。"""
+        """平台唯一名称"""
 
         return self.platform_name
 
     @property
     def tween(self) -> ParameterTweenEngine:
-        """返回 VTube Studio 参数缓动引擎。"""
+        """返回 VTube Studio 参数缓动引擎"""
 
         return self._tween
 
     @property
     def semantic_adapter(self) -> SemanticActionAdapter | None:
-        """返回当前模型的 VTube Studio 语义动作适配器。"""
+        """返回当前模型的 VTube Studio 语义动作适配器"""
 
         return self._semantic_adapter
 
     @property
     def config(self) -> VTubeStudioConfig:
-        """返回最新配置快照。"""
+        """返回最新配置快照"""
 
         return self.config_manager.config
 
     @property
     def model_config(self) -> VTubeStudioModelConfig:
-        """返回当前模型配置快照。"""
+        """返回当前模型配置快照"""
 
-        if self._model_config_manager is None:
+        if self._model_config_service is None or self._model_config_service.config is None:
             raise RuntimeError("当前没有已加载的模型配置")
-        return self._model_config_manager.config
+        return self._model_config_service.config
 
     @property
     def model_config_manager(self) -> ConfigManager[VTubeStudioModelConfig]:
-        """返回当前模型配置管理器实例。"""
+        """返回当前模型配置管理器实例"""
 
-        if self._model_config_manager is None:
+        if self._model_config_service is None or self._model_config_service.manager is None:
             raise RuntimeError("当前没有已加载的模型配置")
-        return self._model_config_manager
+        return self._model_config_service.manager
 
     @property
     def current_model(self) -> PlatformModelIdentity:
-        """返回当前平台已加载模型身份。"""
-        if self._current_model is None:
+        """返回当前平台已加载模型身份"""
+        if self._model_config_service is None or self._model_config_service.identity is None:
             raise RuntimeError("当前没有已加载的模型")
-        return self._current_model
+        return self._model_config_service.identity
 
     @property
     def is_initialized(self) -> bool:
-        """服务是否已初始化。"""
+        """服务是否已初始化"""
 
         return self._initialized
 
     @property
     def is_started(self) -> bool:
-        """服务是否已启动。"""
+        """服务是否已启动"""
 
         return self._started
 
     @property
     def client(self) -> VTubeStudioClient:
-        """返回已初始化的底层客户端。"""
+        """返回已初始化的底层客户端"""
         if self._client is None:
             raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
         return self._client
 
     @property
     def events(self) -> VTSEventManager:
-        """返回已初始化的事件管理器。"""
+        """返回已初始化的事件管理器"""
         if self._events is None:
             raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
         return self._events
 
     @property
     def discovery(self) -> VTubeStudioDiscovery:
-        """返回已初始化的 discovery 实例。"""
+        """返回已经准备好的自动发现对象"""
         if self._discovery is None:
             raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
         return self._discovery
 
     async def initialize(self) -> None:
-        """加载配置并创建内部依赖。"""
+        """加载配置并创建内部依赖"""
 
         if self._initialized:
             return
@@ -157,15 +161,21 @@ class VTubeStudio(PlatformService):
         )
         self._events = VTSEventManager(self._client, self.config.event_queue_size)
         self._discovery = VTubeStudioDiscovery(self.config)
+        self._model_config_service = PlatformModelConfigService(
+            config_model=VTubeStudioModelConfig,
+            model_config_dir=self.config.model_config_dir,
+            default_bindings=default_vtube_studio_semantic_bindings(),
+            default_parameter_specs=default_vtube_studio_parameter_specs(),
+        )
         self._initialized = True
 
     async def stop(self) -> None:
-        """释放该服务持有的后台资源。"""
+        """释放该服务持有的后台资源"""
 
         await self._stop(save_config=True)
 
     async def _stop(self, *, save_config: bool) -> None:
-        """停止服务并按需保存配置。"""
+        """停止服务并按需保存配置"""
 
         if not self._initialized:
             return
@@ -174,17 +184,18 @@ class VTubeStudio(PlatformService):
             await self._client.disconnect()
         if save_config:
             await self.config_manager.save()
+            if self._model_config_service is not None:
+                await self._model_config_service.save()
         self._client = None
         self._events = None
         self._discovery = None
-        self._model_config_manager = None
-        self._current_model = None
+        self._model_config_service = None
         self._semantic_adapter = None
         self._initialized = False
         self._started = False
 
     async def start(self) -> None:
-        """启动连接与认证流程。"""
+        """启动连接与认证流程"""
 
         if self._started:
             return
@@ -203,7 +214,7 @@ class VTubeStudio(PlatformService):
             raise
 
     async def restart(self) -> None:
-        """重启 VTube Studio 服务并重新加载配置。"""
+        """重启 VTube Studio 服务并重新加载配置"""
 
         await self._stop(save_config=False)
         await self.initialize()
@@ -214,23 +225,21 @@ class VTubeStudio(PlatformService):
         model_id: str,
         model_name: str,
     ) -> VTubeStudioModelConfig:
-        """按当前 VTube Studio 模型重建并加载模型级配置。"""
+        """按当前 VTube Studio 模型重建并加载模型级配置"""
 
         identity = PlatformModelIdentity(
             platform_name=self.platform_name,
             model_id=model_id,
             model_name=model_name,
         )
-        config_path = self._build_model_config_path(identity)
-        model_config_manager = ConfigManager(VTubeStudioModelConfig, config_path)
-        model_config = await model_config_manager.reload()
-        model_config.model.id = model_id
-        model_config.model.name = model_name
-        model_config.ensure_semantic_profile_defaults()
-        model_config.ensure_parameter_spec_defaults()
-        await model_config_manager.save()
-        self._model_config_manager = model_config_manager
-        self._current_model = identity
+        if self._model_config_service is None:
+            self._model_config_service = PlatformModelConfigService(
+                config_model=VTubeStudioModelConfig,
+                model_config_dir=self.config.model_config_dir,
+                default_bindings=default_vtube_studio_semantic_bindings(),
+                default_parameter_specs=default_vtube_studio_parameter_specs(),
+            )
+        model_config = await self._model_config_service.load(identity)
         self._semantic_adapter = VTubeStudioSemanticAdapter(
             model_config.semantic_profile,
             model_config.parameter_specs,
@@ -239,29 +248,19 @@ class VTubeStudio(PlatformService):
             "已加载 VTube Studio 模型配置: {} ({}) -> {}",
             model_name,
             model_id,
-            config_path,
+            self.model_config_manager.path,
         )
         return model_config
 
-    def _build_model_config_path(self, identity: PlatformModelIdentity) -> Path:
-        safe_name = self._sanitize_model_config_part(identity.model_name)
-        safe_id = self._sanitize_model_config_part(identity.model_id)
-        filename = f"{safe_name}_{safe_id}.yaml"
-        return resolve_config_path(self.config.model_config_dir) / filename
-
-    def _sanitize_model_config_part(self, value: str) -> str:
-        sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", value).strip(" ._")
-        return sanitized or "unknown"
-
     async def connect(self) -> None:
-        """连接到 VTube Studio。"""
+        """连接到 VTube Studio"""
 
         await self.client.connect()
 
     async def authenticate(
         self,
     ) -> None:
-        """使用给定令牌或配置中的令牌完成认证。"""
+        """使用给定令牌或配置中的令牌完成认证"""
 
         token = self.config.authentication_token
         if token is None:
@@ -277,7 +276,7 @@ class VTubeStudio(PlatformService):
             logger.success("[SUCCESS] 已获取新的认证令牌并完成认证")
 
     async def request_token(self) -> str:
-        """申请认证令牌，并按需持久化。"""
+        """申请认证令牌，并按需持久化"""
 
         try:
             authentication_token = await self.client.request_token()
@@ -370,7 +369,7 @@ class VTubeStudio(PlatformService):
         await self.client.inject_parameter_data(request)
 
     async def get_semantic_value(self, action: str) -> SemanticActionState | None:
-        """查询 VTube Studio 真实参数并归一化为语义动作值。"""
+        """查询 VTube Studio 真实参数并归一化为语义动作值"""
 
         adapter = self.semantic_adapter
         if adapter is None:

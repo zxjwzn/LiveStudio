@@ -1,4 +1,4 @@
-"""Semantic eye centering compensation controller."""
+"""让眼睛保持居中的补偿控制器"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ..models import AnimationType
 
 
 class EyeCenteringController(AnimationController[EyeCenteringControllerSettings]):
-    """Counter-rotate eye gaze from head pose so pupils stay visually centered."""
+    """根据头部姿势反向调整视线，让瞳孔看起来保持在中间"""
 
     def __init__(
         self,

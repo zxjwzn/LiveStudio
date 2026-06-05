@@ -1,4 +1,4 @@
-"""Resolve semantic action tweens into platform parameter tweens."""
+"""把通用动作的平滑变化换成平台能用的参数变化"""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ CurveKind: TypeAlias = Literal["linear", "ease_in", "ease_out", "ease_in_out"]
 
 @dataclass(frozen=True, slots=True)
 class ResolvedPlatformParameter:
-    """A resolved platform parameter target."""
+    """这里表示已经换好的平台参数目标"""
 
     name: str
     value: float
@@ -40,7 +40,7 @@ class ResolvedPlatformParameter:
 
 @dataclass(frozen=True, slots=True)
 class SemanticActionState:
-    """A semantic action value normalized from concrete platform parameters."""
+    """这里表示从平台参数换回来的通用动作数值"""
 
     action: str
     value: float
@@ -49,7 +49,7 @@ class SemanticActionState:
 
 
 class PlatformParameterSpec(BaseModel):
-    """Range metadata for a concrete platform parameter."""
+    """这里记录平台参数能用的数值范围"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -71,7 +71,7 @@ class PlatformParameterSpec(BaseModel):
 
 
 class SemanticActionBinding(BaseModel):
-    """Mapping from one semantic action to one or more platform parameters."""
+    """这里说明一个通用动作对应哪些平台参数"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -82,7 +82,7 @@ class SemanticActionBinding(BaseModel):
 
 
 class SemanticActionProfile(BaseModel):
-    """Platform mapping profile for semantic actions."""
+    """这里放通用动作到平台参数的对应关系"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -90,7 +90,7 @@ class SemanticActionProfile(BaseModel):
     model_name: str = ""
     bindings: dict[str, SemanticActionBinding] = Field(
         default_factory=dict,
-        description="Semantic action id to platform parameter binding.",
+        description="通用动作名字到平台参数的对应关系",
     )
 
     @model_validator(mode="after")
@@ -107,7 +107,7 @@ class SemanticActionProfile(BaseModel):
         *,
         bindings: Iterable[SemanticActionBinding],
     ) -> bool:
-        """Synchronize this profile with platform default specs and bindings."""
+        """把这份配置和平台默认设置对齐"""
 
         changed = False
         default_bindings = {binding.action: binding for binding in bindings}
@@ -144,7 +144,7 @@ class SemanticActionProfile(BaseModel):
 
 
 class SemanticActionAdapter:
-    """Resolve normalized semantic actions into concrete platform tweens."""
+    """把通用动作换成平台真正要执行的平滑变化"""
 
     def __init__(
         self,

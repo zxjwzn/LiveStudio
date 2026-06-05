@@ -1,4 +1,4 @@
-"""通用音频流配置模型。"""
+"""通用音频流配置模型"""
 
 from __future__ import annotations
 
@@ -10,26 +10,26 @@ from .sources.tts.config import TTSAudioStreamConfig
 
 
 class AudioStreamRouterConfig(BaseModel):
-    """音频流路由配置。"""
+    """音频流路由配置"""
 
     model_config = ConfigDict(extra="forbid")
 
     source: AudioSourceKind = Field(
         default=AudioSourceKind.MICROPHONE,
-        description="当前激活的音频源。",
+        description="当前激活的音频源",
     )
     microphone: MicrophoneAudioStreamConfig = Field(
         default_factory=MicrophoneAudioStreamConfig,
-        description="麦克风音频流配置。",
+        description="麦克风音频流配置",
     )
     tts: TTSAudioStreamConfig = Field(
         default_factory=TTSAudioStreamConfig,
-        description="TTS 音频流配置。",
+        description="TTS 音频流配置",
     )
 
 
 class AudioStreamConfigFile(BaseModel):
-    """音频流独立配置文件。"""
+    """音频流独立配置文件"""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -1,4 +1,4 @@
-"""Platform-independent semantic action models and adapters."""
+"""这里放各平台都能用的通用动作和转换工具"""
 
 from .adapter import (
     CurveKind,

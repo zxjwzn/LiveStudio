@@ -1,4 +1,4 @@
-"""main.py AU CLI helper tests."""
+"""测试 main.py 里 AU 命令的小工具"""
 
 from __future__ import annotations
 

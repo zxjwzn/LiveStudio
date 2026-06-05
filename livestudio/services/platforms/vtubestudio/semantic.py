@@ -1,4 +1,4 @@
-"""VTube Studio semantic action adapter defaults."""
+"""VTube Studio 通用动作的默认对应关系"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from livestudio.services.semantic_actions import (
 
 
 class VTubeStudioSemanticAdapter(SemanticActionAdapter):
-    """Resolve semantic actions to VTube Studio tracking parameters."""
+    """把通用动作换成 VTube Studio 里的跟踪参数"""
 
     def __init__(
         self,
@@ -30,7 +30,7 @@ class VTubeStudioSemanticAdapter(SemanticActionAdapter):
 
 
 def default_vtube_studio_parameter_specs() -> tuple[PlatformParameterSpec, ...]:
-    """Return documented VTube Studio tracking parameter ranges used by adapters."""
+    """返回 VTube Studio 常用跟踪参数的范围"""
 
     return (
         PlatformParameterSpec(
@@ -194,7 +194,7 @@ def _merge_parameter_specs(
 
 
 def default_vtube_studio_semantic_bindings() -> tuple[SemanticActionBinding, ...]:
-    """Return default semantic action mappings for common VTube Studio models."""
+    """返回常见 VTube Studio 模型的默认动作对应关系"""
 
     return (
         SemanticActionBinding(

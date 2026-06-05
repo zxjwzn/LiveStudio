@@ -1,4 +1,4 @@
-"""Platform-independent semantic body swing controller."""
+"""各平台都能用的身体摆动控制器"""
 
 from __future__ import annotations
 
@@ -18,16 +18,16 @@ from ..models import AnimationType
 
 
 class BodySwingController(AnimationController[BodySwingControllerSettings]):
-    """通过头部偏转/侧倾语义动作实现待机身体摇摆。"""
+    """通过头部偏转/侧倾语义动作实现待机身体摇摆"""
 
     @property
     def animation_type(self) -> AnimationType:
-        """控制器类型。"""
+        """控制器类型"""
 
         return AnimationType.IDLE
 
     async def run_cycle(self) -> None:
-        """执行一次身体摇摆周期。"""
+        """执行一次身体摇摆周期"""
 
         target_yaw = random.uniform(
             -self.config.yaw_amplitude,
@@ -77,6 +77,6 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
         )
 
     async def execute(self, **kwargs: object) -> None:
-        """idle 控制器不执行一次性动画。"""
+        """idle 控制器不执行一次性动画"""
 
         _ = kwargs

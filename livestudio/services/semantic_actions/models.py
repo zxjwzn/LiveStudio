@@ -1,4 +1,4 @@
-"""Platform-independent facial action semantics."""
+"""这些是各平台都能用的脸部动作说法"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from livestudio.tween import EasingFunction
 
 
 class SemanticAction(StrEnum):
-    """Platform-independent facial and head action identifiers."""
+    """这些是各平台都能认的脸和头部动作名字"""
 
     BROW_HEIGHT = "brow.height"
     EYE_OPEN = "eye.open"
@@ -26,7 +26,7 @@ class SemanticAction(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class SemanticActionSpec:
-    """Declared normalized range for one semantic action."""
+    """这里写一个动作能用的数值范围"""
 
     id: str
     minimum: float
@@ -45,7 +45,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.5,
         default=0.5,
         region="brow",
-        description="Brow height from lowered to raised.",
+        description="眉毛从低到高的程度",
     ),
     SemanticAction.EYE_OPEN.value: SemanticActionSpec(
         id=SemanticAction.EYE_OPEN.value,
@@ -54,7 +54,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.75,
         default=1.0,
         region="eye",
-        description="Eye openness from closed to wide open.",
+        description="眼睛从闭上到睁大的程度",
     ),
     SemanticAction.EYE_GAZE_X.value: SemanticActionSpec(
         id=SemanticAction.EYE_GAZE_X.value,
@@ -63,7 +63,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.0,
         default=0.0,
         region="eye",
-        description="Horizontal eye gaze direction.",
+        description="眼睛左右看的方向",
     ),
     SemanticAction.EYE_GAZE_Y.value: SemanticActionSpec(
         id=SemanticAction.EYE_GAZE_Y.value,
@@ -72,7 +72,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.0,
         default=0.0,
         region="eye",
-        description="Vertical eye gaze direction.",
+        description="眼睛上下看的方向",
     ),
     SemanticAction.MOUTH_OPEN.value: SemanticActionSpec(
         id=SemanticAction.MOUTH_OPEN.value,
@@ -81,7 +81,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.0,
         default=0.0,
         region="mouth",
-        description="Open mouth.",
+        description="嘴巴张开的程度",
     ),
     SemanticAction.MOUTH_SMILE.value: SemanticActionSpec(
         id=SemanticAction.MOUTH_SMILE.value,
@@ -90,7 +90,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.0,
         default=0.0,
         region="mouth",
-        description="Raise mouth corners.",
+        description="嘴角往上扬的程度",
     ),
     SemanticAction.MOUTH_FROWN.value: SemanticActionSpec(
         id=SemanticAction.MOUTH_FROWN.value,
@@ -99,7 +99,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.0,
         default=0.0,
         region="mouth",
-        description="Lower mouth corners.",
+        description="嘴角往下撇的程度",
     ),
     SemanticAction.HEAD_YAW.value: SemanticActionSpec(
         id=SemanticAction.HEAD_YAW.value,
@@ -108,7 +108,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.0,
         default=0.0,
         region="head",
-        description="Turn head left or right.",
+        description="头往左或往右转的程度",
     ),
     SemanticAction.HEAD_PITCH.value: SemanticActionSpec(
         id=SemanticAction.HEAD_PITCH.value,
@@ -117,7 +117,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.0,
         default=0.0,
         region="head",
-        description="Tilt head up or down.",
+        description="头往上或往下抬的程度",
     ),
     SemanticAction.HEAD_ROLL.value: SemanticActionSpec(
         id=SemanticAction.HEAD_ROLL.value,
@@ -126,14 +126,14 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         neutral=0.0,
         default=0.0,
         region="head",
-        description="Roll head left or right.",
+        description="头往左或往右歪的程度",
     ),
 }
 
 
 @dataclass(frozen=True, slots=True)
 class SemanticActionTarget:
-    """A normalized semantic action target."""
+    """这里表示一个动作要动到什么值"""
 
     action: str
     value: float
@@ -143,7 +143,7 @@ class SemanticActionTarget:
 
 @dataclass(frozen=True, slots=True)
 class SemanticTweenRequest:
-    """A tween request expressed in platform-independent semantic actions."""
+    """这里用通用动作来描述一次平滑变化请求"""
 
     targets: tuple[SemanticActionTarget, ...]
     duration: float
@@ -156,7 +156,7 @@ class SemanticTweenRequest:
 
 
 def clamp_semantic_value(action: str, value: float) -> float:
-    """Clamp a normalized action value to the declared semantic range."""
+    """把动作数值限制在允许范围里"""
 
     spec = DEFAULT_SEMANTIC_ACTION_SPECS.get(action)
     if spec is None:

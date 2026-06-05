@@ -1,4 +1,4 @@
-"""动画模板加载与求值。"""
+"""动画模板加载与求值"""
 
 from __future__ import annotations
 
@@ -32,11 +32,11 @@ TEMPLATE_PRIORITY: Final = 50
 
 
 class TemplateEvaluationError(ValueError):
-    """模板求值失败。"""
+    """模板求值失败"""
 
 
 class SafeExpressionEvaluator(ast.NodeVisitor):
-    """受限表达式求值器。"""
+    """受限表达式求值器"""
 
     _binary_operators: dict[type[ast.operator], Any] = {
         ast.Add: lambda a, b: a + b,
@@ -112,7 +112,7 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
 
 
 class AnimationTemplatePlayer:
-    """动画模板服务。"""
+    """动画模板服务"""
 
     def __init__(
         self,
@@ -126,7 +126,7 @@ class AnimationTemplatePlayer:
 
     @property
     def platform(self) -> PlatformService:
-        """返回该模板播放器绑定的平台服务。"""
+        """返回该模板播放器绑定的平台服务"""
 
         return self._platform
 
@@ -135,7 +135,7 @@ class AnimationTemplatePlayer:
         return self._templates
 
     def list_loaded_templates(self) -> list[LoadedTemplateInfo]:
-        """返回当前已加载模板摘要。"""
+        """返回当前已加载模板摘要"""
 
         return [
             LoadedTemplateInfo(
@@ -157,7 +157,7 @@ class AnimationTemplatePlayer:
         ]
 
     async def load(self) -> None:
-        """重新扫描模板目录并加载所有 `.jsonc` 模板。"""
+        """重新扫描模板目录并加载所有 `.jsonc` 模板"""
 
         self._templates.clear()
         if not self.template_dir.exists():
@@ -176,7 +176,7 @@ class AnimationTemplatePlayer:
         logger.info("已加载 {} 个动画模板", len(self._templates))
 
     async def reload(self) -> None:
-        """重新加载动画模板。"""
+        """重新加载动画模板"""
 
         await self.load()
 
@@ -186,7 +186,7 @@ class AnimationTemplatePlayer:
         *,
         parameters: Mapping[str, TemplateValue] | None = None,
     ) -> TemplatePlayback:
-        """获取、渲染并执行模板。"""
+        """获取、渲染并执行模板"""
 
         if not self._loaded:
             await self.load()
@@ -197,7 +197,7 @@ class AnimationTemplatePlayer:
         return playback
 
     def get_template(self, name: str) -> AnimationTemplate:
-        """按名称获取已加载模板。"""
+        """按名称获取已加载模板"""
 
         template = self._templates.get(name)
         if template is None:
@@ -210,7 +210,7 @@ class AnimationTemplatePlayer:
         *,
         parameters: Mapping[str, TemplateValue] | None = None,
     ) -> TemplatePlayback:
-        """将模板渲染为可执行动作。"""
+        """将模板渲染为可执行动作"""
 
         context = self._prepare_context(template, parameters or {})
         actions = [

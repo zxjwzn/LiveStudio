@@ -21,7 +21,7 @@ from livestudio.utils.log import StatusLine, logger
 
 
 def _format_level_bar(level: float, *, width: int = 24) -> str:
-    """将 $[0, 1]$ 区间的电平值格式化为文本条。"""
+    """将 $[0, 1]$ 区间的电平值格式化为文本条"""
 
     clamped_level = max(0.0, min(1.0, level))
     filled = round(clamped_level * width)
@@ -29,7 +29,7 @@ def _format_level_bar(level: float, *, width: int = 24) -> str:
 
 
 async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
-    """持续读取当前活动音频流并原地显示实时音量信息。"""
+    """持续读取当前活动音频流并原地显示实时音量信息"""
 
     status_line = StatusLine()
     subscription = audio_stream.subscribe(queue_maxsize=8)
@@ -113,7 +113,7 @@ def _log_selected_expression(
 
 
 async def preview_au_system(args: argparse.Namespace) -> None:
-    """在不连接 VTS 的情况下预览 AU 选择与默认语义映射。"""
+    """在不连接 VTS 的情况下预览 AU 选择与默认语义映射"""
 
     profile = default_vtube_studio_semantic_profile()
     adapter = VTubeStudioSemanticAdapter(profile)
@@ -124,7 +124,7 @@ async def preview_au_system(args: argparse.Namespace) -> None:
 
 
 async def test_au_system(args: argparse.Namespace) -> None:
-    """连接 VTS 并触发一次情绪驱动 AU 表情。"""
+    """连接 VTS 并触发一次情绪驱动 AU 表情"""
 
     audio_stream = AudioStreamRouter()
     animation_manager = AnimationManager()
@@ -188,37 +188,37 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--au-preview",
         action="store_true",
-        help="只预览 AU 选择和默认语义映射，不连接 VTube Studio。",
+        help="只预览 AU 选择和默认语义映射，不连接 VTube Studio",
     )
     parser.add_argument(
         "--au-test",
         action="store_true",
-        help="连接 VTube Studio，加载当前模型并触发一次 AU 表情。",
+        help="连接 VTube Studio，加载当前模型并触发一次 AU 表情",
     )
     parser.add_argument(
         "--emotion",
         action="append",
         default=[],
-        help="情绪名称或 name=weight，可重复，例如 --emotion joy=0.8 --emotion sadness=0.2。",
+        help="情绪名称或 name=weight，可以重复写，比如 --emotion joy=0.8 --emotion sadness=0.2",
     )
-    parser.add_argument("--intensity", type=float, default=0.7, help="表情强度 0~1。")
+    parser.add_argument("--intensity", type=float, default=0.7, help="表情强度 0~1")
     parser.add_argument(
         "--randomness",
         type=float,
         default=0.25,
-        help="组合随机度 0~1。",
+        help="组合随机度 0~1",
     )
     parser.add_argument(
         "--duration-scale",
         type=float,
         default=1.0,
-        help="动作时长倍率。",
+        help="动作时长倍率",
     )
-    parser.add_argument("--hold", type=float, default=1.2, help="AU 测试后保持秒数。")
+    parser.add_argument("--hold", type=float, default=1.2, help="AU 测试后保持秒数")
     parser.add_argument(
         "--no-none-regions",
         action="store_true",
-        help="禁止选择空区域单元，强制四个区域都有动作。",
+        help="禁止选择空区域单元，强制四个区域都有动作",
     )
     return parser
 

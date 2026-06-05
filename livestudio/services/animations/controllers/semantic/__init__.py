@@ -1,4 +1,4 @@
-"""Platform-independent semantic animation controllers."""
+"""这里放各平台都能用的通用动画控制器"""
 
 from .blink import BlinkController
 from .body_swing import BodySwingController
