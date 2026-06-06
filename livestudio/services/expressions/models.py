@@ -30,30 +30,57 @@ class ExpressionRegion(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ExpressionTarget:
+    """表情单元里的一个语义动作目标，支持固定值或随机范围"""
+
+    action: str
+    value: float | None = None
+    value_range: tuple[float, float] | None = None
+    weight: float = 1.0
+    scale_by_intensity: bool = True
+    jitter: float = 0.0
+
+    def __post_init__(self) -> None:
+        if (self.value is None) == (self.value_range is None):
+            raise ValueError("ExpressionTarget 必须且只能设置 value 或 value_range")
+        if self.value_range is not None and self.value_range[1] < self.value_range[0]:
+            raise ValueError("ExpressionTarget.value_range 最大值不能小于最小值")
+
+
+@dataclass(frozen=True, slots=True)
+class EmotionProfile:
+    """一个表情单元在某个情绪下的表达语义"""
+
+    weight: float
+    tags: frozenset[str]
+    intensity: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ExpressionUnit:
     """可以重复使用的脸部动作单元，参考了 FACS 的动作单元"""
 
     id: str
-    region: ExpressionRegion
-    targets: tuple[SemanticActionTarget, ...]
-    emotions: Mapping[EmotionKind, float]
-    intensity: float
+    regions: frozenset[ExpressionRegion]
+    targets: tuple[ExpressionTarget, ...]
+    emotions: Mapping[EmotionKind, EmotionProfile]
     naturalness: float = 1.0
     base_weight: float = 1.0
-    tags: frozenset[str] = frozenset()
+    global_tags: frozenset[str] = frozenset()
     conflicts: frozenset[str] = frozenset()
     soft_conflicts: Mapping[str, float] = field(default_factory=dict)
     synergies: Mapping[str, float] = field(default_factory=dict)
-    value_jitter: float = 0.0
-    jitter_by_action: Mapping[str, float] = field(default_factory=dict)
-    duration: float = 0.35
     priority: int = 40
     easing: str = "in_out_sine"
+
+    def __post_init__(self) -> None:
+        if not self.regions:
+            raise ValueError("ExpressionUnit.regions 不能为空")
 
 
 @dataclass(frozen=True, slots=True)
 class ExpressionCombinationRule:
-    """表情动作组合时要遵守的兼容规则"""
+    """表情动作组合时要遵守的全局兼容规则"""
 
     id: str
     emotions: frozenset[EmotionKind] = frozenset()
@@ -65,11 +92,24 @@ class ExpressionCombinationRule:
 
 
 @dataclass(frozen=True, slots=True)
+class ScoredExpressionUnit:
+    """带有选择得分的表情动作单元"""
+
+    unit: ExpressionUnit
+    score: float
+    emotion_match: float
+    intent_strength: float
+    platform_support: float
+    tags: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
 class ExpressionSignature:
     """简短记录之前用过的表情，避免一直重复"""
 
     unit_ids: tuple[str, ...]
     target_values: Mapping[str, float]
+    semantic_tags: frozenset[str]
     dominant_emotion: EmotionKind
     intensity: float
 
@@ -88,7 +128,8 @@ class EmotionRequest(BaseModel):
     value_jitter: float = Field(default=0.0, ge=0.0, le=1.0)
     history_avoidance: float = Field(default=0.35, ge=0.0, le=1.0)
     duration_scale: float = Field(default=1.0, gt=0.0)
-    allow_none_regions: bool = True
+    min_intent_score: float = Field(default=0.28, ge=0.0)
+    max_units: int = Field(default=4, ge=1)
 
     @field_validator("emotions")
     @classmethod
@@ -106,20 +147,14 @@ class EmotionRequest(BaseModel):
 
 
 @dataclass(frozen=True, slots=True)
-class ScoredExpressionUnit:
-    """带有选择得分的表情动作单元"""
-
-    unit: ExpressionUnit
-    score: float
-    emotion_match: float
-    platform_support: float
-
-
-@dataclass(frozen=True, slots=True)
 class SelectedExpression:
-    """由各脸部区域动作组成的已选表情"""
+    """按当前请求选出的一个或多个表情动作"""
 
-    units: Mapping[ExpressionRegion, ExpressionUnit]
+    units: tuple[ExpressionUnit, ...]
+    units_by_region: Mapping[ExpressionRegion, tuple[ExpressionUnit, ...]]
     score: float
     emotion_match: float
+    intent_strength: float
+    tags: Mapping[EmotionKind, frozenset[str]]
+    semantic_tags: frozenset[str]
     targets: tuple[SemanticActionTarget, ...]

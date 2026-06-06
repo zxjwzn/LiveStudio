@@ -31,7 +31,7 @@ class ExpressionService:
         await self.apply_targets(
             selected.targets,
             duration_scale=request.duration_scale,
-            priority=max(unit.priority for unit in selected.units.values()),
+            priority=max(unit.priority for unit in selected.units),
             easing=self._dominant_easing(selected),
         )
         return selected
@@ -46,7 +46,7 @@ class ExpressionService:
         duration_scale: float = 1.0,
     ) -> None:
         unit_tuple = tuple(units)
-        targets = tuple(target for unit in unit_tuple for target in unit.targets)
+        targets = self.selector.merge_unit_targets(unit_tuple)
         priority = max((unit.priority for unit in unit_tuple), default=40)
         easing = unit_tuple[0].easing if unit_tuple else "in_out_sine"
         await self.apply_targets(
@@ -75,7 +75,7 @@ class ExpressionService:
         )
 
     def _dominant_easing(self, selected: SelectedExpression) -> str:
-        for unit in selected.units.values():
+        for unit in selected.units:
             if unit.targets:
                 return unit.easing
         return "in_out_sine"

@@ -2,214 +2,293 @@
 
 from __future__ import annotations
 
-from livestudio.services.semantic_actions import SemanticAction, SemanticActionTarget
+from livestudio.services.semantic_actions import SemanticAction
 
 from .models import (
     EmotionKind,
+    EmotionProfile,
     ExpressionRegion,
+    ExpressionTarget,
     ExpressionUnit,
 )
 
 
 def _target(
     action: SemanticAction,
-    value: float,
+    *,
+    value: float | None = None,
+    value_range: tuple[float, float] | None = None,
     weight: float = 1.0,
-) -> SemanticActionTarget:
-    return SemanticActionTarget(action.value, value, weight)
+    scale_by_intensity: bool = True,
+    jitter: float = 0.0,
+) -> ExpressionTarget:
+    return ExpressionTarget(
+        action=action.value,
+        value=value,
+        value_range=value_range,
+        weight=weight,
+        scale_by_intensity=scale_by_intensity,
+        jitter=jitter,
+    )
+
+
+def _profile(
+    weight: float,
+    *tags: str,
+    intensity: float | None = None,
+) -> EmotionProfile:
+    return EmotionProfile(
+        weight=weight,
+        tags=frozenset(tags),
+        intensity=intensity,
+    )
 
 
 BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
     ExpressionUnit(
-        id="brow_none",
-        region=ExpressionRegion.BROW,
-        targets=(),
-        emotions={EmotionKind.NEUTRAL: 1.0},
-        intensity=0.0,
-        tags=frozenset({"none"}),
-    ),
-    ExpressionUnit(
-        id="brow_down_tense",
-        region=ExpressionRegion.BROW,
-        targets=(_target(SemanticAction.BROW_HEIGHT, 0),),
+        id="brow_knit",
+        regions=frozenset({ExpressionRegion.BROW}),
+        targets=(
+            _target(SemanticAction.BROW_HEIGHT, value_range=(0.0, 0.18), jitter=0.03),
+        ),
         emotions={
-            EmotionKind.ANGER: 0.9,
+            EmotionKind.ANGER: _profile(
+                0.95,
+                "anger",
+                "brow_knit",
+                "tense",
+                "focused",
+                intensity=0.75,
+            ),
+            EmotionKind.SADNESS: _profile(
+                1,
+                "sadness",
+                "brow_knit",
+                "pained",
+                intensity=0.75,
+            ),
         },
-        intensity=0.65,
-        naturalness=0.75,
-        tags=frozenset({"tense"}),
-        conflicts=frozenset({"soft"}),
+        naturalness=0.82,
+        conflicts=frozenset({"brow_raise"}),
     ),
     ExpressionUnit(
-        id="brow_sad_soft",
-        region=ExpressionRegion.BROW,
-        targets=(_target(SemanticAction.BROW_HEIGHT, 0.72),),
-        emotions={EmotionKind.SADNESS: 0.85},
-        intensity=0.45,
-        naturalness=0.9,
-        tags=frozenset({"soft", "vulnerable"}),
-    ),
-    ExpressionUnit(
-        id="eye_none",
-        region=ExpressionRegion.EYE,
-        targets=(),
-        emotions={EmotionKind.NEUTRAL: 1.0},
-        intensity=0.0,
-        tags=frozenset({"none"}),
-    ),
-    ExpressionUnit(
-        id="eye_smile_soft",
-        region=ExpressionRegion.EYE,
-        targets=(_target(SemanticAction.EYE_OPEN, 0.5),),
+        id="brow_raise_soft",
+        regions=frozenset({ExpressionRegion.BROW}),
+        targets=(
+            _target(SemanticAction.BROW_HEIGHT, value_range=(0.62, 0.82), jitter=0.05),
+        ),
         emotions={
-            EmotionKind.JOY: 0.75,
+            EmotionKind.SADNESS: _profile(
+                0.75,
+                "sadness",
+                "brow_raise",
+                "vulnerable",
+                "soft",
+                intensity=0.5,
+            ),
+            EmotionKind.JOY: _profile(
+                0.25,
+                "joy",
+                "brow_raise",
+                "open",
+                intensity=0.35,
+            ),
         },
-        intensity=0.35,
-        naturalness=0.95,
-        tags=frozenset({"soft", "friendly"}),
-        synergies={"mouth_smile_soft": 0.3, "mouth_smile_bright": 0.25},
+        naturalness=0.88,
+        conflicts=frozenset({"brow_knit"}),
     ),
     ExpressionUnit(
-        id="eye_wide_alert",
-        region=ExpressionRegion.EYE,
-        targets=(_target(SemanticAction.EYE_OPEN, 0.94),),
-        emotions={EmotionKind.NEUTRAL: 0.2},
-        intensity=0.75,
-        naturalness=0.7,
-        tags=frozenset({"wide", "alert"}),
-    ),
-    ExpressionUnit(
-        id="eye_narrow_suspicious",
-        region=ExpressionRegion.EYE,
-        targets=(_target(SemanticAction.EYE_OPEN, 0.28),),
+        id="eye_narrow",
+        regions=frozenset({ExpressionRegion.EYE}),
+        targets=(
+            _target(SemanticAction.EYE_OPEN, value_range=(0.1, 0.4), jitter=0.03),
+        ),
         emotions={
-            EmotionKind.ANGER: 0.55,
+            EmotionKind.ANGER: _profile(
+                1,
+                "anger",
+                "eye_narrow",
+                "tense",
+                intensity=0.7,
+            ),
+            EmotionKind.JOY: _profile(
+                1,
+                "joy",
+                "eye_narrow",
+                "mischievous",
+                intensity=0.8,
+            ),
         },
-        intensity=0.65,
+        naturalness=0.82,
+    ),
+    ExpressionUnit(
+        id="mouth_smile",
+        regions=frozenset({ExpressionRegion.MOUTH}),
+        targets=(
+            _target(SemanticAction.MOUTH_SMILE, value_range=(0.8, 1), jitter=0.08),
+            _target(
+                SemanticAction.MOUTH_OPEN,
+                value_range=(0.0, 0.3),
+                weight=0.45,
+                jitter=0.03,
+            ),
+        ),
+        emotions={
+            EmotionKind.JOY: _profile(0.96, "joy", "smile", "bright", intensity=0.65),
+        },
+        naturalness=0.92,
+        conflicts=frozenset({"mouth_down", "mouth_press"}),
+        synergies={"eye_smile": 0.16},
+    ),
+    ExpressionUnit(
+        id="mouth_down",
+        regions=frozenset({ExpressionRegion.MOUTH}),
+        targets=(
+            _target(SemanticAction.MOUTH_SMILE, value_range=(0.0, 0.2), jitter=0.02),
+            _target(
+                SemanticAction.MOUTH_OPEN,
+                value_range=(0.00, 0.3),
+                weight=0.35,
+                jitter=0.02,
+            ),
+        ),
+        emotions={
+            EmotionKind.SADNESS: _profile(
+                0.86,
+                "sadness",
+                "mouth_down",
+                "restrained",
+                intensity=0.55,
+            ),
+            EmotionKind.ANGER: _profile(
+                0.8,
+                "anger",
+                "mouth_down",
+                "displeased",
+                intensity=0.6,
+            ),
+        },
+        naturalness=0.88,
+        conflicts=frozenset({"smile"}),
+    ),
+    ExpressionUnit(
+        id="mouth_press",
+        regions=frozenset({ExpressionRegion.MOUTH}),
+        targets=(
+            _target(SemanticAction.MOUTH_SMILE, value_range=(0.5, 0.5), jitter=0.02),
+            _target(
+                SemanticAction.MOUTH_OPEN,
+                value_range=(0.00, 0.03),
+                weight=0.45,
+                jitter=0.02,
+            ),
+        ),
+        emotions={
+            EmotionKind.ANGER: _profile(
+                0.78,
+                "anger",
+                "mouth_press",
+                "tense",
+                intensity=0.7,
+            ),
+            EmotionKind.SADNESS: _profile(
+                0.68,
+                "sadness",
+                "mouth_press",
+                "held_back",
+                intensity=0.55,
+            ),
+        },
+        naturalness=0.78,
+        conflicts=frozenset({"smile"}),
+    ),
+    ExpressionUnit(
+        id="head_tilt",
+        regions=frozenset({ExpressionRegion.HEAD}),
+        targets=(
+            _target(SemanticAction.HEAD_ROLL, value_range=(-0.32, 0.32), jitter=0.04),
+            _target(
+                SemanticAction.HEAD_PITCH,
+                value_range=(-0.1, 0.1),
+                weight=0.45,
+                jitter=0.03,
+            ),
+        ),
+        emotions={
+            EmotionKind.JOY: _profile(
+                0.45,
+                "joy",
+                "head_tilt",
+                "lively",
+                intensity=0.45,
+            ),
+            EmotionKind.SADNESS: _profile(
+                0.25,
+                "sadness",
+                "head_tilt",
+                "soft",
+                intensity=0.4,
+            ),
+        },
+        naturalness=0.82,
+    ),
+    ExpressionUnit(
+        id="head_down_averted",
+        regions=frozenset({ExpressionRegion.HEAD}),
+        targets=(
+            _target(SemanticAction.HEAD_YAW, value_range=(-0.5, 0.5), jitter=0.04),
+            _target(
+                SemanticAction.HEAD_PITCH,
+                value_range=(-0.28, -0.08),
+                weight=0.65,
+                jitter=0.03,
+            ),
+        ),
+        emotions={
+            EmotionKind.SADNESS: _profile(
+                0.68,
+                "sadness",
+                "head_down",
+                "averted",
+                intensity=0.5,
+            ),
+        },
+        naturalness=0.84,
+    ),
+    ExpressionUnit(
+        id="head_forward",
+        regions=frozenset({ExpressionRegion.HEAD}),
+        targets=(
+            _target(SemanticAction.HEAD_PITCH, value_range=(-0.5, 0.5), jitter=0.04),
+        ),
+        emotions={
+            EmotionKind.ANGER: _profile(
+                0.52,
+                "anger",
+                "head_forward",
+                "alert",
+                intensity=0.55,
+            ),
+        },
         naturalness=0.8,
-        tags=frozenset({"tense", "suspicious"}),
     ),
     ExpressionUnit(
-        id="mouth_none",
-        region=ExpressionRegion.MOUTH,
-        targets=(),
-        emotions={EmotionKind.NEUTRAL: 1.0},
-        intensity=0.0,
-        tags=frozenset({"none"}),
-    ),
-    ExpressionUnit(
-        id="mouth_smile_soft",
-        region=ExpressionRegion.MOUTH,
+        id="gaze_averted_down",
+        regions=frozenset({ExpressionRegion.EYE}),
         targets=(
-            _target(SemanticAction.MOUTH_SMILE, 0.45),
-            _target(SemanticAction.MOUTH_OPEN, 0.08, 0.4),
+            _target(SemanticAction.EYE_GAZE_X, value_range=(-0.7, -0.4), jitter=0.04),
+            _target(SemanticAction.EYE_GAZE_Y, value_range=(-0.3, -0.1), jitter=0.04),
         ),
         emotions={
-            EmotionKind.JOY: 0.8,
+            EmotionKind.SADNESS: _profile(
+                1,
+                "sadness",
+                "gaze_averted",
+                "down",
+                intensity=0.7,
+            ),
         },
-        intensity=0.45,
-        naturalness=0.95,
-        tags=frozenset({"soft", "friendly"}),
-        synergies={"eye_smile_soft": 0.3},
-    ),
-    ExpressionUnit(
-        id="mouth_smile_bright",
-        region=ExpressionRegion.MOUTH,
-        targets=(
-            _target(SemanticAction.MOUTH_SMILE, 0.85),
-            _target(SemanticAction.MOUTH_OPEN, 0.22, 0.6),
-        ),
-        emotions={
-            EmotionKind.JOY: 0.95,
-        },
-        intensity=0.85,
         naturalness=0.75,
-        tags=frozenset({"bright", "friendly"}),
-    ),
-    ExpressionUnit(
-        id="mouth_sad_soft",
-        region=ExpressionRegion.MOUTH,
-        targets=(
-            _target(SemanticAction.MOUTH_SMILE, 0.0),
-            _target(SemanticAction.MOUTH_OPEN, 0.04, 0.3),
-        ),
-        emotions={EmotionKind.SADNESS: 0.8},
-        intensity=0.55,
-        naturalness=0.85,
-        tags=frozenset({"soft", "down"}),
-        conflicts=frozenset({"friendly"}),
-    ),
-    ExpressionUnit(
-        id="mouth_tense_hard",
-        region=ExpressionRegion.MOUTH,
-        targets=(
-            _target(SemanticAction.MOUTH_SMILE, 0.0),
-            _target(SemanticAction.MOUTH_OPEN, 0.06, 0.4),
-        ),
-        emotions={EmotionKind.ANGER: 0.35},
-        intensity=0.65,
-        naturalness=0.7,
-        tags=frozenset({"tense"}),
-        conflicts=frozenset({"friendly"}),
-    ),
-    ExpressionUnit(
-        id="mouth_anger_tense",
-        region=ExpressionRegion.MOUTH,
-        targets=(
-            _target(SemanticAction.MOUTH_SMILE, 0.0),
-            _target(SemanticAction.MOUTH_OPEN, 0.08, 0.45),
-        ),
-        emotions={EmotionKind.ANGER: 0.85},
-        intensity=0.7,
-        naturalness=0.75,
-        tags=frozenset({"tense", "down"}),
-        conflicts=frozenset({"friendly", "soft"}),
-    ),
-    ExpressionUnit(
-        id="head_none",
-        region=ExpressionRegion.HEAD,
-        targets=(),
-        emotions={EmotionKind.NEUTRAL: 1.0},
-        intensity=0.0,
-        tags=frozenset({"none"}),
-    ),
-    ExpressionUnit(
-        id="head_tilt_soft",
-        region=ExpressionRegion.HEAD,
-        targets=(
-            _target(SemanticAction.HEAD_ROLL, 0.35),
-            _target(SemanticAction.HEAD_PITCH, -0.12, 0.5),
-        ),
-        emotions={
-            EmotionKind.JOY: 0.35,
-            EmotionKind.SADNESS: 0.25,
-        },
-        intensity=0.35,
-        naturalness=0.9,
-        tags=frozenset({"soft", "settled"}),
-    ),
-    ExpressionUnit(
-        id="head_forward_alert",
-        region=ExpressionRegion.HEAD,
-        targets=(_target(SemanticAction.HEAD_PITCH, 0.35),),
-        emotions={
-            EmotionKind.ANGER: 0.45,
-        },
-        intensity=0.4,
-        naturalness=0.8,
-        tags=frozenset({"alert"}),
-    ),
-    ExpressionUnit(
-        id="head_avert_down",
-        region=ExpressionRegion.HEAD,
-        targets=(
-            _target(SemanticAction.HEAD_YAW, -0.35),
-            _target(SemanticAction.HEAD_PITCH, -0.18, 0.6),
-        ),
-        emotions={EmotionKind.SADNESS: 0.35},
-        intensity=0.45,
-        naturalness=0.85,
-        tags=frozenset({"soft", "averted"}),
     ),
 )
 

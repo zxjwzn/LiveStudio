@@ -71,7 +71,6 @@ def _build_emotion_request(args: argparse.Namespace) -> EmotionRequest:
         intensity=args.intensity,
         randomness=args.randomness,
         duration_scale=args.duration_scale,
-        allow_none_regions=not args.no_none_regions,
     )
 
 
@@ -80,17 +79,22 @@ def _log_selected_expression(
     adapter: VTubeStudioSemanticAdapter,
 ) -> None:
     logger.info(
-        "[AU] score={:.3f}, emotion_match={:.3f}",
+        "[AU] score={:.3f}, emotion_match={:.3f}, intent={:.3f}, tags={}",
         selected.score,
         selected.emotion_match,
+        selected.intent_strength,
+        ",".join(sorted(selected.semantic_tags)) or "-",
     )
-    for region, unit in selected.units.items():
+    for unit in selected.units:
+        unit_tags = set(unit.global_tags)
+        for tags in selected.tags.values():
+            unit_tags.update(tags)
         logger.info(
             "[AU] {} -> {} targets={} tags={}",
-            region,
+            "/".join(sorted(region.value for region in unit.regions)),
             unit.id,
             len(unit.targets),
-            ",".join(sorted(unit.tags)) or "-",
+            ",".join(sorted(unit_tags)) or "-",
         )
     for target in selected.targets:
         states = adapter.resolve(target)
@@ -215,11 +219,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="动作时长倍率",
     )
     parser.add_argument("--hold", type=float, default=1.2, help="AU 测试后保持秒数")
-    parser.add_argument(
-        "--no-none-regions",
-        action="store_true",
-        help="禁止选择空区域单元，强制四个区域都有动作",
-    )
     return parser
 
 

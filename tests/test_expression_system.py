@@ -12,10 +12,13 @@ import yaml
 from livestudio.services.expressions import (
     BUILTIN_EXPRESSION_UNITS,
     EmotionKind,
+    EmotionProfile,
     EmotionRequest,
+    ExpressionCombinationRule,
     ExpressionRegion,
     ExpressionSelector,
     ExpressionService,
+    ExpressionTarget,
     ExpressionUnit,
 )
 from livestudio.services.platforms.vtubestudio import (
@@ -93,7 +96,7 @@ class _ParameterValueClient:
         )()
 
 
-def test_anger_selects_tense_mouth_without_smile_action() -> None:
+def test_anger_selects_tense_mouth_with_semantic_tags() -> None:
     profile = default_vtube_studio_semantic_profile()
     selector = ExpressionSelector(
         BUILTIN_EXPRESSION_UNITS,
@@ -109,65 +112,57 @@ def test_anger_selects_tense_mouth_without_smile_action() -> None:
         ),
     )
 
-    assert selected.units[ExpressionRegion.MOUTH].id == "mouth_anger_tense"
-    assert selected.units[ExpressionRegion.MOUTH].tags.isdisjoint({"friendly"})
+    assert any(unit.id == "mouth_press" for unit in selected.units)
+    assert {"anger", "tense"}.issubset(selected.semantic_tags)
+    assert "friendly" not in selected.semantic_tags
     target_values = {target.action: target.value for target in selected.targets}
-    assert target_values[SemanticAction.MOUTH_SMILE.value] == 0.0
+    assert 0.0 <= target_values[SemanticAction.MOUTH_SMILE.value] <= 1.0
 
 
-def test_hard_conflicts_exclude_otherwise_best_combo() -> None:
-    units = (
-        ExpressionUnit(
-            id="brow_tense",
-            region=ExpressionRegion.BROW,
-            targets=(),
-            emotions={EmotionKind.ANGER: 1.0},
-            intensity=0.7,
-            tags=frozenset({"tense"}),
-            conflicts=frozenset({"friendly"}),
-        ),
-        ExpressionUnit(
-            id="brow_fallback",
-            region=ExpressionRegion.BROW,
-            targets=(),
-            emotions={EmotionKind.ANGER: 0.4},
-            intensity=0.7,
-        ),
-        ExpressionUnit(
-            id="eye_friendly",
-            region=ExpressionRegion.EYE,
-            targets=(),
-            emotions={EmotionKind.ANGER: 1.0},
-            intensity=0.7,
-            tags=frozenset({"friendly"}),
-        ),
-        ExpressionUnit(
-            id="mouth_none",
-            region=ExpressionRegion.MOUTH,
-            targets=(),
-            emotions={EmotionKind.ANGER: 1.0},
-            intensity=0.7,
-        ),
-        ExpressionUnit(
-            id="head_none",
-            region=ExpressionRegion.HEAD,
-            targets=(),
-            emotions={EmotionKind.ANGER: 1.0},
-            intensity=0.7,
-        ),
+def test_single_strong_unit_can_be_selected_without_full_region_coverage() -> None:
+    strong_unit = ExpressionUnit(
+        id="single_smile",
+        regions=frozenset({ExpressionRegion.MOUTH}),
+        targets=(ExpressionTarget(SemanticAction.MOUTH_SMILE.value, value=0.8),),
+        emotions={
+            EmotionKind.JOY: EmotionProfile(
+                weight=1.0,
+                tags=frozenset({"joy", "smile"}),
+                intensity=0.7,
+            ),
+        },
+        naturalness=1.0,
+    )
+    weak_unit = ExpressionUnit(
+        id="weak_brow",
+        regions=frozenset({ExpressionRegion.BROW}),
+        targets=(ExpressionTarget(SemanticAction.BROW_HEIGHT.value, value=0.55),),
+        emotions={
+            EmotionKind.JOY: EmotionProfile(
+                weight=0.1,
+                tags=frozenset({"joy", "subtle"}),
+                intensity=0.7,
+            ),
+        },
+        naturalness=0.2,
     )
     selector = ExpressionSelector(
-        units,
+        (strong_unit, weak_unit),
         default_vtube_studio_semantic_profile(),
         rng=random.Random(1),
-        combination_rules=(),
     )
 
     selected = selector.select(
-        EmotionRequest(emotions={EmotionKind.ANGER: 1.0}, randomness=0.0),
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 1.0},
+            intensity=0.7,
+            randomness=0.0,
+        ),
     )
 
-    assert selected.units[ExpressionRegion.BROW].id == "brow_fallback"
+    assert [unit.id for unit in selected.units] == ["single_smile"]
+    assert set(selected.units_by_region) == {ExpressionRegion.MOUTH}
+    assert {"joy", "smile"}.issubset(selected.semantic_tags)
 
 
 def test_expression_rules_exclude_inconsistent_emotion_tags() -> None:
@@ -185,7 +180,54 @@ def test_expression_rules_exclude_inconsistent_emotion_tags() -> None:
         ),
     )
 
-    assert all("friendly" not in unit.tags for unit in selected.units.values())
+    assert "friendly" not in selected.semantic_tags
+    assert "anger" in selected.semantic_tags
+
+
+def test_combination_rules_can_block_otherwise_compatible_units() -> None:
+    smile = ExpressionUnit(
+        id="smile",
+        regions=frozenset({ExpressionRegion.MOUTH}),
+        targets=(ExpressionTarget(SemanticAction.MOUTH_SMILE.value, value=0.8),),
+        emotions={
+            EmotionKind.JOY: EmotionProfile(
+                weight=1.0,
+                tags=frozenset({"joy", "smile"}),
+            ),
+        },
+    )
+    wide = ExpressionUnit(
+        id="wide",
+        regions=frozenset({ExpressionRegion.EYE}),
+        targets=(ExpressionTarget(SemanticAction.EYE_OPEN.value, value=0.95),),
+        emotions={
+            EmotionKind.JOY: EmotionProfile(
+                weight=0.9,
+                tags=frozenset({"joy", "wide"}),
+            ),
+        },
+    )
+    selector = ExpressionSelector(
+        (smile, wide),
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+        combination_rules=(
+            ExpressionCombinationRule(
+                id="smile_blocks_wide",
+                require_tags=frozenset({"smile", "wide"}),
+                penalty=float("inf"),
+            ),
+        ),
+    )
+
+    selected = selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 1.0},
+            randomness=0.0,
+        ),
+    )
+
+    assert not {"smile", "wide"}.issubset(selected.semantic_tags)
 
 
 def test_selector_expresses_sadness_with_low_mouth_smile() -> None:
@@ -204,13 +246,32 @@ def test_selector_expresses_sadness_with_low_mouth_smile() -> None:
         ),
     )
 
-    assert selected.units[ExpressionRegion.MOUTH].id == "mouth_sad_soft"
-    assert selected.units[ExpressionRegion.BROW].id == "brow_sad_soft"
+    assert any(unit.id == "mouth_down" for unit in selected.units)
+    assert {"sadness", "restrained"}.issubset(selected.semantic_tags)
     target_values = {target.action: target.value for target in selected.targets}
-    assert target_values[SemanticAction.MOUTH_SMILE.value] == 0.0
+    assert target_values[SemanticAction.MOUTH_SMILE.value] <= 0.08
 
 
-def test_selector_jitters_targets_within_semantic_range() -> None:
+def test_selector_accepts_partial_emotion_weight() -> None:
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+    )
+
+    selected = selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.SADNESS: 0.5},
+            intensity=1.0,
+            randomness=0.0,
+        ),
+    )
+
+    assert selected.units
+    assert "sadness" in selected.semantic_tags
+
+
+def test_selector_randomizes_range_targets_within_semantic_range() -> None:
     selector = ExpressionSelector(
         BUILTIN_EXPRESSION_UNITS,
         default_vtube_studio_semantic_profile(),
@@ -219,15 +280,15 @@ def test_selector_jitters_targets_within_semantic_range() -> None:
 
     stable = selector.preview(
         EmotionRequest(
-            emotions={EmotionKind.JOY: 1.0},
+            emotions={EmotionKind.SADNESS: 1.0},
             intensity=0.7,
-            randomness=1.0,
+            randomness=0.0,
             value_jitter=0.0,
         ),
     )
     jittered = selector.preview(
         EmotionRequest(
-            emotions={EmotionKind.JOY: 1.0},
+            emotions={EmotionKind.SADNESS: 1.0},
             intensity=0.7,
             randomness=1.0,
             value_jitter=0.1,
@@ -260,7 +321,7 @@ def test_history_avoidance_penalizes_repeated_expression() -> None:
     assert second.score < first.score
 
 
-def test_selector_builds_full_expression_for_emotion() -> None:
+def test_selector_builds_semantically_tagged_expression_for_emotion() -> None:
     profile = default_vtube_studio_semantic_profile()
     selector = ExpressionSelector(
         BUILTIN_EXPRESSION_UNITS,
@@ -276,13 +337,9 @@ def test_selector_builds_full_expression_for_emotion() -> None:
         ),
     )
 
-    assert set(selected.units) == {
-        ExpressionRegion.BROW,
-        ExpressionRegion.EYE,
-        ExpressionRegion.MOUTH,
-        ExpressionRegion.HEAD,
-    }
     assert selected.score > 0
+    assert {"joy", "smile"}.issubset(selected.semantic_tags)
+    assert selected.units_by_region
     assert any(
         target.action == SemanticAction.MOUTH_SMILE.value for target in selected.targets
     )
