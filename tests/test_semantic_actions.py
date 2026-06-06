@@ -68,16 +68,6 @@ def test_vtube_semantic_adapter_maps_eye_gaze_axes() -> None:
     assert [state.value for state in gaze_y] == [pytest.approx(0.4)] * 2
 
 
-def test_vtube_default_adapter_does_not_fake_unsupported_mouth_frown() -> None:
-    adapter = VTubeStudioSemanticAdapter(default_vtube_studio_semantic_profile())
-
-    mouth_frown = adapter.resolve(
-        SemanticActionTarget(SemanticAction.MOUTH_FROWN.value, 1.0),
-    )
-
-    assert mouth_frown == []
-
-
 def test_semantic_support_score_is_binary_coverage() -> None:
     profile = default_vtube_studio_semantic_profile()
 
@@ -89,7 +79,7 @@ def test_semantic_support_score_is_binary_coverage() -> None:
     )
     assert (
         profile.support_score(
-            (SemanticActionTarget(SemanticAction.MOUTH_FROWN.value, 1.0),),
+            (SemanticActionTarget("unknown.action", 1.0),),
         )
         == 0.0
     )
@@ -178,4 +168,4 @@ def test_semantic_adapter_reports_bound_platform_parameters() -> None:
     assert adapter.platform_parameters_for(SemanticAction.MOUTH_SMILE.value) == (
         "MouthSmile",
     )
-    assert adapter.platform_parameters_for(SemanticAction.MOUTH_FROWN.value) == ()
+    assert adapter.platform_parameters_for("unknown.action") == ()

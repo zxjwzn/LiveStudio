@@ -78,7 +78,6 @@ class SemanticActionBinding(BaseModel):
     action: str = Field(min_length=1)
     platform_params: list[str] = Field(min_length=1)
     curve: CurveKind = "linear"
-    enabled: bool = True
 
 
 class SemanticActionProfile(BaseModel):
@@ -124,8 +123,7 @@ class SemanticActionProfile(BaseModel):
         return changed
 
     def supports(self, action: str) -> bool:
-        binding = self.bindings.get(action)
-        return binding is not None and binding.enabled
+        return action in self.bindings
 
     def support_score(self, targets: Iterable[SemanticActionTarget]) -> float:
         target_tuple = tuple(targets)
@@ -162,7 +160,7 @@ class SemanticActionAdapter:
 
     def platform_parameters_for(self, action: str) -> tuple[str, ...]:
         binding = self.profile.bindings.get(action)
-        if binding is None or not binding.enabled:
+        if binding is None:
             return ()
         return tuple(
             parameter_name
@@ -179,7 +177,7 @@ class SemanticActionAdapter:
     ) -> list[ResolvedPlatformParameter]:
         action_value = clamp_semantic_value(target.action, target.value)
         binding = self.profile.bindings.get(target.action)
-        if binding is None or not binding.enabled:
+        if binding is None:
             return []
 
         resolved: list[ResolvedPlatformParameter] = []
@@ -213,7 +211,7 @@ class SemanticActionAdapter:
         platform_values: dict[str, float],
     ) -> SemanticActionState | None:
         binding = self.profile.bindings.get(action)
-        if binding is None or not binding.enabled:
+        if binding is None:
             return None
 
         weighted_value = 0.0

@@ -118,6 +118,11 @@ class ExpressionSelector:
             for unit in self.units
             if unit.region is region
         ]
+        candidates = [
+            candidate
+            for candidate in candidates
+            if not candidate.unit.targets or candidate.platform_support >= 1.0
+        ]
         candidates = self._filter_emotion_candidates(candidates, request)
         if not request.allow_none_regions:
             candidates = [

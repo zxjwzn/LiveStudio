@@ -29,20 +29,9 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         tags=frozenset({"none"}),
     ),
     ExpressionUnit(
-        id="brow_inner_up_soft",
-        region=ExpressionRegion.BROW,
-        targets=(_target(SemanticAction.BROW_HEIGHT, 0.72),),
-        emotions={
-            EmotionKind.SADNESS: 0.8,
-        },
-        intensity=0.45,
-        naturalness=0.9,
-        tags=frozenset({"soft", "vulnerable"}),
-    ),
-    ExpressionUnit(
         id="brow_down_tense",
         region=ExpressionRegion.BROW,
-        targets=(_target(SemanticAction.BROW_HEIGHT, 0.18),),
+        targets=(_target(SemanticAction.BROW_HEIGHT, 0),),
         emotions={
             EmotionKind.ANGER: 0.9,
         },
@@ -52,13 +41,13 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         conflicts=frozenset({"soft"}),
     ),
     ExpressionUnit(
-        id="brow_outer_up_wide",
+        id="brow_sad_soft",
         region=ExpressionRegion.BROW,
-        targets=(_target(SemanticAction.BROW_HEIGHT, 0.88),),
-        emotions={EmotionKind.NEUTRAL: 0.2},
-        intensity=0.75,
-        naturalness=0.75,
-        tags=frozenset({"wide", "alert"}),
+        targets=(_target(SemanticAction.BROW_HEIGHT, 0.72),),
+        emotions={EmotionKind.SADNESS: 0.85},
+        intensity=0.45,
+        naturalness=0.9,
+        tags=frozenset({"soft", "vulnerable"}),
     ),
     ExpressionUnit(
         id="eye_none",
@@ -138,10 +127,10 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         tags=frozenset({"bright", "friendly"}),
     ),
     ExpressionUnit(
-        id="mouth_frown_soft",
+        id="mouth_sad_soft",
         region=ExpressionRegion.MOUTH,
         targets=(
-            _target(SemanticAction.MOUTH_FROWN, 0.55),
+            _target(SemanticAction.MOUTH_SMILE, 0.0),
             _target(SemanticAction.MOUTH_OPEN, 0.04, 0.3),
         ),
         emotions={EmotionKind.SADNESS: 0.8},
@@ -154,7 +143,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         id="mouth_tense_hard",
         region=ExpressionRegion.MOUTH,
         targets=(
-            _target(SemanticAction.MOUTH_FROWN, 0.45),
+            _target(SemanticAction.MOUTH_SMILE, 0.0),
             _target(SemanticAction.MOUTH_OPEN, 0.06, 0.4),
         ),
         emotions={EmotionKind.ANGER: 0.35},
@@ -167,7 +156,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         id="mouth_anger_tense",
         region=ExpressionRegion.MOUTH,
         targets=(
-            _target(SemanticAction.MOUTH_FROWN, 0.7),
+            _target(SemanticAction.MOUTH_SMILE, 0.0),
             _target(SemanticAction.MOUTH_OPEN, 0.08, 0.45),
         ),
         emotions={EmotionKind.ANGER: 0.85},

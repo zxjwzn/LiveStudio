@@ -222,11 +222,6 @@ def default_vtube_studio_semantic_bindings() -> tuple[SemanticActionBinding, ...
             platform_params=["MouthSmile"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.MOUTH_FROWN.value,
-            platform_params=["MouthSmile"],
-            enabled=False,
-        ),
-        SemanticActionBinding(
             action=SemanticAction.HEAD_YAW.value,
             platform_params=["FaceAngleX"],
         ),

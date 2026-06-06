@@ -24,7 +24,10 @@ from livestudio.services.platforms.vtubestudio import (
     default_vtube_studio_semantic_profile,
 )
 from livestudio.services.platforms.vtubestudio.config import VTubeStudioModelConfig
-from livestudio.services.semantic_actions import SemanticAction, SemanticActionTarget
+from livestudio.services.semantic_actions import (
+    SemanticAction,
+    SemanticActionTarget,
+)
 from livestudio.services.semantic_actions.adapter import PlatformParameterSpec
 from livestudio.tween import (
     ControlledParameterState,
@@ -108,9 +111,8 @@ def test_anger_selects_tense_mouth_without_smile_action() -> None:
 
     assert selected.units[ExpressionRegion.MOUTH].id == "mouth_anger_tense"
     assert selected.units[ExpressionRegion.MOUTH].tags.isdisjoint({"friendly"})
-    assert all(
-        target.action != SemanticAction.MOUTH_SMILE.value for target in selected.targets
-    )
+    target_values = {target.action: target.value for target in selected.targets}
+    assert target_values[SemanticAction.MOUTH_SMILE.value] == 0.0
 
 
 def test_hard_conflicts_exclude_otherwise_best_combo() -> None:
@@ -184,6 +186,28 @@ def test_expression_rules_exclude_inconsistent_emotion_tags() -> None:
     )
 
     assert all("friendly" not in unit.tags for unit in selected.units.values())
+
+
+def test_selector_expresses_sadness_with_low_mouth_smile() -> None:
+    profile = default_vtube_studio_semantic_profile()
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        profile,
+        rng=random.Random(1),
+    )
+
+    selected = selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.SADNESS: 1.0},
+            intensity=0.7,
+            randomness=0.0,
+        ),
+    )
+
+    assert selected.units[ExpressionRegion.MOUTH].id == "mouth_sad_soft"
+    assert selected.units[ExpressionRegion.BROW].id == "brow_sad_soft"
+    target_values = {target.action: target.value for target in selected.targets}
+    assert target_values[SemanticAction.MOUTH_SMILE.value] == 0.0
 
 
 def test_selector_jitters_targets_within_semantic_range() -> None:
