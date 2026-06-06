@@ -116,7 +116,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
                 "joy",
                 "eye_narrow",
                 "mischievous",
-                intensity=0.8,
+                intensity=1.0,
             ),
         },
         naturalness=0.82,
@@ -170,6 +170,40 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         },
         naturalness=0.88,
         conflicts=frozenset({"smile"}),
+    ),
+    ExpressionUnit(
+        id="mouth_sinister_smile",
+        regions=frozenset({ExpressionRegion.MOUTH}),
+        targets=(
+            _target(SemanticAction.MOUTH_SMILE, value_range=(0.55, 0.85), jitter=0.05),
+            _target(
+                SemanticAction.MOUTH_OPEN,
+                value_range=(0.0, 0.08),
+                weight=0.45,
+                jitter=0.02,
+            ),
+        ),
+        emotions={
+            EmotionKind.JOY: _profile(
+                0.42,
+                "joy",
+                "smile",
+                "mischievous",
+                "sinister",
+                intensity=0.8,
+            ),
+            EmotionKind.ANGER: _profile(
+                0.62,
+                "anger",
+                "smile",
+                "sinister",
+                "threatening",
+                intensity=0.8,
+            ),
+        },
+        naturalness=0.78,
+        conflicts=frozenset({"mouth_down", "mouth_press", "bright"}),
+        synergies={"eye_narrow": 0.14, "gaze_up_white": 0.12, "head_down_mischievous": 0.12},
     ),
     ExpressionUnit(
         id="mouth_press",
@@ -273,11 +307,40 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         naturalness=0.8,
     ),
     ExpressionUnit(
+        id="head_down_mischievous",
+        regions=frozenset({ExpressionRegion.HEAD}),
+        targets=(
+            _target(SemanticAction.HEAD_PITCH, value_range=(-0.38, -0.16), jitter=0.04),
+            _target(SemanticAction.HEAD_ROLL, value_range=(-0.12, 0.12), weight=0.35, jitter=0.03),
+        ),
+        emotions={
+            EmotionKind.JOY: _profile(
+                0.25,
+                "joy",
+                "mischievous",
+                "sinister",
+                "head_down",
+                intensity=1.0,
+            ),
+            EmotionKind.ANGER: _profile(
+                0.48,
+                "anger",
+                "sinister",
+                "threatening",
+                "head_down",
+                intensity=0.75,
+            ),
+        },
+        naturalness=0.72,
+        conflicts=frozenset({"head_forward", "head_tilt", "head_down"}),
+        synergies={"gaze_up_white": 0.18, "mouth_smile": 0.12},
+    ),
+    ExpressionUnit(
         id="gaze_averted_down",
         regions=frozenset({ExpressionRegion.EYE}),
         targets=(
             _target(SemanticAction.EYE_GAZE_X, value_range=(-0.7, -0.4), jitter=0.04),
-            _target(SemanticAction.EYE_GAZE_Y, value_range=(-0.3, -0.1), jitter=0.04),
+            _target(SemanticAction.EYE_GAZE_Y, value_range=(-0.6, -0.3), jitter=0.04),
         ),
         emotions={
             EmotionKind.SADNESS: _profile(
@@ -289,6 +352,34 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
             ),
         },
         naturalness=0.75,
+    ),
+    ExpressionUnit(
+        id="gaze_up_white",
+        regions=frozenset({ExpressionRegion.EYE}),
+        targets=(
+            _target(SemanticAction.EYE_GAZE_X, value_range=(-0.08, 0.08), jitter=0.03),
+            _target(SemanticAction.EYE_GAZE_Y, value_range=(0.35, 0.75), jitter=0.05),
+        ),
+        emotions={
+            EmotionKind.JOY: _profile(
+                0.25,
+                "joy",
+                "mischievous",
+                "white_eye",
+                "sinister",
+                intensity=1.0,
+            ),
+            EmotionKind.ANGER: _profile(
+                0.5,
+                "anger",
+                "white_eye",
+                "threatening",
+                intensity=0.8,
+            ),
+        },
+        naturalness=0.68,
+        conflicts=frozenset({"gaze_averted", "down"}),
+        synergies={"head_down_mischievous": 0.18, "eye_narrow": 0.1},
     ),
 )
 

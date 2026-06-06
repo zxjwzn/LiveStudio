@@ -10,7 +10,7 @@ BUILTIN_COMBINATION_RULES: tuple[ExpressionCombinationRule, ...] = (
     ExpressionCombinationRule(
         id="anger_blocks_friendly_brightness",
         emotions=frozenset({EmotionKind.ANGER}),
-        forbid_tags=frozenset({"friendly", "bright", "smile"}),
+        forbid_tags=frozenset({"friendly", "bright"}),
         penalty=math.inf,
     ),
     ExpressionCombinationRule(

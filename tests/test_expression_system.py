@@ -271,6 +271,36 @@ def test_selector_accepts_partial_emotion_weight() -> None:
     assert "sadness" in selected.semantic_tags
 
 
+def test_selector_builds_mischievous_downcast_white_eye_smile() -> None:
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+    )
+
+    selected = selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 1.0, EmotionKind.ANGER: 0.5},
+            intensity=1.0,
+            randomness=0.0,
+        ),
+    )
+
+    unit_ids = {unit.id for unit in selected.units}
+    assert {
+        "mouth_sinister_smile",
+        "head_down_mischievous",
+        "gaze_up_white",
+    }.issubset(unit_ids)
+    assert {"sinister", "white_eye", "head_down", "smile"}.issubset(
+        selected.semantic_tags,
+    )
+    target_values = {target.action: target.value for target in selected.targets}
+    assert target_values[SemanticAction.HEAD_PITCH.value] < 0.0
+    assert target_values[SemanticAction.EYE_GAZE_Y.value] > 0.0
+    assert target_values[SemanticAction.MOUTH_SMILE.value] > 0.5
+
+
 def test_selector_randomizes_range_targets_within_semantic_range() -> None:
     selector = ExpressionSelector(
         BUILTIN_EXPRESSION_UNITS,
