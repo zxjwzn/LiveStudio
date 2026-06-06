@@ -8,7 +8,7 @@ from livestudio.services.platforms.vtubestudio import (
     VTubeStudioSemanticAdapter,
     default_vtube_studio_semantic_profile,
 )
-from livestudio.services.semantic_actions import (
+from livestudio.services.semantic_actions.models import (
     SemanticAction,
     SemanticActionTarget,
     SemanticTweenRequest,
@@ -88,7 +88,7 @@ def test_semantic_support_score_is_binary_coverage() -> None:
 def test_semantic_binding_rejects_unknown_fields() -> None:
     from pydantic import ValidationError
 
-    from livestudio.services.semantic_actions import SemanticActionBinding
+    from livestudio.services.semantic_actions.adapter import SemanticActionBinding
 
     with pytest.raises(ValidationError):
         SemanticActionBinding.model_validate(

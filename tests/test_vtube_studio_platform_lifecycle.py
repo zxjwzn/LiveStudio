@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
+from livestudio.clients.vtube_studio.client import VTubeStudioClient
 from livestudio.services.platforms.vtubestudio import VTubeStudio
 
 
@@ -19,7 +22,7 @@ async def test_vtube_studio_start_disconnects_when_authentication_fails() -> Non
     platform = VTubeStudio()
     client = _DisconnectRecorder()
     platform._initialized = True  # noqa: SLF001
-    platform._client = client  # noqa: SLF001
+    platform._client = cast(VTubeStudioClient, client)  # noqa: SLF001
 
     async def connect() -> None:
         pass

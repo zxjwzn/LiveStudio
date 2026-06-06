@@ -49,7 +49,9 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
             duration,
         )
 
-        current_yaw = await self.runtime.get_semantic_value(SemanticAction.HEAD_YAW.value)
+        current_yaw = await self.runtime.get_semantic_value(
+            SemanticAction.HEAD_YAW.value,
+        )
         current_roll = await self.runtime.get_semantic_value(
             SemanticAction.HEAD_ROLL.value,
         )
@@ -60,7 +62,9 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
                     SemanticActionTarget(
                         SemanticAction.HEAD_YAW.value,
                         target_yaw,
-                        start_value=current_yaw.value if current_yaw is not None else None,
+                        start_value=current_yaw.value
+                        if current_yaw is not None
+                        else None,
                     ),
                     SemanticActionTarget(
                         SemanticAction.HEAD_ROLL.value,

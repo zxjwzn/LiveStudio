@@ -21,9 +21,9 @@ from livestudio.services.animations.controllers import (
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.animations.templates import AnimationTemplatePlayer
 from livestudio.services.platforms import PlatformService
-from livestudio.services.semantic_actions import (
+from livestudio.services.semantic_actions.adapter import SemanticActionState
+from livestudio.services.semantic_actions.models import (
     SemanticAction,
-    SemanticActionState,
     SemanticTweenRequest,
 )
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
@@ -213,4 +213,7 @@ async def test_eye_centering_controller_offsets_gaze_from_head_pose() -> None:
         SemanticAction.EYE_GAZE_X.value,
         SemanticAction.EYE_GAZE_Y.value,
     ]
-    assert [target.value for target in request.targets] == [pytest.approx(-0.45), pytest.approx(0.175)]
+    assert [target.value for target in request.targets] == [
+        pytest.approx(-0.45),
+        pytest.approx(0.175),
+    ]

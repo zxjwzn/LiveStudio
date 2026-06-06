@@ -61,9 +61,12 @@ class VTubeStudioModelConfig(PlatformModelConfig):
         if self.semantic_profile.model_name != self.model.model_name:
             self.semantic_profile.model_name = self.model.model_name
             changed = True
-        return super().ensure_semantic_profile_defaults(
-            bindings or default_vtube_studio_semantic_bindings(),
-        ) or changed
+        return (
+            super().ensure_semantic_profile_defaults(
+                bindings or default_vtube_studio_semantic_bindings(),
+            )
+            or changed
+        )
 
     def ensure_parameter_spec_defaults(
         self,

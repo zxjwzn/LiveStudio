@@ -6,11 +6,11 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Literal
 
-from livestudio.services.semantic_actions import (
+from livestudio.services.semantic_actions.adapter import (
     SemanticActionAdapter,
     SemanticActionState,
-    SemanticTweenRequest,
 )
+from livestudio.services.semantic_actions.models import SemanticTweenRequest
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 
 

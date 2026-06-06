@@ -42,7 +42,10 @@ class EyeCenteringController(AnimationController[EyeCenteringControllerSettings]
         target_x, target_y = self._compute_centering(yaw, pitch, roll)
         smoothed_x = self._smooth(self._current_x, target_x)
         smoothed_y = self._smooth(self._current_y, target_y)
-        if self._is_within_deadzone(smoothed_x, self._current_x) and self._is_within_deadzone(
+        if self._is_within_deadzone(
+            smoothed_x,
+            self._current_x,
+        ) and self._is_within_deadzone(
             smoothed_y,
             self._current_y,
         ):

@@ -12,7 +12,10 @@ from pydantic import ValidationError
 from livestudio.services.animations.templates import AnimationTemplatePlayer
 from livestudio.services.animations.templates.models import AnimationTemplate
 from livestudio.services.platforms import PlatformService
-from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
+from livestudio.services.semantic_actions.models import (
+    SemanticAction,
+    SemanticTweenRequest,
+)
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 
 

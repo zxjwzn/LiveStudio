@@ -5,8 +5,6 @@ from __future__ import annotations
 from livestudio.services.semantic_actions import SemanticAction
 
 from .models import (
-    EmotionKind,
-    EmotionProfile,
     ExpressionRegion,
     ExpressionTarget,
     ExpressionUnit,
@@ -32,18 +30,6 @@ def _target(
     )
 
 
-def _profile(
-    weight: float,
-    *tags: str,
-    intensity: float | None = None,
-) -> EmotionProfile:
-    return EmotionProfile(
-        weight=weight,
-        tags=frozenset(tags),
-        intensity=intensity,
-    )
-
-
 BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
     ExpressionUnit(
         id="brow_knit",
@@ -51,23 +37,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         targets=(
             _target(SemanticAction.BROW_HEIGHT, value_range=(0.0, 0.18), jitter=0.03),
         ),
-        emotions={
-            EmotionKind.ANGER: _profile(
-                0.95,
-                "anger",
-                "brow_knit",
-                "tense",
-                "focused",
-                intensity=0.75,
-            ),
-            EmotionKind.SADNESS: _profile(
-                1,
-                "sadness",
-                "brow_knit",
-                "pained",
-                intensity=0.75,
-            ),
-        },
+        action_tags=frozenset({"brow_knit", "brow_lower", "tense"}),
         naturalness=0.82,
         conflicts=frozenset({"brow_raise"}),
     ),
@@ -77,23 +47,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         targets=(
             _target(SemanticAction.BROW_HEIGHT, value_range=(0.62, 0.82), jitter=0.05),
         ),
-        emotions={
-            EmotionKind.SADNESS: _profile(
-                0.75,
-                "sadness",
-                "brow_raise",
-                "vulnerable",
-                "soft",
-                intensity=0.5,
-            ),
-            EmotionKind.JOY: _profile(
-                0.25,
-                "joy",
-                "brow_raise",
-                "open",
-                intensity=0.35,
-            ),
-        },
+        action_tags=frozenset({"brow_raise", "open", "soft"}),
         naturalness=0.88,
         conflicts=frozenset({"brow_knit"}),
     ),
@@ -103,22 +57,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         targets=(
             _target(SemanticAction.EYE_OPEN, value_range=(0.1, 0.4), jitter=0.03),
         ),
-        emotions={
-            EmotionKind.ANGER: _profile(
-                1,
-                "anger",
-                "eye_narrow",
-                "tense",
-                intensity=0.7,
-            ),
-            EmotionKind.JOY: _profile(
-                1,
-                "joy",
-                "eye_narrow",
-                "mischievous",
-                intensity=1.0,
-            ),
-        },
+        action_tags=frozenset({"eye_narrow", "squint"}),
         naturalness=0.82,
     ),
     ExpressionUnit(
@@ -133,9 +72,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
                 jitter=0.03,
             ),
         ),
-        emotions={
-            EmotionKind.JOY: _profile(0.96, "joy", "smile", "bright", intensity=0.65),
-        },
+        action_tags=frozenset({"mouth_smile", "smile", "mouth_open_soft"}),
         naturalness=0.92,
         conflicts=frozenset({"mouth_down", "mouth_press"}),
         synergies={"eye_smile": 0.16},
@@ -152,24 +89,9 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
                 jitter=0.02,
             ),
         ),
-        emotions={
-            EmotionKind.SADNESS: _profile(
-                0.86,
-                "sadness",
-                "mouth_down",
-                "restrained",
-                intensity=0.55,
-            ),
-            EmotionKind.ANGER: _profile(
-                0.8,
-                "anger",
-                "mouth_down",
-                "displeased",
-                intensity=0.6,
-            ),
-        },
+        action_tags=frozenset({"mouth_down", "frown", "restrained"}),
         naturalness=0.88,
-        conflicts=frozenset({"smile"}),
+        conflicts=frozenset({"smile", "mouth_smile"}),
     ),
     ExpressionUnit(
         id="mouth_sinister_smile",
@@ -183,27 +105,16 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
                 jitter=0.02,
             ),
         ),
-        emotions={
-            EmotionKind.JOY: _profile(
-                0.42,
-                "joy",
-                "smile",
-                "mischievous",
-                "sinister",
-                intensity=0.8,
-            ),
-            EmotionKind.ANGER: _profile(
-                0.62,
-                "anger",
-                "smile",
-                "sinister",
-                "threatening",
-                intensity=0.8,
-            ),
-        },
+        action_tags=frozenset(
+            {"mouth_smile", "smile", "mouth_closed", "asymmetric_feel"},
+        ),
         naturalness=0.78,
         conflicts=frozenset({"mouth_down", "mouth_press", "bright"}),
-        synergies={"eye_narrow": 0.14, "gaze_up_white": 0.12, "head_down_mischievous": 0.12},
+        synergies={
+            "eye_narrow": 0.14,
+            "gaze_up_white": 0.12,
+            "head_down_mischievous": 0.12,
+        },
     ),
     ExpressionUnit(
         id="mouth_press",
@@ -217,24 +128,9 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
                 jitter=0.02,
             ),
         ),
-        emotions={
-            EmotionKind.ANGER: _profile(
-                0.78,
-                "anger",
-                "mouth_press",
-                "tense",
-                intensity=0.7,
-            ),
-            EmotionKind.SADNESS: _profile(
-                0.68,
-                "sadness",
-                "mouth_press",
-                "held_back",
-                intensity=0.55,
-            ),
-        },
+        action_tags=frozenset({"mouth_press", "pressed", "tense"}),
         naturalness=0.78,
-        conflicts=frozenset({"smile"}),
+        conflicts=frozenset({"smile", "mouth_smile"}),
     ),
     ExpressionUnit(
         id="head_tilt",
@@ -248,22 +144,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
                 jitter=0.03,
             ),
         ),
-        emotions={
-            EmotionKind.JOY: _profile(
-                0.45,
-                "joy",
-                "head_tilt",
-                "lively",
-                intensity=0.45,
-            ),
-            EmotionKind.SADNESS: _profile(
-                0.25,
-                "sadness",
-                "head_tilt",
-                "soft",
-                intensity=0.4,
-            ),
-        },
+        action_tags=frozenset({"head_tilt", "lively", "soft"}),
         naturalness=0.82,
     ),
     ExpressionUnit(
@@ -278,15 +159,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
                 jitter=0.03,
             ),
         ),
-        emotions={
-            EmotionKind.SADNESS: _profile(
-                0.68,
-                "sadness",
-                "head_down",
-                "averted",
-                intensity=0.5,
-            ),
-        },
+        action_tags=frozenset({"head_down", "averted"}),
         naturalness=0.84,
     ),
     ExpressionUnit(
@@ -295,15 +168,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         targets=(
             _target(SemanticAction.HEAD_PITCH, value_range=(-0.5, 0.5), jitter=0.04),
         ),
-        emotions={
-            EmotionKind.ANGER: _profile(
-                0.52,
-                "anger",
-                "head_forward",
-                "alert",
-                intensity=0.55,
-            ),
-        },
+        action_tags=frozenset({"head_forward", "alert"}),
         naturalness=0.8,
     ),
     ExpressionUnit(
@@ -311,26 +176,14 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         regions=frozenset({ExpressionRegion.HEAD}),
         targets=(
             _target(SemanticAction.HEAD_PITCH, value_range=(-0.38, -0.16), jitter=0.04),
-            _target(SemanticAction.HEAD_ROLL, value_range=(-0.12, 0.12), weight=0.35, jitter=0.03),
+            _target(
+                SemanticAction.HEAD_ROLL,
+                value_range=(-0.12, 0.12),
+                weight=0.35,
+                jitter=0.03,
+            ),
         ),
-        emotions={
-            EmotionKind.JOY: _profile(
-                0.25,
-                "joy",
-                "mischievous",
-                "sinister",
-                "head_down",
-                intensity=1.0,
-            ),
-            EmotionKind.ANGER: _profile(
-                0.48,
-                "anger",
-                "sinister",
-                "threatening",
-                "head_down",
-                intensity=0.75,
-            ),
-        },
+        action_tags=frozenset({"head_down", "mischievous", "threatening"}),
         naturalness=0.72,
         conflicts=frozenset({"head_forward", "head_tilt", "head_down"}),
         synergies={"gaze_up_white": 0.18, "mouth_smile": 0.12},
@@ -342,15 +195,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
             _target(SemanticAction.EYE_GAZE_X, value_range=(-0.7, -0.4), jitter=0.04),
             _target(SemanticAction.EYE_GAZE_Y, value_range=(-0.6, -0.3), jitter=0.04),
         ),
-        emotions={
-            EmotionKind.SADNESS: _profile(
-                1,
-                "sadness",
-                "gaze_averted",
-                "down",
-                intensity=0.7,
-            ),
-        },
+        action_tags=frozenset({"gaze_averted", "down"}),
         naturalness=0.75,
     ),
     ExpressionUnit(
@@ -360,23 +205,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
             _target(SemanticAction.EYE_GAZE_X, value_range=(-0.08, 0.08), jitter=0.03),
             _target(SemanticAction.EYE_GAZE_Y, value_range=(0.35, 0.75), jitter=0.05),
         ),
-        emotions={
-            EmotionKind.JOY: _profile(
-                0.25,
-                "joy",
-                "mischievous",
-                "white_eye",
-                "sinister",
-                intensity=1.0,
-            ),
-            EmotionKind.ANGER: _profile(
-                0.5,
-                "anger",
-                "white_eye",
-                "threatening",
-                intensity=0.8,
-            ),
-        },
+        action_tags=frozenset({"gaze_up", "white_eye", "threatening"}),
         naturalness=0.68,
         conflicts=frozenset({"gaze_averted", "down"}),
         synergies={"head_down_mischievous": 0.18, "eye_narrow": 0.1},

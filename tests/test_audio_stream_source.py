@@ -8,11 +8,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
+from livestudio.config import ConfigManager
 from livestudio.services.audio_stream import (
     AudioChunk,
     AudioSourceKind,
@@ -110,19 +111,22 @@ def test_subscribe_rejects_invalid_queue_size() -> None:
 
 async def test_router_switch_source_rolls_back_when_new_source_fails() -> None:
     router = AudioStreamRouter()
-    router.config_manager = type(
-        "_ConfigManager",
-        (),
-        {
-            "config": AudioStreamConfigFile(),
-            "save_calls": 0,
-            "save": lambda self: _save_config(self),
-        },
-    )()
+    router.config_manager = cast(
+        ConfigManager[AudioStreamConfigFile],
+        type(
+            "_ConfigManager",
+            (),
+            {
+                "config": AudioStreamConfigFile(),
+                "save_calls": 0,
+                "save": lambda self: _save_config(self),
+            },
+        )(),
+    )
     microphone = _DummySource()
     tts = _DummySource(fail_start=True)
-    router._microphone_source = microphone
-    router._tts_source = tts
+    router._microphone_source = cast(MicrophoneAudioStreamSource, microphone)
+    router._tts_source = cast(Any, tts)
     router._sources = {
         AudioSourceKind.MICROPHONE: microphone,
         AudioSourceKind.TTS: tts,
@@ -177,7 +181,7 @@ async def test_microphone_stop_clears_state_when_stream_stop_fails() -> None:
         default_samplerate=48000.0,
         hostapi=0,
     )
-    source._stream = _FakeInputStream(fail_stop=True)
+    source._stream = cast(Any, _FakeInputStream(fail_stop=True))
     source.is_started = True
     subscription = source.subscribe(queue_maxsize=4)
 

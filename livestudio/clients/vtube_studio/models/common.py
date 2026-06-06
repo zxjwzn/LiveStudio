@@ -385,7 +385,10 @@ class PostProcessingConfigEntry(VTSBaseModel):
     int_min: int = Field(alias="intMin", description="整数最小值")
     int_max: int = Field(alias="intMax", description="整数最大值")
     int_default: int = Field(alias="intDefault", description="整数默认值")
-    color_value: str = Field(alias="colorValue", description="RGBA 格式的十六进制颜色值")
+    color_value: str = Field(
+        alias="colorValue",
+        description="RGBA 格式的十六进制颜色值",
+    )
     color_default: str = Field(alias="colorDefault", description="默认颜色值")
     color_has_alpha: bool = Field(
         alias="colorHasAlpha",

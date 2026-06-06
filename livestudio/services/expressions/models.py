@@ -48,25 +48,15 @@ class ExpressionTarget:
 
 
 @dataclass(frozen=True, slots=True)
-class EmotionProfile:
-    """一个表情单元在某个情绪下的表达语义"""
-
-    weight: float
-    tags: frozenset[str]
-    intensity: float | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class ExpressionUnit:
     """可以重复使用的脸部动作单元，参考了 FACS 的动作单元"""
 
     id: str
     regions: frozenset[ExpressionRegion]
     targets: tuple[ExpressionTarget, ...]
-    emotions: Mapping[EmotionKind, EmotionProfile]
+    action_tags: frozenset[str]
     naturalness: float = 1.0
     base_weight: float = 1.0
-    global_tags: frozenset[str] = frozenset()
     conflicts: frozenset[str] = frozenset()
     soft_conflicts: Mapping[str, float] = field(default_factory=dict)
     synergies: Mapping[str, float] = field(default_factory=dict)
@@ -97,10 +87,9 @@ class ScoredExpressionUnit:
 
     unit: ExpressionUnit
     score: float
-    emotion_match: float
-    intent_strength: float
+    template_weight: float
     platform_support: float
-    tags: frozenset[str]
+    action_tags: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +112,10 @@ class EmotionRequest(BaseModel):
         default_factory=lambda: {EmotionKind.NEUTRAL: 1.0},
         description="用来挑选表情动作的情绪数值",
     )
+    intent: str | None = Field(
+        default=None,
+        description="可选的组合表情意图，比如 sinister_smile、bitter_smile",
+    )
     intensity: float = Field(default=0.7, ge=0.0, le=1.0)
     randomness: float = Field(default=0.25, ge=0.0, le=1.0)
     value_jitter: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -139,11 +132,15 @@ class EmotionRequest(BaseModel):
     ) -> dict[EmotionKind, float]:
         if not value:
             return {EmotionKind.NEUTRAL: 1.0}
-        return {
+        normalized = {
             emotion: max(0.0, min(1.0, weight))
             for emotion, weight in value.items()
             if weight > 0.0
         } or {EmotionKind.NEUTRAL: 1.0}
+        total_weight = sum(normalized.values())
+        if total_weight > 1.0:
+            raise ValueError("EmotionRequest.emotions 总和不能超过 1.0")
+        return normalized
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,10 +148,10 @@ class SelectedExpression:
     """按当前请求选出的一个或多个表情动作"""
 
     units: tuple[ExpressionUnit, ...]
+    intent_id: str | None
     units_by_region: Mapping[ExpressionRegion, tuple[ExpressionUnit, ...]]
     score: float
-    emotion_match: float
-    intent_strength: float
-    tags: Mapping[EmotionKind, frozenset[str]]
+    intent_match: float
+    expression_strength: float
     semantic_tags: frozenset[str]
     targets: tuple[SemanticActionTarget, ...]

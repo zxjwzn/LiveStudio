@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import random
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from livestudio.services.semantic_actions import (
     DEFAULT_SEMANTIC_ACTION_SPECS,
@@ -14,6 +14,7 @@ from livestudio.services.semantic_actions import (
     clamp_semantic_value,
 )
 
+from .intents import BUILTIN_EXPRESSION_INTENTS, ExpressionIntent
 from .models import (
     EmotionKind,
     EmotionRequest,
@@ -40,36 +41,184 @@ class ExpressionSelector:
         top_candidates: int = 12,
         beam_width: int = 8,
         recent_size: int = 16,
+        intents: Iterable[ExpressionIntent] = BUILTIN_EXPRESSION_INTENTS,
         combination_rules: Iterable[
             ExpressionCombinationRule
         ] = BUILTIN_COMBINATION_RULES,
     ) -> None:
         self.units = tuple(units)
+        self.units_by_id = {unit.id: unit for unit in self.units}
         self.semantic_profile = semantic_profile
         self.rng = rng or random.Random()
         self.top_candidates = top_candidates
         self.beam_width = beam_width
         self._recent_unit_ids: deque[str] = deque(maxlen=recent_size)
         self._recent_expressions: deque[ExpressionSignature] = deque(maxlen=recent_size)
+        self.intents = tuple(intents)
+        self.intents_by_id = {intent.id: intent for intent in self.intents}
         self.combination_rules = tuple(combination_rules)
 
     def select(self, request: EmotionRequest) -> SelectedExpression:
-        candidates = self._rank_candidates(request)
-        if not candidates:
-            raise ValueError("no expression units are available for selection")
+        intent = self._resolve_intent(request)
+        return self._select_from_intent(intent, request)
 
-        scored_combos = self._build_combos(candidates, request)
-        if not scored_combos:
-            raise ValueError("no compatible expression unit combinations are available")
+    def _resolve_intent(self, request: EmotionRequest) -> ExpressionIntent:
+        if request.intent is not None:
+            intent = self.intents_by_id.get(request.intent)
+            if intent is None:
+                raise ValueError(f"unknown expression intent: {request.intent}")
+            return intent
 
-        scored_combos.sort(key=lambda item: item[0], reverse=True)
-        selected_score, selected_combo = self._sample_combo(scored_combos, request)
-        targets = self._merge_targets((scored.unit for scored in selected_combo), request)
-        tags = self._collect_tags(selected_combo, request)
-        semantic_tags = frozenset().union(*tags.values()) if tags else frozenset()
-        dominant_emotion = self._dominant_emotion(request)
-        semantic_tags = frozenset({dominant_emotion.value, *semantic_tags})
-        units = tuple(scored.unit for scored in selected_combo)
+        scored = [
+            (self._score_intent(intent, request), intent) for intent in self.intents
+        ]
+        scored.sort(key=lambda item: item[0], reverse=True)
+        if not scored or scored[0][0] < 0.5:
+            raise ValueError("no expression intent matches request")
+        return scored[0][1]
+
+    def _score_intent(
+        self,
+        intent: ExpressionIntent,
+        request: EmotionRequest,
+    ) -> float:
+        emotion_score = self._emotion_signature_match(intent.emotions, request.emotions)
+        if emotion_score <= 0.0:
+            return 0.0
+        intensity_low, intensity_high = intent.intensity_range
+        if intensity_low <= request.intensity <= intensity_high:
+            intensity_score = 1.0
+        else:
+            distance = min(
+                abs(request.intensity - intensity_low),
+                abs(request.intensity - intensity_high),
+            )
+            intensity_score = max(0.0, 1.0 - distance)
+        available_score = self._intent_availability_score(intent)
+        return (
+            emotion_score * 0.68
+            + intensity_score * 0.14
+            + available_score * 0.10
+            + intent.naturalness * 0.08
+        )
+
+    def _emotion_signature_match(
+        self,
+        expected: Mapping[EmotionKind, float],
+        actual: Mapping[EmotionKind, float],
+    ) -> float:
+        expected_total = sum(max(0.0, value) for value in expected.values())
+        actual_total = sum(max(0.0, value) for value in actual.values())
+        if expected_total > 1.0 or actual_total > 1.0:
+            return 0.0
+        all_emotions = set(expected) | set(actual)
+        distance = sum(
+            abs(
+                max(0.0, expected.get(emotion, 0.0))
+                - max(0.0, actual.get(emotion, 0.0)),
+            )
+            for emotion in all_emotions
+        )
+        distance += abs(expected_total - actual_total) * 0.25
+        return max(0.0, 1.0 - distance)
+
+    def _intent_availability_score(self, intent: ExpressionIntent) -> float:
+        required_units = [
+            self.units_by_id[unit_id]
+            for unit_id in intent.required_units
+            if unit_id in self.units_by_id
+        ]
+        if len(required_units) != len(intent.required_units):
+            return 0.0
+        return self.semantic_profile.support_score(
+            SemanticActionTarget(target.action, 0.0, target.weight)
+            for unit in required_units
+            for target in unit.targets
+        )
+
+    def _select_from_intent(
+        self,
+        intent: ExpressionIntent,
+        request: EmotionRequest,
+    ) -> SelectedExpression:
+        missing = [
+            unit_id
+            for unit_id in intent.required_units
+            if unit_id not in self.units_by_id
+        ]
+        if missing:
+            raise ValueError(
+                f"intent {intent.id} references unknown required units: {', '.join(missing)}",
+            )
+
+        required = [self.units_by_id[unit_id] for unit_id in intent.required_units]
+        forbidden = set(intent.forbidden_units)
+        variant_strengths = self._intent_variant_strengths(intent, request)
+        optional_weights = self._intent_optional_weights(intent, variant_strengths)
+        candidates = [
+            self._score_unit_for_template(unit, optional_weights.get(unit.id, 0.0))
+            for unit in self.units
+            if unit.id not in forbidden and unit.id not in intent.required_units
+        ]
+        candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.platform_support >= 1.0 and candidate.template_weight >= 0.2
+        ]
+        candidates.sort(
+            key=lambda candidate: (
+                optional_weights.get(candidate.unit.id, 0.0),
+                candidate.score,
+            ),
+            reverse=True,
+        )
+
+        selected_units = list(required)
+        for candidate in candidates:
+            if len(selected_units) >= request.max_units:
+                break
+            if candidate.unit.id not in optional_weights:
+                continue
+            trial_units = (*selected_units, candidate.unit)
+            trial_scored = tuple(
+                self._score_unit_for_template(
+                    unit,
+                    1.0
+                    if unit.id in intent.required_units
+                    else optional_weights.get(unit.id, 0.0),
+                )
+                for unit in trial_units
+            )
+            if math.isfinite(self._score_combo(trial_scored, request)):
+                selected_units.append(candidate.unit)
+
+        scored_combo = tuple(
+            self._score_unit_for_template(
+                unit,
+                1.0
+                if unit.id in intent.required_units
+                else optional_weights.get(unit.id, 0.0),
+            )
+            for unit in selected_units
+        )
+        combo_score = self._score_combo(scored_combo, request)
+        if not math.isfinite(combo_score):
+            raise ValueError(f"intent {intent.id} cannot build a compatible expression")
+
+        units = tuple(selected_units)
+        target_offsets = self._intent_target_offsets(intent, variant_strengths)
+        targets = self._merge_targets(units, request, target_offsets=target_offsets)
+        action_tags = frozenset().union(*(unit.action_tags for unit in units))
+        semantic_tags = frozenset(
+            {
+                self._dominant_emotion(request).value,
+                intent.id,
+                *intent.output_tags,
+                *intent.style_tags,
+                *self._intent_variant_tags(intent, variant_strengths),
+                *action_tags,
+            },
+        )
 
         for unit in units:
             self._recent_unit_ids.append(unit.id)
@@ -79,14 +228,74 @@ class ExpressionSelector:
 
         return SelectedExpression(
             units=units,
+            intent_id=intent.id,
             units_by_region=self._units_by_region(units),
-            score=selected_score,
-            emotion_match=self._combo_emotion_match(selected_combo),
-            intent_strength=max((scored.intent_strength for scored in selected_combo), default=0.0),
-            tags=tags,
+            score=combo_score,
+            intent_match=self._score_intent(intent, request),
+            expression_strength=max(
+                (scored.template_weight for scored in scored_combo),
+                default=0.0,
+            ),
             semantic_tags=semantic_tags,
             targets=targets,
         )
+
+    def _intent_variant_strengths(
+        self,
+        intent: ExpressionIntent,
+        request: EmotionRequest,
+    ) -> dict[str, float]:
+        strengths: dict[str, float] = {}
+        for variant in intent.variants:
+            expected = max(0.0, intent.emotions.get(variant.emotion, 0.0))
+            actual = max(0.0, request.emotions.get(variant.emotion, 0.0))
+            delta = actual - expected
+            if variant.direction == "below":
+                delta = -delta
+            strengths[variant.id] = max(0.0, min(1.0, delta))
+        return strengths
+
+    def _intent_optional_weights(
+        self,
+        intent: ExpressionIntent,
+        variant_strengths: Mapping[str, float],
+    ) -> dict[str, float]:
+        weights = dict(intent.optional_units)
+        variants_by_id = {variant.id: variant for variant in intent.variants}
+        for variant_id, strength in variant_strengths.items():
+            variant = variants_by_id[variant_id]
+            for unit_id, adjustment in variant.optional_unit_adjustments.items():
+                weights[unit_id] = max(
+                    0.0,
+                    weights.get(unit_id, 0.0) + adjustment * strength,
+                )
+        return weights
+
+    def _intent_target_offsets(
+        self,
+        intent: ExpressionIntent,
+        variant_strengths: Mapping[str, float],
+    ) -> dict[str, float]:
+        offsets: dict[str, float] = {}
+        variants_by_id = {variant.id: variant for variant in intent.variants}
+        for variant_id, strength in variant_strengths.items():
+            variant = variants_by_id[variant_id]
+            for action, offset in variant.target_offsets.items():
+                offsets[action] = offsets.get(action, 0.0) + offset * strength
+        return offsets
+
+    def _intent_variant_tags(
+        self,
+        intent: ExpressionIntent,
+        variant_strengths: Mapping[str, float],
+    ) -> frozenset[str]:
+        tags: set[str] = set()
+        variants_by_id = {variant.id: variant for variant in intent.variants}
+        for variant_id, strength in variant_strengths.items():
+            if strength <= 0.0:
+                continue
+            tags.update(variants_by_id[variant_id].style_tags)
+        return frozenset(tags)
 
     def preview(self, request: EmotionRequest) -> SelectedExpression:
         state = tuple(self._recent_unit_ids)
@@ -116,96 +325,39 @@ class ExpressionSelector:
             ),
         )
 
-    def _rank_candidates(self, request: EmotionRequest) -> list[ScoredExpressionUnit]:
-        candidates = [self._score_unit(unit, request) for unit in self.units]
-        candidates = [
-            candidate
-            for candidate in candidates
-            if candidate.platform_support >= 1.0
-            and candidate.intent_strength >= self._effective_min_intent_score(request)
-        ]
-        candidates.sort(key=lambda candidate: candidate.score, reverse=True)
-        return candidates[: self.top_candidates]
-
-    def _effective_min_intent_score(self, request: EmotionRequest) -> float:
-        expressive_weight = max(
-            (
-                weight
-                for emotion, weight in request.emotions.items()
-                if emotion is not EmotionKind.NEUTRAL
-            ),
-            default=0.0,
+    def _score_unit_for_template(
+        self,
+        unit: ExpressionUnit,
+        template_weight: float,
+    ) -> ScoredExpressionUnit:
+        target_tuple = self._targets_for_unit(unit, None)
+        platform_support = self.semantic_profile.support_score(
+            SemanticActionTarget(target.action, 0.0, target.weight)
+            for target in target_tuple
         )
-        if expressive_weight <= 0.0:
-            return 0.0
-        return request.min_intent_score * expressive_weight
+        novelty = 0.3 if unit.id in self._recent_unit_ids else 1.0
+        score = (
+            max(0.0, template_weight) * 0.55
+            + platform_support * 0.20
+            + unit.naturalness * 0.15
+            + unit.base_weight * 0.05
+            + novelty * 0.05
+        )
+        return ScoredExpressionUnit(
+            unit=unit,
+            score=max(0.0, score),
+            template_weight=max(0.0, template_weight),
+            platform_support=platform_support,
+            action_tags=unit.action_tags,
+        )
 
     def _score_unit(
         self,
         unit: ExpressionUnit,
         request: EmotionRequest,
     ) -> ScoredExpressionUnit:
-        emotion_match = sum(
-            request_weight * unit.emotions.get(emotion, _EMPTY_PROFILE).weight
-            for emotion, request_weight in request.emotions.items()
-        )
-        target_tuple = self._targets_for_unit(unit, request)
-        platform_support = self.semantic_profile.support_score(
-            SemanticActionTarget(target.action, 0.0, target.weight)
-            for target in target_tuple
-        )
-        intensity_match = self._intensity_match(unit, request)
-        novelty = 0.3 if unit.id in self._recent_unit_ids else 1.0
-        tags = self._tags_for_unit(unit, request)
-        intent_strength = emotion_match * max(0.25, intensity_match)
-        score = (
-            intent_strength * 0.52
-            + platform_support * 0.16
-            + unit.naturalness * 0.12
-            + unit.base_weight * 0.08
-            + min(1.0, len(tags) / 4.0) * 0.07
-            + novelty * 0.05
-        )
-        return ScoredExpressionUnit(
-            unit=unit,
-            score=max(0.0, score),
-            emotion_match=emotion_match,
-            intent_strength=intent_strength,
-            platform_support=platform_support,
-            tags=tags,
-        )
-
-    def _build_combos(
-        self,
-        candidates: list[ScoredExpressionUnit],
-        request: EmotionRequest,
-    ) -> list[tuple[float, tuple[ScoredExpressionUnit, ...]]]:
-        beams: list[tuple[float, tuple[ScoredExpressionUnit, ...]]] = [(0.0, ())]
-        completed: list[tuple[float, tuple[ScoredExpressionUnit, ...]]] = []
-
-        for _ in range(request.max_units):
-            expanded: list[tuple[float, tuple[ScoredExpressionUnit, ...]]] = []
-            for _, combo in beams:
-                used_ids = {scored.unit.id for scored in combo}
-                for candidate in candidates:
-                    if candidate.unit.id in used_ids:
-                        continue
-                    new_combo = (*combo, candidate)
-                    score = self._score_combo(new_combo, request)
-                    if math.isfinite(score):
-                        expanded.append((score, new_combo))
-            if not expanded:
-                break
-            expanded.sort(key=lambda item: item[0], reverse=True)
-            beams = expanded[: self.beam_width]
-            completed.extend(beams)
-
-        best_by_signature: dict[tuple[str, ...], tuple[float, tuple[ScoredExpressionUnit, ...]]] = {}
-        for score, combo in completed:
-            signature = tuple(sorted(scored.unit.id for scored in combo))
-            if signature not in best_by_signature or score > best_by_signature[signature][0]:
-                best_by_signature[signature] = (score, combo)
-        return list(best_by_signature.values())
+        _ = request
+        return self._score_unit_for_template(unit, unit.base_weight)
 
     def _score_combo(
         self,
@@ -216,13 +368,19 @@ class ExpressionSelector:
             return -math.inf
 
         unit_ids = {scored.unit.id for scored in combo}
-        tags = frozenset().union(*(scored.tags for scored in combo))
+        tags = frozenset().union(*(scored.action_tags for scored in combo))
         for scored in combo:
             other_tags = set().union(
-                *(other.tags for other in combo if other.unit.id != scored.unit.id),
+                *(
+                    other.action_tags
+                    for other in combo
+                    if other.unit.id != scored.unit.id
+                ),
             )
             other_unit_ids = unit_ids - {scored.unit.id}
-            if scored.unit.conflicts.intersection(other_tags) or scored.unit.conflicts.intersection(other_unit_ids):
+            if scored.unit.conflicts.intersection(
+                other_tags,
+            ) or scored.unit.conflicts.intersection(other_unit_ids):
                 return -math.inf
 
         rule_penalty = self._combination_rule_penalty(unit_ids, tags, request)
@@ -241,12 +399,12 @@ class ExpressionSelector:
 
     def _coverage_score(self, combo: tuple[ScoredExpressionUnit, ...]) -> float:
         regions = set().union(*(scored.unit.regions for scored in combo))
-        tags = set().union(*(scored.tags for scored in combo))
+        tags = set().union(*(scored.action_tags for scored in combo))
         return min(1.0, len(regions) / 4.0) * 0.6 + min(1.0, len(tags) / 6.0) * 0.4
 
     def _synergy_score(self, combo: tuple[ScoredExpressionUnit, ...]) -> float:
         unit_ids = {scored.unit.id for scored in combo}
-        tags = set().union(*(scored.tags for scored in combo))
+        tags = set().union(*(scored.action_tags for scored in combo))
         score = 0.0
         for scored in combo:
             score += sum(
@@ -258,7 +416,7 @@ class ExpressionSelector:
 
     def _soft_conflict_penalty(self, combo: tuple[ScoredExpressionUnit, ...]) -> float:
         unit_ids = {scored.unit.id for scored in combo}
-        tags = set().union(*(scored.tags for scored in combo))
+        tags = set().union(*(scored.action_tags for scored in combo))
         penalty = 0.0
         for scored in combo:
             penalty += sum(
@@ -276,9 +434,7 @@ class ExpressionSelector:
     ) -> float:
         penalty = 0.0
         active_emotions = {
-            emotion
-            for emotion, weight in request.emotions.items()
-            if weight > 0.0
+            emotion for emotion, weight in request.emotions.items() if weight > 0.0
         }
         for rule in self.combination_rules:
             if rule.emotions and not rule.emotions.intersection(active_emotions):
@@ -302,7 +458,9 @@ class ExpressionSelector:
         values: dict[str, list[float]] = {}
         for scored in combo:
             for target in self._targets_for_unit(scored.unit, request):
-                values.setdefault(target.action, []).append(self._target_base_value(target))
+                values.setdefault(target.action, []).append(
+                    self._target_base_value(target),
+                )
         penalty = 0.0
         for action_values in values.values():
             if len(action_values) <= 1:
@@ -319,37 +477,28 @@ class ExpressionSelector:
             return 0.0
         units = tuple(scored.unit for scored in combo)
         targets = self._merge_targets(units, request)
-        tags = frozenset().union(*(scored.tags for scored in combo))
+        tags = frozenset().union(*(scored.action_tags for scored in combo))
         signature = self._build_signature(units, targets, tags, request)
         max_similarity = 0.0
         total = len(self._recent_expressions)
         for index, recent in enumerate(self._recent_expressions):
             recency = (index + 1) / total
-            max_similarity = max(max_similarity, self._signature_similarity(signature, recent) * recency)
+            max_similarity = max(
+                max_similarity,
+                self._signature_similarity(signature, recent) * recency,
+            )
         return max_similarity * request.history_avoidance
-
-    def _sample_combo(
-        self,
-        scored_combos: list[tuple[float, tuple[ScoredExpressionUnit, ...]]],
-        request: EmotionRequest,
-    ) -> tuple[float, tuple[ScoredExpressionUnit, ...]]:
-        if request.randomness <= 0.0:
-            return scored_combos[0]
-
-        top_count = min(8, len(scored_combos))
-        top = scored_combos[:top_count]
-        temperature = max(0.05, request.randomness)
-        best_score = top[0][0]
-        weights = [math.exp((score - best_score) / temperature) for score, _ in top]
-        return self.rng.choices(top, weights=weights, k=1)[0]
 
     def _merge_targets(
         self,
         units: Iterable[ExpressionUnit],
         request: EmotionRequest,
+        *,
+        target_offsets: Mapping[str, float] | None = None,
     ) -> tuple[SemanticActionTarget, ...]:
         merged: dict[str, tuple[float, float]] = {}
         order: list[str] = []
+        offsets = target_offsets or {}
         for unit in units:
             for target in self._targets_for_unit(unit, request):
                 if target.action not in merged:
@@ -358,10 +507,19 @@ class ExpressionSelector:
                 value = self._resolve_target_value(target, request)
                 weight = max(0.0, target.weight)
                 weighted_value, total_weight = merged[target.action]
-                merged[target.action] = (weighted_value + value * weight, total_weight + weight)
+                merged[target.action] = (
+                    weighted_value + value * weight,
+                    total_weight + weight,
+                )
 
         return tuple(
-            SemanticActionTarget(action=action, value=clamp_semantic_value(action, weighted_value / total_weight))
+            SemanticActionTarget(
+                action=action,
+                value=clamp_semantic_value(
+                    action,
+                    weighted_value / total_weight + offsets.get(action, 0.0),
+                ),
+            )
             for action in order
             for weighted_value, total_weight in (merged[action],)
             if total_weight > 0.0
@@ -395,53 +553,10 @@ class ExpressionSelector:
     def _targets_for_unit(
         self,
         unit: ExpressionUnit,
-        request: EmotionRequest,
+        request: EmotionRequest | None,
     ) -> tuple[ExpressionTarget, ...]:
+        _ = request
         return unit.targets
-
-    def _tags_for_unit(
-        self,
-        unit: ExpressionUnit,
-        request: EmotionRequest,
-    ) -> frozenset[str]:
-        tags = set(unit.global_tags)
-        for emotion in request.emotions:
-            profile = unit.emotions.get(emotion)
-            if profile is not None:
-                tags.update(profile.tags)
-        return frozenset(tags)
-
-    def _collect_tags(
-        self,
-        combo: tuple[ScoredExpressionUnit, ...],
-        request: EmotionRequest,
-    ) -> dict[EmotionKind, frozenset[str]]:
-        tags: dict[EmotionKind, set[str]] = {}
-        for scored in combo:
-            for emotion in request.emotions:
-                profile = scored.unit.emotions.get(emotion)
-                if profile is None:
-                    continue
-                tags.setdefault(emotion, set()).update(profile.tags)
-        return {emotion: frozenset(values) for emotion, values in tags.items()}
-
-    def _intensity_match(self, unit: ExpressionUnit, request: EmotionRequest) -> float:
-        matches: list[float] = []
-        for emotion, weight in request.emotions.items():
-            profile = unit.emotions.get(emotion)
-            if profile is None:
-                continue
-            expected = profile.intensity if profile.intensity is not None else request.intensity
-            matches.append((1.0 - abs(request.intensity - expected)) * weight)
-        if not matches:
-            return 0.0
-        total_weight = sum(request.emotions.values()) or 1.0
-        return max(0.0, min(1.0, sum(matches) / total_weight))
-
-    def _combo_emotion_match(self, combo: tuple[ScoredExpressionUnit, ...]) -> float:
-        if not combo:
-            return 0.0
-        return sum(scored.emotion_match for scored in combo) / len(combo)
 
     def _dominant_emotion(self, request: EmotionRequest) -> EmotionKind:
         return max(request.emotions.items(), key=lambda item: item[1])[0]
@@ -454,7 +569,9 @@ class ExpressionSelector:
         for unit in units:
             for region in unit.regions:
                 by_region.setdefault(region, []).append(unit)
-        return {region: tuple(region_units) for region, region_units in by_region.items()}
+        return {
+            region: tuple(region_units) for region, region_units in by_region.items()
+        }
 
     def _build_signature(
         self,
@@ -478,20 +595,33 @@ class ExpressionSelector:
     ) -> float:
         current_units = set(current.unit_ids)
         recent_units = set(recent.unit_ids)
-        unit_similarity = len(current_units & recent_units) / max(len(current_units | recent_units), 1)
+        unit_similarity = len(current_units & recent_units) / max(
+            len(current_units | recent_units),
+            1,
+        )
 
         shared_actions = set(current.target_values).intersection(recent.target_values)
         if shared_actions:
             target_similarity = sum(
-                max(0.0, 1.0 - abs(current.target_values[action] - recent.target_values[action]) / 2.0)
+                max(
+                    0.0,
+                    1.0
+                    - abs(current.target_values[action] - recent.target_values[action])
+                    / 2.0,
+                )
                 for action in shared_actions
             ) / len(shared_actions)
         else:
             target_similarity = 0.0
 
         shared_tags = current.semantic_tags & recent.semantic_tags
-        tag_similarity = len(shared_tags) / max(len(current.semantic_tags | recent.semantic_tags), 1)
-        emotion_similarity = 1.0 if current.dominant_emotion is recent.dominant_emotion else 0.0
+        tag_similarity = len(shared_tags) / max(
+            len(current.semantic_tags | recent.semantic_tags),
+            1,
+        )
+        emotion_similarity = (
+            1.0 if current.dominant_emotion is recent.dominant_emotion else 0.0
+        )
         intensity_similarity = max(0.0, 1.0 - abs(current.intensity - recent.intensity))
         return (
             unit_similarity * 0.35
@@ -500,6 +630,3 @@ class ExpressionSelector:
             + emotion_similarity * 0.10
             + intensity_similarity * 0.10
         )
-
-
-_EMPTY_PROFILE = type("_EmptyEmotionProfile", (), {"weight": 0.0})()

@@ -67,15 +67,22 @@ class PlatformModelConfigService(Generic[ModelConfigT]):
         """同步模型身份和平台提供的默认对应关系"""
 
         changed = config.sync_identity(identity)
-        changed = config.ensure_semantic_profile_defaults(self.default_bindings) or changed
-        return config.ensure_parameter_spec_defaults(self.default_parameter_specs) or changed
+        changed = (
+            config.ensure_semantic_profile_defaults(self.default_bindings) or changed
+        )
+        return (
+            config.ensure_parameter_spec_defaults(self.default_parameter_specs)
+            or changed
+        )
 
     def build_path(self, identity: PlatformModelIdentity) -> Path:
         """返回某个平台模型对应的配置路径"""
 
         safe_name = self.sanitize_path_part(identity.model_name)
         safe_id = self.sanitize_path_part(identity.model_id)
-        return resolve_config_path(self.model_config_dir) / f"{safe_name}_{safe_id}.yaml"
+        return (
+            resolve_config_path(self.model_config_dir) / f"{safe_name}_{safe_id}.yaml"
+        )
 
     @staticmethod
     def sanitize_path_part(value: str) -> str:

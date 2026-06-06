@@ -40,7 +40,9 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
                         SemanticAction.EYE_OPEN.value,
                         0.0,
                         start_value=(
-                            current_eye_open.value if current_eye_open is not None else None
+                            current_eye_open.value
+                            if current_eye_open is not None
+                            else None
                         ),
                     ),
                 ),
@@ -61,7 +63,9 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
                         SemanticAction.EYE_OPEN.value,
                         1.0,
                         start_value=(
-                            current_eye_open.value if current_eye_open is not None else None
+                            current_eye_open.value
+                            if current_eye_open is not None
+                            else None
                         ),
                     ),
                 ),

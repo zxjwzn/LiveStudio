@@ -17,6 +17,7 @@ from livestudio.services.platforms.vtubestudio import (
     VTubeStudioSemanticAdapter,
     default_vtube_studio_semantic_profile,
 )
+from livestudio.services.semantic_actions import SemanticActionAdapter
 from livestudio.utils.log import StatusLine, logger
 
 
@@ -68,6 +69,7 @@ def _parse_emotion_vector(raw_values: list[str]) -> dict[EmotionKind, float]:
 def _build_emotion_request(args: argparse.Namespace) -> EmotionRequest:
     return EmotionRequest(
         emotions=_parse_emotion_vector(args.emotion),
+        intent=args.intent,
         intensity=args.intensity,
         randomness=args.randomness,
         duration_scale=args.duration_scale,
@@ -76,25 +78,23 @@ def _build_emotion_request(args: argparse.Namespace) -> EmotionRequest:
 
 def _log_selected_expression(
     selected,
-    adapter: VTubeStudioSemanticAdapter,
+    adapter: SemanticActionAdapter,
 ) -> None:
     logger.info(
-        "[AU] score={:.3f}, emotion_match={:.3f}, intent={:.3f}, tags={}",
+        "[AU] score={:.3f}, intent_match={:.3f}, expression_strength={:.3f}, intent={}, tags={}",
         selected.score,
-        selected.emotion_match,
-        selected.intent_strength,
+        selected.intent_match,
+        selected.expression_strength,
+        selected.intent_id or "-",
         ",".join(sorted(selected.semantic_tags)) or "-",
     )
     for unit in selected.units:
-        unit_tags = set(unit.global_tags)
-        for tags in selected.tags.values():
-            unit_tags.update(tags)
         logger.info(
             "[AU] {} -> {} targets={} tags={}",
             "/".join(sorted(region.value for region in unit.regions)),
             unit.id,
             len(unit.targets),
-            ",".join(sorted(unit_tags)) or "-",
+            ",".join(sorted(unit.action_tags)) or "-",
         )
     for target in selected.targets:
         states = adapter.resolve(target)
@@ -204,6 +204,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="情绪名称或 name=weight，可以重复写，比如 --emotion joy=0.8 --emotion sadness=0.2",
+    )
+    parser.add_argument(
+        "--intent",
+        default=None,
+        help="指定组合表情意图，比如 sinister_smile、bitter_smile、wronged",
     )
     parser.add_argument("--intensity", type=float, default=0.7, help="表情强度 0~1")
     parser.add_argument(
