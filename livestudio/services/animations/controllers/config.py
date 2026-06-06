@@ -140,7 +140,7 @@ class MouthSyncControllerSettings(ControllerSettings):
     update_interval: float = Field(default=0.02, gt=0.0, description="更新间隔")
     attack_duration: float = Field(default=0.02, ge=0.0, description="张嘴过渡时长")
     release_duration: float = Field(default=0.04, ge=0.0, description="闭嘴过渡时长")
-    priority: int = Field(default=90, description="嘴型参数控制优先级")
+    priority: int = Field(default=20, description="嘴型参数控制优先级")
 
     @model_validator(mode="after")
     def validate_mouth_sync_range(self) -> MouthSyncControllerSettings:
