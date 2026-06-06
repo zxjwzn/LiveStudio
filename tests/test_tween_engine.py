@@ -1,4 +1,4 @@
-"""ParameterTweenEngine 测试。
+"""测试 ParameterTweenEngine
 
 覆盖：
 - 缓动按 set/add 模式分批下发
@@ -19,10 +19,12 @@ from livestudio.tween.models import ControlledParameterState
 
 
 class _SenderRecorder:
-    """记录每次 sender 调用的参数与 mode。"""
+    """记录每次 sender 调用的参数与 mode"""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[Literal["set", "add"], list[ControlledParameterState]]] = []
+        self.calls: list[
+            tuple[Literal["set", "add"], list[ControlledParameterState]]
+        ] = []
 
     async def __call__(
         self,
@@ -119,7 +121,7 @@ async def test_set_and_add_modes_are_dispatched_separately() -> None:
     sender = _SenderRecorder()
     engine = ParameterTweenEngine(sender)
 
-    # 通过私有方法直接验证 _send_parameter_values 的分组（用例反映 fix #3）
+    # 通过内部方法直接检查 _send_parameter_values 的分组，这个用例对应 fix #3
     states = [
         ControlledParameterState(name="A", value=1.0, mode="set"),
         ControlledParameterState(name="B", value=2.0, mode="add"),

@@ -1,4 +1,4 @@
-"""应用服务层。"""
+"""应用服务层"""
 
 from .audio_stream import (
     AudioChunk,

@@ -1,4 +1,4 @@
-"""通用音频流服务导出。"""
+"""通用音频流服务导出"""
 
 from .base import AudioStreamSource
 from .config import AudioStreamConfigFile, AudioStreamRouterConfig, TTSAudioStreamConfig

@@ -1,5 +1,6 @@
 from .controllers import (
     AnimationController,
+    AnimationControllerSettingsConfig,
     AnimationType,
     BlinkController,
     BlinkControllerSettings,
@@ -8,6 +9,8 @@ from .controllers import (
     BreathingController,
     BreathingControllerSettings,
     ControllerSettings,
+    EyeCenteringController,
+    EyeCenteringControllerSettings,
     MouthExpressionController,
     MouthExpressionControllerSettings,
     MouthSyncController,
@@ -23,6 +26,7 @@ from .templates import (
 
 __all__ = [
     "AnimationController",
+    "AnimationControllerSettingsConfig",
     "AnimationManager",
     "AnimationTemplatePlayer",
     "AnimationType",
@@ -33,6 +37,8 @@ __all__ = [
     "BreathingController",
     "BreathingControllerSettings",
     "ControllerSettings",
+    "EyeCenteringController",
+    "EyeCenteringControllerSettings",
     "LoadedTemplateInfo",
     "LoadedTemplateParameterInfo",
     "MouthExpressionController",

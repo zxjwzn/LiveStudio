@@ -1,4 +1,4 @@
-"""共享的配置管理组件。"""
+"""共享的配置管理组件"""
 
 from .errors import (
     ConfigError,

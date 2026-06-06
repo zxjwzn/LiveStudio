@@ -1,8 +1,9 @@
-"""基于 sounddevice 的实时麦克风音频源。"""
+"""用 sounddevice 获取实时麦克风声音"""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Sequence
 from typing import TypeGuard
 
@@ -18,7 +19,7 @@ from .models import InputDeviceInfo, RawInputDeviceInfo, SoundDeviceTimeInfo
 
 
 class MicrophoneAudioStreamSource(AudioStreamSource):
-    """提供指定麦克风的实时音频流采集能力。"""
+    """提供指定麦克风的实时音频流采集能力"""
 
     def __init__(self, config: MicrophoneAudioStreamConfig) -> None:
         super().__init__()
@@ -31,7 +32,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
     @property
     def device_info(self) -> InputDeviceInfo:
-        """返回当前选中的输入设备信息。"""
+        """返回当前选中的输入设备信息"""
 
         if self._device_info is None:
             raise RuntimeError("麦克风音频源尚未初始化")
@@ -39,12 +40,12 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
     @property
     def dropped_chunks(self) -> int:
-        """返回因队列已满被丢弃的音频块数量。"""
+        """返回因队列已满被丢弃的音频块数量"""
 
         return self._dropped_chunks
 
     async def initialize(self) -> None:
-        """加载配置并解析目标输入设备。"""
+        """加载配置并解析目标输入设备"""
 
         if self._stream is not None:
             await self.stop()
@@ -60,7 +61,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         )
 
     async def start(self) -> None:
-        """启动麦克风输入流。"""
+        """启动麦克风输入流"""
 
         if self.is_started:
             return
@@ -78,39 +79,46 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             latency=self.config.latency,
             callback=self._handle_audio_callback,
         )
-        await asyncio.to_thread(stream.start)
+        try:
+            await asyncio.to_thread(stream.start)
+        except Exception:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(stream.close)
+            raise
         self._stream = stream
         self.is_started = True
         logger.info("麦克风音频流已启动")
 
     async def stop(self) -> None:
-        """停止麦克风输入流。"""
+        """停止麦克风输入流"""
 
         stream = self._stream
         self._stream = None
         device_info = self._device_info
         self._drop_status_line.finish()
-        if stream is not None:
-            await asyncio.to_thread(stream.stop)
-            await asyncio.to_thread(stream.close)
-        if device_info is not None:
-            self.config.device_name = device_info.name
-            self.config.device_index = device_info.index
-        self._loop = None
-        self._device_info = None
-        self._clear_subscriptions()
-        self.is_started = False
-        logger.info("麦克风音频流已停止")
+        try:
+            if stream is not None:
+                await asyncio.to_thread(stream.stop)
+                await asyncio.to_thread(stream.close)
+        finally:
+            if device_info is not None:
+                self.config.device_name = device_info.name
+                self.config.device_index = device_info.index
+            self._loop = None
+            self._device_info = None
+            self._clear_subscriptions()
+            self.is_started = False
+            logger.info("麦克风音频流已停止")
 
     async def restart(self) -> None:
-        """重启麦克风音频源。"""
+        """重启麦克风音频源"""
 
         await self.stop()
         await self.initialize()
         await self.start()
 
     async def list_input_devices(self) -> list[InputDeviceInfo]:
-        """列出当前系统可用的输入设备。"""
+        """列出当前系统可用的输入设备"""
 
         devices = await asyncio.to_thread(sd.query_devices)
         return self._normalize_input_devices(devices)
@@ -121,7 +129,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         device_name: str | None = None,
         device_index: int | None = None,
     ) -> InputDeviceInfo:
-        """根据设备名称或索引选择麦克风设备。"""
+        """根据设备名称或索引选择麦克风设备"""
 
         if (device_name is None) == (device_index is None):
             raise ValueError("必须且只能提供 device_name 或 device_index 其中之一")
@@ -155,7 +163,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         return selected_device
 
     async def reload_device(self) -> None:
-        """根据最新配置重新选择设备并重启输入流。"""
+        """根据最新配置重新选择设备并重启输入流"""
 
         was_started = self.is_started
         if was_started:

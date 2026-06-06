@@ -1,4 +1,4 @@
-"""音频流源导出。"""
+"""音频流源导出"""
 
 from .microphone.config import MicrophoneAudioStreamConfig
 from .microphone.microphone import MicrophoneAudioStreamSource

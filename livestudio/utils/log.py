@@ -1,4 +1,4 @@
-"""应用日志封装。"""
+"""应用日志封装"""
 
 from __future__ import annotations
 
@@ -72,13 +72,13 @@ logger = _logger.bind(app="livestudio")
 
 @dataclass(eq=False)
 class StatusLine:
-    """在同一终端行刷新状态文本。"""
+    """在同一终端行刷新状态文本"""
 
     stream: TextIO = sys.stderr
     line_length: int = 0
 
     def update(self, message: str) -> None:
-        """原地刷新状态文本。"""
+        """原地刷新状态文本"""
 
         with _STATUS_LINE_LOCK:
             padding = " " * max(0, self.line_length - len(message))
@@ -88,13 +88,13 @@ class StatusLine:
             _ACTIVE_STATUS_LINES.add(self)
 
     def finish(self) -> None:
-        """结束状态行并换行。"""
+        """结束状态行并换行"""
 
         with _STATUS_LINE_LOCK:
             _finish_status_line_unlocked(self)
 
 
 def configure_logging(*, level: str = "DEBUG") -> None:
-    """重新配置全局日志输出。"""
+    """重新配置全局日志输出"""
 
     _install_log_sink(level)

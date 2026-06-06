@@ -1,4 +1,4 @@
-"""用于处理 VTube Studio API 广播的 UDP 发现辅助工具。"""
+"""用来接收 VTube Studio 广播的 UDP 小工具"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .models import VTubeStudioAPIStateBroadcast
 
 
 class VTubeStudioDiscovery:
-    """监听 VTube Studio 的 UDP 广播。"""
+    """监听 VTube Studio 发出来的 UDP 广播"""
 
     def __init__(self, config: VTubeStudioConfig) -> None:
         self._config = config

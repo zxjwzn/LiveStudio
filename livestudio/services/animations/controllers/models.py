@@ -1,4 +1,4 @@
-"""动画运行时的数据模型。"""
+"""动画运行时的数据模型"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AnimationType(StrEnum):
-    """动画控制器类型。"""
+    """动画控制器类型"""
 
     IDLE = "idle"
     ONESHOT = "oneshot"

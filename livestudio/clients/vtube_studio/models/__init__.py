@@ -1,4 +1,4 @@
-"""VTube Studio Pydantic 模型导出项。"""
+"""VTube Studio 数据模型导出项"""
 
 from .artmesh import (
     ArtMeshListRequest,

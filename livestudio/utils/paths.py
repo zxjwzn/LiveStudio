@@ -1,9 +1,8 @@
-"""Centralized filesystem paths for LiveStudio."""
+"""这里统一管理 LiveStudio 要用到的文件路径"""
 
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 UTILS_ROOT = Path(__file__).resolve().parent
@@ -37,25 +36,25 @@ RESOURCE_DIR = _default_resource_dir()
 
 
 def config_path(*parts: str | os.PathLike[str]) -> Path:
-    """Return a path under the user-writable config directory."""
+    """返回配置文件夹下面的路径"""
 
     return CONFIG_DIR.joinpath(*parts)
 
 
 def resource_path(*parts: str | os.PathLike[str]) -> Path:
-    """Return a path under the configured resource directory."""
+    """返回资源文件夹下面的路径"""
 
     return RESOURCE_DIR.joinpath(*parts)
 
 
 def resolve_config_path(path: str | os.PathLike[str]) -> Path:
-    """Resolve user config paths without depending on the process cwd."""
+    """把配置路径整理成稳定可用的路径"""
 
     candidate = Path(path).expanduser()
     if candidate.is_absolute():
         return candidate
 
     if candidate.parts[:1] == ("configs",):
-        return HOME_DIR / candidate
+        return CONFIG_DIR.joinpath(*candidate.parts[1:])
 
     return CONFIG_DIR / candidate

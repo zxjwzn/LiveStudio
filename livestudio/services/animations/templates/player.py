@@ -1,4 +1,4 @@
-"""动画模板加载与求值。"""
+"""动画模板加载与求值"""
 
 from __future__ import annotations
 
@@ -11,7 +11,11 @@ from typing import Any, Final
 
 import json5
 
-from livestudio.tween import ParameterTweenEngine, TweenRequest
+from livestudio.services.platforms import PlatformService
+from livestudio.services.semantic_actions import (
+    SemanticActionTarget,
+    SemanticTweenRequest,
+)
 from livestudio.utils.log import logger
 
 from .models import (
@@ -28,11 +32,11 @@ TEMPLATE_PRIORITY: Final = 50
 
 
 class TemplateEvaluationError(ValueError):
-    """模板求值失败。"""
+    """模板求值失败"""
 
 
 class SafeExpressionEvaluator(ast.NodeVisitor):
-    """受限表达式求值器。"""
+    """受限表达式求值器"""
 
     _binary_operators: dict[type[ast.operator], Any] = {
         ast.Add: lambda a, b: a + b,
@@ -108,24 +112,30 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
 
 
 class AnimationTemplatePlayer:
-    """动画模板服务。"""
+    """动画模板服务"""
 
     def __init__(
         self,
-        tween: ParameterTweenEngine,
+        platform: PlatformService,
         template_dir: Path,
     ) -> None:
-        self._tween = tween
+        self._platform = platform
         self.template_dir = template_dir
         self._templates: dict[str, AnimationTemplate] = {}
         self._loaded = False
+
+    @property
+    def platform(self) -> PlatformService:
+        """返回该模板播放器绑定的平台服务"""
+
+        return self._platform
 
     @property
     def templates(self) -> dict[str, AnimationTemplate]:
         return self._templates
 
     def list_loaded_templates(self) -> list[LoadedTemplateInfo]:
-        """返回当前已加载模板摘要。"""
+        """返回当前已加载模板摘要"""
 
         return [
             LoadedTemplateInfo(
@@ -147,7 +157,7 @@ class AnimationTemplatePlayer:
         ]
 
     async def load(self) -> None:
-        """重新扫描模板目录并加载所有 `.jsonc` 模板。"""
+        """重新扫描模板目录并加载所有 `.jsonc` 模板"""
 
         self._templates.clear()
         if not self.template_dir.exists():
@@ -166,7 +176,7 @@ class AnimationTemplatePlayer:
         logger.info("已加载 {} 个动画模板", len(self._templates))
 
     async def reload(self) -> None:
-        """重新加载动画模板。"""
+        """重新加载动画模板"""
 
         await self.load()
 
@@ -176,7 +186,7 @@ class AnimationTemplatePlayer:
         *,
         parameters: Mapping[str, TemplateValue] | None = None,
     ) -> TemplatePlayback:
-        """获取、渲染并执行模板。"""
+        """获取、渲染并执行模板"""
 
         if not self._loaded:
             await self.load()
@@ -187,7 +197,7 @@ class AnimationTemplatePlayer:
         return playback
 
     def get_template(self, name: str) -> AnimationTemplate:
-        """按名称获取已加载模板。"""
+        """按名称获取已加载模板"""
 
         template = self._templates.get(name)
         if template is None:
@@ -200,7 +210,7 @@ class AnimationTemplatePlayer:
         *,
         parameters: Mapping[str, TemplateValue] | None = None,
     ) -> TemplatePlayback:
-        """将模板渲染为可执行动作。"""
+        """将模板渲染为可执行动作"""
 
         context = self._prepare_context(template, parameters or {})
         actions = [
@@ -249,17 +259,21 @@ class AnimationTemplatePlayer:
         action: TemplateActionDefinition,
         *,
         context: Mapping[str, TemplateScalar],
-    ) -> TweenRequest:
+    ) -> SemanticTweenRequest:
         from_value = (
             None
             if action.from_value is None
             else float(self._evaluate_value(action.from_value, context))
         )
-        return TweenRequest(
-            parameter_name=action.parameter,
-            end_value=float(self._evaluate_value(action.to, context)),
+        return SemanticTweenRequest(
+            targets=(
+                SemanticActionTarget(
+                    action=action.parameter,
+                    value=float(self._evaluate_value(action.to, context)),
+                    start_value=from_value,
+                ),
+            ),
             duration=float(self._evaluate_value(action.duration, context)),
-            start_value=from_value,
             delay=float(self._evaluate_value(action.delay, context)),
             easing=action.easing,
             mode=action.mode,
@@ -306,7 +320,7 @@ class AnimationTemplatePlayer:
         return AnimationTemplate.model_validate(raw_data)
 
     async def _execute_playback(self, playback: TemplatePlayback) -> None:
-        tasks = [self._tween.tween(action) for action in playback.actions]
+        tasks = [self._platform.tween_semantic(action) for action in playback.actions]
         if not tasks:
             return
         await asyncio.gather(*tasks)

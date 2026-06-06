@@ -1,23 +1,27 @@
 from .base import AnimationController
 from .config import (
+    AnimationControllerSettingsConfig,
     BlinkControllerSettings,
     BodySwingControllerSettings,
     BreathingControllerSettings,
     ControllerSettings,
+    EyeCenteringControllerSettings,
     MouthExpressionControllerSettings,
     MouthSyncControllerSettings,
 )
 from .models import AnimationType
-from .vtubestudio import (
+from .semantic import (
     BlinkController,
     BodySwingController,
     BreathingController,
+    EyeCenteringController,
     MouthExpressionController,
     MouthSyncController,
 )
 
 __all__ = [
     "AnimationController",
+    "AnimationControllerSettingsConfig",
     "AnimationType",
     "BlinkController",
     "BlinkControllerSettings",
@@ -26,6 +30,8 @@ __all__ = [
     "BreathingController",
     "BreathingControllerSettings",
     "ControllerSettings",
+    "EyeCenteringController",
+    "EyeCenteringControllerSettings",
     "MouthExpressionController",
     "MouthExpressionControllerSettings",
     "MouthSyncController",

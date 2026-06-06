@@ -1,4 +1,4 @@
-"""参数缓动引擎。"""
+"""参数缓动引擎"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ ParameterSender = Callable[
 
 
 class ParameterTweenEngine:
-    """以确定性的缓动时序驱动参数值变化。"""
+    """以确定性的缓动时序驱动参数值变化"""
 
     def __init__(
         self,
@@ -44,7 +44,7 @@ class ParameterTweenEngine:
 
     @property
     def active_parameters(self) -> tuple[str, ...]:
-        """返回当前存在活动缓动的参数名。"""
+        """返回当前存在活动缓动的参数名"""
 
         return tuple(self._active_tweens)
 
@@ -64,7 +64,7 @@ class ParameterTweenEngine:
         logger.info("缓动引擎已启动")
 
     async def stop(self) -> None:
-        """停止保活，并取消所有活动中的缓动任务。"""
+        """停止保活，并取消所有活动中的缓动任务"""
 
         task = self._keep_alive_task
         self._keep_alive_task = None
@@ -88,13 +88,13 @@ class ParameterTweenEngine:
         logger.info("缓动引擎已停止")
 
     async def restart(self) -> None:
-        """重启缓动引擎。"""
+        """重启缓动引擎"""
 
         await self.stop()
         self.start()
 
     async def tween(self, request: TweenRequest) -> None:
-        """按请求使用固定采样与绝对时间对齐方式执行缓动。"""
+        """按请求使用固定采样与绝对时间对齐方式执行缓动"""
 
         if request.fps <= 0:
             request.fps = self._default_fps
@@ -102,7 +102,7 @@ class ParameterTweenEngine:
         await task
 
     async def release(self, parameter_name: str) -> None:
-        """释放某个参数的控制权，并在需要时取消其缓动任务。"""
+        """释放某个参数的控制权，并在需要时取消其缓动任务"""
 
         task_to_cancel: asyncio.Task[None] | None = None
         async with self._lock:
@@ -117,13 +117,13 @@ class ParameterTweenEngine:
                 await task_to_cancel
 
     async def release_many(self, parameter_names: Iterable[str]) -> None:
-        """释放多个参数的控制权。"""
+        """释放多个参数的控制权"""
 
         for parameter_name in tuple(parameter_names):
             await self.release(parameter_name)
 
     async def cancel(self, parameter_name: str, *, release: bool = False) -> None:
-        """取消某个参数的活动缓动，并可选择是否释放控制权。"""
+        """取消某个参数的活动缓动，并可选择是否释放控制权"""
 
         task_to_cancel: asyncio.Task[None] | None = None
         async with self._lock:
@@ -139,7 +139,7 @@ class ParameterTweenEngine:
                 await task_to_cancel
 
     async def cancel_all(self) -> None:
-        """取消所有活动缓动，并保留各参数最后一次已发送的值。"""
+        """取消所有活动缓动，并保留各参数最后一次已发送的值"""
 
         async with self._lock:
             active_tweens = tuple(self._active_tweens.values())
@@ -153,7 +153,7 @@ class ParameterTweenEngine:
                 await active.task
 
     async def release_all(self) -> None:
-        """释放所有受控参数。"""
+        """释放所有受控参数"""
 
         async with self._lock:
             parameter_names = tuple(self._controlled_params.keys())

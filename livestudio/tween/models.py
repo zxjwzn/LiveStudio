@@ -1,4 +1,4 @@
-"""缓动引擎使用的内部模型。"""
+"""缓动引擎使用的内部模型"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .easing import EasingFunction
 
 @dataclass(slots=True)
 class ControlledParameterState:
-    """由缓动引擎控制的参数运行时状态。"""
+    """由缓动引擎控制的参数运行时状态"""
 
     name: str
     value: float
@@ -21,7 +21,7 @@ class ControlledParameterState:
 
 @dataclass(slots=True)
 class ActiveTween:
-    """当前运行中的参数缓动任务元数据。"""
+    """当前运行中的参数缓动任务元数据"""
 
     task: asyncio.Task[None]
     priority: int
@@ -31,7 +31,7 @@ class ActiveTween:
 
 @dataclass(slots=True)
 class TweenRequest:
-    """声明式缓动请求。"""
+    """声明式缓动请求"""
 
     parameter_name: str
     end_value: float

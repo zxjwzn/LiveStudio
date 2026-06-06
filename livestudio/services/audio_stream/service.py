@@ -1,4 +1,4 @@
-"""统一音频流路由器。"""
+"""统一音频流路由器"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from .sources import MicrophoneAudioStreamSource, TTSAudioStreamSource
 
 
 class AudioStreamRouter(AudioStreamSource):
-    """在多个音频源之间选择唯一活动源。"""
+    """在多个音频源之间选择唯一活动源"""
 
     def __init__(
         self,
@@ -52,7 +52,7 @@ class AudioStreamRouter(AudioStreamSource):
 
     @property
     def is_initialized(self) -> bool:
-        """音频流路由器是否已初始化。"""
+        """音频流路由器是否已初始化"""
 
         return self._initialized
 
@@ -67,7 +67,7 @@ class AudioStreamRouter(AudioStreamSource):
 
     @property
     def microphone_source(self) -> MicrophoneAudioStreamSource:
-        """返回内置麦克风音频源。"""
+        """返回内置麦克风音频源"""
 
         if self._microphone_source is None:
             raise RuntimeError("音频流路由器尚未初始化")
@@ -75,7 +75,7 @@ class AudioStreamRouter(AudioStreamSource):
 
     @property
     def tts_source(self) -> TTSAudioStreamSource:
-        """返回内置 TTS 音频源。"""
+        """返回内置 TTS 音频源"""
 
         if self._tts_source is None:
             raise RuntimeError("音频流路由器尚未初始化")
@@ -113,7 +113,7 @@ class AudioStreamRouter(AudioStreamSource):
         self.is_started = True
 
     async def stop(self) -> None:
-        """停止并释放音频流路由器资源。"""
+        """停止并释放音频流路由器资源"""
 
         if not self._initialized:
             return
@@ -135,7 +135,7 @@ class AudioStreamRouter(AudioStreamSource):
         self.is_started = False
 
     async def restart(self) -> None:
-        """重启音频流路由器并重新加载配置。"""
+        """重启音频流路由器并重新加载配置"""
 
         await self.stop()
         await self.initialize()
@@ -151,6 +151,9 @@ class AudioStreamRouter(AudioStreamSource):
             await self.initialize()
 
         was_started = self.is_started
+        previous_source_kind = self._active_source_kind
+        if previous_source_kind is None:
+            raise RuntimeError("音频流路由器当前没有可回滚的活动音频源")
         if was_started:
             await self._stop_forward_task()
             await self.active_source.stop()
@@ -165,7 +168,21 @@ class AudioStreamRouter(AudioStreamSource):
         await self.config_manager.save()
 
         if was_started:
-            await self.active_source.start()
+            try:
+                await self.active_source.start()
+            except Exception:
+                if self._source_subscription is not None:
+                    self.active_source.unsubscribe(self._source_subscription)
+                    self._source_subscription = None
+                self._active_source_kind = previous_source_kind
+                self.config.source = previous_source_kind
+                self._source_subscription = self.active_source.subscribe(
+                    queue_maxsize=self.config.microphone.queue_maxsize,
+                )
+                await self.active_source.start()
+                self._forward_task = asyncio.create_task(self._forward_chunks())
+                await self.config_manager.save()
+                raise
             self._forward_task = asyncio.create_task(self._forward_chunks())
 
         logger.info("音频流路由器已切换音频源: {}", source_kind)
@@ -180,7 +197,7 @@ class AudioStreamRouter(AudioStreamSource):
             await task
 
     async def _forward_chunks(self) -> None:
-        """将当前活动源的音频块广播给路由器订阅者。"""
+        """将当前活动源的音频块广播给路由器订阅者"""
 
         source_subscription = self._source_subscription
         if source_subscription is None:
@@ -194,10 +211,11 @@ class AudioStreamRouter(AudioStreamSource):
             raise
         except Exception:
             logger.exception("音频流路由器转发任务异常")
+            self.is_started = False
 
     @staticmethod
     def _chunk_analysis(chunk: AudioChunk) -> None:
-        """补充音频块通用分析结果，避免下游消费者重复计算。"""
+        """补充音频块通用分析结果，避免下游消费者重复计算"""
 
         samples = np.asarray(chunk.data, dtype=np.float32)
         if samples.size == 0:

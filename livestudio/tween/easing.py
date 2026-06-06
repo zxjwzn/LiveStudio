@@ -1,4 +1,4 @@
-"""用于缓动插值的辅助函数。"""
+"""用于缓动插值的辅助函数"""
 
 from __future__ import annotations
 

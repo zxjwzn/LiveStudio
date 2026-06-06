@@ -1,4 +1,4 @@
-"""VTube Studio 应用编排。"""
+"""把 VTube Studio 应用流程串起来"""
 
 from __future__ import annotations
 
@@ -18,10 +18,16 @@ from livestudio.services.animations import (
     BodySwingController,
     BreathingController,
     ControllerSettings,
+    EyeCenteringController,
     MouthExpressionController,
     MouthSyncController,
 )
 from livestudio.services.audio_stream import AudioStreamSource
+from livestudio.services.expressions import (
+    BUILTIN_EXPRESSION_UNITS,
+    ExpressionSelector,
+    ExpressionService,
+)
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
     VTubeStudioExpressionStateConfig,
@@ -30,7 +36,7 @@ from livestudio.services.platforms.vtubestudio import (
 
 
 class VTubeStudioApp:
-    """编排 VTube Studio 平台、音频流与动画运行时。"""
+    """把 VTube Studio、音频流和动画运行流程串起来"""
 
     def __init__(
         self,
@@ -43,30 +49,51 @@ class VTubeStudioApp:
         self.animation_manager = animation_manager
         self.animation_manager.register_runtime(self.platform)
         self._model_subscription: EventSubscriptionResponse | None = None
+        self._expression_service: ExpressionService | None = None
+
+    @property
+    def expression_service(self) -> ExpressionService:
+        """返回当前模型的情绪驱动表情服务"""
+
+        if self._expression_service is None:
+            raise RuntimeError("当前模型尚未加载表情服务")
+        return self._expression_service
 
     async def initialize(self) -> None:
-        """初始化应用依赖。"""
+        """初始化应用依赖"""
 
         await self.platform.initialize()
         await self.animation_manager.initialize()
 
     async def start(self) -> None:
-        """启动 VTube Studio 应用。"""
+        """启动 VTube Studio 相关应用"""
 
         await self.platform.start()
-        await self._subscribe_model_events()
-        await self._load_active_model_config()
+        await self.load_current_model()
         await self.animation_manager.start()
 
+    async def start_platform_for_expression_test(self) -> None:
+        """启动平台并加载当前模型，但先不启动待机动画"""
+
+        await self.platform.start()
+        await self.load_current_model()
+
+    async def load_current_model(self) -> None:
+        """订阅模型事件并加载当前模型配置"""
+
+        await self._subscribe_model_events()
+        await self._load_active_model_config()
+
     async def stop(self) -> None:
-        """停止应用并释放资源。"""
+        """停止应用并释放资源"""
 
         await self.animation_manager.stop()
         await self.platform.stop()
         self._model_subscription = None
+        self._expression_service = None
 
     async def _subscribe_model_events(self) -> None:
-        """订阅 VTube Studio 模型加载事件。"""
+        """监听 VTube Studio 的模型加载事件"""
 
         if self._model_subscription is not None:
             return
@@ -76,7 +103,7 @@ class VTubeStudioApp:
         )
 
     async def _handle_model_loaded(self, event: VTSEventEnvelope) -> None:
-        """处理模型加载事件并刷新动画控制器。"""
+        """处理模型加载事件并刷新动画控制器"""
 
         model_event = ModelLoadedEvent.model_validate(event.model_dump())
         if not model_event.data.model_loaded:
@@ -89,7 +116,7 @@ class VTubeStudioApp:
         await self._apply_model_config(model_config)
 
     async def _load_active_model_config(self) -> None:
-        """读取当前模型并刷新动画控制器。"""
+        """读取当前模型并刷新动画控制器"""
 
         current_model = await self.platform.client.get_current_model()
         if not current_model.data.model_loaded:
@@ -102,7 +129,7 @@ class VTubeStudioApp:
         await self._apply_model_config(model_config)
 
     async def save_current_model_expressions_to_config(self) -> None:
-        """将当前模型表情激活状态保存为下次模型加载时使用的配置。"""
+        """将当前模型表情激活状态保存为下次模型加载时使用的配置"""
 
         expression_response = await self.platform.client.get_expression_state(
             ExpressionStateRequest(
@@ -120,7 +147,7 @@ class VTubeStudioApp:
         await self.platform.model_config_manager.save()
 
     async def _sync_model_expressions(self, config: VTubeStudioModelConfig) -> None:
-        """按模型配置同步 VTube Studio 表情激活状态。"""
+        """按模型配置同步 VTube Studio 里的表情开关"""
 
         expression_response = await self.platform.client.get_expression_state(
             ExpressionStateRequest(
@@ -178,13 +205,18 @@ class VTubeStudioApp:
             await self.platform.model_config_manager.save()
 
     async def _apply_model_config(self, config: VTubeStudioModelConfig) -> None:
-        """应用模型配置到 VTube Studio 动画运行时。"""
+        """把模型配置用到 VTube Studio 动画运行流程里"""
 
         runtime = self.animation_manager.get_runtime(self.platform.name)
         controllers: list[AnimationController[ControllerSettings]] = [
             BlinkController(runtime, "blink", config.controllers.blink),
             BreathingController(runtime, "breathing", config.controllers.breathing),
             BodySwingController(runtime, "body_swing", config.controllers.body_swing),
+            EyeCenteringController(
+                runtime,
+                "eye_centering",
+                config.controllers.eye_centering,
+            ),
             MouthExpressionController(
                 runtime,
                 "mouth_expression",
@@ -198,3 +230,16 @@ class VTubeStudioApp:
             ),
         ]
         await runtime.reload_controllers(controllers)
+        await self._apply_expression_semantics(config)
+
+    async def _apply_expression_semantics(self, config: VTubeStudioModelConfig) -> None:
+        """按当前模型配置刷新情绪驱动表情服务"""
+
+        selector = ExpressionSelector(
+            BUILTIN_EXPRESSION_UNITS,
+            config.semantic_profile,
+        )
+        self._expression_service = ExpressionService(
+            platform=self.platform,
+            selector=selector,
+        )

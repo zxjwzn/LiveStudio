@@ -1,4 +1,4 @@
-"""核心配置管理器。"""
+"""核心配置管理器"""
 
 from __future__ import annotations
 
@@ -30,11 +30,11 @@ _MAX_TOLERANT_ATTEMPTS = 64
 
 
 class ConfigManager(Generic[ConfigT]):
-    """管理经校验的配置快照，并提供显式保存语义。
+    """管理检查过的配置快照，并明确控制什么时候保存
 
-    支持宽容加载：当配置文件中的字段不再被模型识别（字段被删除、重命名、
-    类型变更、枚举值失效等）时，丢弃不兼容字段、保留其余可用部分；
-    迁移成功后会先把原文件备份为 ``<name>.<timestamp>.bak``，再写回迁移后的配置。
+    支持宽容加载：先以默认配置补齐缺失字段；当配置文件中的字段不再被模型识别
+    （字段被删除、重命名、类型变更、枚举值失效等）时，丢弃不兼容字段、保留其余可用部分；
+    迁移成功后会先把原文件备份为 ``<name>.<timestamp>.bak``，再写回迁移后的配置
     """
 
     def __init__(
@@ -52,13 +52,13 @@ class ConfigManager(Generic[ConfigT]):
 
     @property
     def config(self) -> ConfigT:
-        """返回最新的已校验配置快照。"""
+        """返回最新的已校验配置快照"""
 
         return self._current
 
     @property
     def path(self) -> Path:
-        """返回配置文件路径。"""
+        """返回配置文件路径"""
 
         return self._path
 
@@ -110,7 +110,7 @@ class ConfigManager(Generic[ConfigT]):
                     temp_path.unlink()
 
     async def load(self) -> ConfigT:
-        """从磁盘加载配置，或按默认值自动创建配置文件。"""
+        """从磁盘加载配置，或按默认值自动创建配置文件"""
 
         async with self._lock:
             if self._path.exists():
@@ -125,38 +125,37 @@ class ConfigManager(Generic[ConfigT]):
             return self._current
 
     async def reload(self) -> ConfigT:
-        """重新从磁盘加载配置。"""
+        """重新从磁盘加载配置"""
 
         return await self.load()
 
     async def save(self) -> None:
-        """将当前快照持久化到磁盘。"""
+        """将当前快照持久化到磁盘"""
 
         async with self._lock:
             self._persist_snapshot(self._current)
 
     def _load_from_disk(self) -> ConfigT:
         data = self._load_dict(self._path)
-        try:
-            return self._model_type.model_validate(data)
-        except ValidationError:
-            return self._migrate_and_load(data)
+        return self._migrate_and_load(data)
 
     def _migrate_and_load(self, original_data: dict[str, Any]) -> ConfigT:
-        cleaned: Any = copy.deepcopy(original_data)
+        default_data = self._model_type().model_dump(mode="json", exclude_none=True)
+        cleaned: Any = _merge_defaults(default_data, original_data)
         dropped: list[tuple[str | int, ...]] = []
+        defaults_added = cleaned != original_data
 
         for _ in range(_MAX_TOLERANT_ATTEMPTS):
             try:
                 config = self._model_type.model_validate(cleaned)
             except ValidationError as exc:
-                if not self._apply_one_fix(cleaned, exc, dropped):
+                if not self._apply_one_fix(cleaned, default_data, exc, dropped):
                     raise ConfigValidationError(
                         f"配置校验失败且无法迁移: {self._path}",
                     ) from exc
                 continue
 
-            self._on_migrated(config, dropped)
+            self._on_migrated(config, dropped, defaults_added=defaults_added)
             return config
 
         raise ConfigValidationError(
@@ -166,6 +165,7 @@ class ConfigManager(Generic[ConfigT]):
     @staticmethod
     def _apply_one_fix(
         data: Any,
+        default_data: Any,
         error: ValidationError,
         dropped: list[tuple[str | int, ...]],
     ) -> bool:
@@ -174,8 +174,11 @@ class ConfigManager(Generic[ConfigT]):
             if not loc:
                 continue
             if entry.get("type", "") == "missing":
-                # 必填字段缺失：模型本身没有默认值，无法靠丢弃修复，跳过该项继续看下一条。
+                # 必填字段缺失：模型本身没有默认值，无法靠丢弃修复，跳过该项继续看下一条
                 continue
+            if _reset_to_default_at_path(data, default_data, loc):
+                dropped.append(loc)
+                return True
             if _delete_at_path(data, loc):
                 dropped.append(loc)
                 return True
@@ -185,16 +188,23 @@ class ConfigManager(Generic[ConfigT]):
         self,
         config: ConfigT,
         dropped: list[tuple[str | int, ...]],
+        *,
+        defaults_added: bool,
     ) -> None:
-        if not dropped:
+        if not dropped and not defaults_added:
             return
 
-        formatted = ", ".join(".".join(str(part) for part in path) for path in dropped)
-        logger.warning(
-            "配置文件 {} 含有不兼容字段，已自动迁移并丢弃: {}",
-            self._path,
-            formatted,
-        )
+        if dropped:
+            formatted = ", ".join(
+                ".".join(str(part) for part in path) for path in dropped
+            )
+            logger.warning(
+                "配置文件 {} 含有不兼容字段，已自动迁移并丢弃: {}",
+                self._path,
+                formatted,
+            )
+        if defaults_added:
+            logger.warning("配置文件 {} 缺少默认字段，已自动补齐", self._path)
 
         try:
             self._backup_original()
@@ -223,7 +233,7 @@ class ConfigManager(Generic[ConfigT]):
 
 
 def _delete_at_path(data: Any, path: tuple[str | int, ...]) -> bool:
-    """按 Pydantic loc 路径在 dict/list 嵌套结构中删除一个节点。"""
+    """按 Pydantic loc 路径在 dict/list 嵌套结构中删除一个节点"""
 
     if not path:
         return False
@@ -253,3 +263,62 @@ def _delete_at_path(data: Any, path: tuple[str | int, ...]) -> bool:
         del cursor[last]
         return True
     return False
+
+
+def _merge_defaults(default_data: Any, loaded_data: Any) -> Any:
+    """把读到的配置合到默认配置上，这样缺的字段会自动补上"""
+
+    if isinstance(default_data, dict) and isinstance(loaded_data, dict):
+        merged = copy.deepcopy(default_data)
+        for key, value in loaded_data.items():
+            if key in merged:
+                merged[key] = _merge_defaults(merged[key], value)
+            else:
+                merged[key] = copy.deepcopy(value)
+        return merged
+    return copy.deepcopy(loaded_data)
+
+
+def _reset_to_default_at_path(
+    data: Any,
+    default_data: Any,
+    path: tuple[str | int, ...],
+) -> bool:
+    """如果当前模型有默认值，就把里面的某个值重置回默认值"""
+
+    if not path:
+        return False
+    cursor: Any = data
+    default_cursor: Any = default_data
+    for key in path[:-1]:
+        if isinstance(cursor, dict):
+            if key not in cursor:
+                return False
+            cursor = cursor[key]
+        elif isinstance(cursor, list) and isinstance(key, int):
+            if key < 0 or key >= len(cursor):
+                return False
+            cursor = cursor[key]
+        else:
+            return False
+
+        if isinstance(default_cursor, dict):
+            if key not in default_cursor:
+                return False
+            default_cursor = default_cursor[key]
+        elif isinstance(default_cursor, list) and isinstance(key, int):
+            if key < 0 or key >= len(default_cursor):
+                return False
+            default_cursor = default_cursor[key]
+        else:
+            return False
+
+    last = path[-1]
+    if not isinstance(cursor, dict):
+        return False
+    if last not in cursor:
+        return False
+    if not isinstance(default_cursor, dict) or last not in default_cursor:
+        return False
+    cursor[last] = copy.deepcopy(default_cursor[last])
+    return True
