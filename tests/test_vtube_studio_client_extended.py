@@ -13,25 +13,15 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
-from unittest.mock import AsyncMock
-
 import pytest
-from pydantic import BaseModel
-
 from livestudio.clients.vtube_studio.client import VTubeStudioClient
-from livestudio.clients.vtube_studio.config import (
-    VTubeStudioConfig,
-    VTubeStudioPluginInfo,
-)
+from livestudio.clients.vtube_studio.config import VTubeStudioConfig
 from livestudio.clients.vtube_studio.errors import (
     APIError,
     ResponseError,
     VTubeStudioConnectionError,
 )
-from livestudio.clients.vtube_studio.models import (
-    APIStateResponse,
-    VTSResponseEnvelope,
-)
+from livestudio.clients.vtube_studio.models import APIStateResponse
 
 
 def _make_client() -> VTubeStudioClient:

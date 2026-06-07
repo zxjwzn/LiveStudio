@@ -28,6 +28,7 @@ from livestudio.services.expressions import (
     ExpressionSelector,
     ExpressionService,
 )
+from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
     VTubeStudioExpressionStateConfig,
@@ -35,7 +36,7 @@ from livestudio.services.platforms.vtubestudio import (
 )
 
 
-class VTubeStudioApp:
+class VTubeStudioApp(AsyncServiceLifecycleMixin):
     """把 VTube Studio、音频流和动画运行流程串起来"""
 
     def __init__(
@@ -50,6 +51,8 @@ class VTubeStudioApp:
         self.animation_manager.register_runtime(self.platform)
         self._model_subscription: EventSubscriptionResponse | None = None
         self._expression_service: ExpressionService | None = None
+        self._initialized = False
+        self._started = False
 
     @property
     def expression_service(self) -> ExpressionService:
@@ -62,15 +65,27 @@ class VTubeStudioApp:
     async def initialize(self) -> None:
         """初始化应用依赖"""
 
+        if self._initialized:
+            return
         await self.platform.initialize()
         await self.animation_manager.initialize()
+        self._initialized = True
 
     async def start(self) -> None:
         """启动 VTube Studio 相关应用"""
 
-        await self.platform.start()
-        await self.load_current_model()
-        await self.animation_manager.start()
+        if self._started:
+            return
+        if not self._initialized:
+            await self.initialize()
+        try:
+            await self.platform.start()
+            await self.load_current_model()
+            await self.animation_manager.start()
+        except Exception:
+            await self.stop()
+            raise
+        self._started = True
 
     async def start_platform_for_expression_test(self) -> None:
         """启动平台并加载当前模型，但先不启动待机动画"""
@@ -91,6 +106,8 @@ class VTubeStudioApp:
         await self.platform.stop()
         self._model_subscription = None
         self._expression_service = None
+        self._initialized = False
+        self._started = False
 
     async def _subscribe_model_events(self) -> None:
         """监听 VTube Studio 的模型加载事件"""

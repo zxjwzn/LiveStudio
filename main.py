@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+from contextlib import AsyncExitStack
 
 from livestudio.app import VTubeStudioApp
 from livestudio.services import AudioSourceKind, AudioStreamRouter
@@ -29,6 +30,14 @@ def _format_level_bar(level: float, *, width: int = 24) -> str:
     return "█" * filled + "·" * (width - filled)
 
 
+async def _cancel_and_await(task: asyncio.Task[object]) -> None:
+    """取消后台任务并等待它完成退出。"""
+
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
 async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
     """持续读取当前活动音频流并原地显示实时音量信息"""
 
@@ -39,14 +48,10 @@ async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
             chunk = await asyncio.wait_for(subscription.queue.get(), timeout=5.0)
             rms, peak = chunk.analysis.rms, chunk.analysis.peak
             status_line.update(
-                "[AUDIO:{}] RMS={:.4f} {} | PEAK={:.4f} {} | overflowed={}".format(
-                    audio_stream.active_source_kind,
-                    rms,
-                    _format_level_bar(rms),
-                    peak,
-                    _format_level_bar(peak),
-                    chunk.overflowed,
-                ),
+                f"[AUDIO:{audio_stream.active_source_kind}] "
+                f"RMS={rms:.4f} {_format_level_bar(rms)} | "
+                f"PEAK={peak:.4f} {_format_level_bar(peak)} | "
+                f"overflowed={chunk.overflowed}",
             )
     finally:
         audio_stream.unsubscribe(subscription)
@@ -165,26 +170,14 @@ async def main() -> None:
         audio_stream=audio_stream,
     )
 
-    await audio_stream.initialize()
-    await vtubestudio_app.initialize()
-
-    audio_task: asyncio.Task[None] | None = None
-
-    try:
-        await audio_stream.start()
-        await vtubestudio_app.start()
+    async with AsyncExitStack() as stack:
+        await stack.enter_async_context(audio_stream)
+        await stack.enter_async_context(vtubestudio_app)
         await audio_stream.switch_source(AudioSourceKind.MICROPHONE)
         audio_task = asyncio.create_task(monitor_audio_stream(audio_stream))
+        stack.push_async_callback(_cancel_and_await, audio_task)
         logger.info("[OK] 通用音频流监听已启动，按 Ctrl+C 退出程序")
         await asyncio.Event().wait()
-
-    finally:
-        if audio_task is not None:
-            audio_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await audio_task
-        await vtubestudio_app.stop()
-        await audio_stream.stop()
 
 
 def _build_parser() -> argparse.ArgumentParser:

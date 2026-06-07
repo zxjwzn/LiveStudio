@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 
+from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms import PlatformService
 from livestudio.services.semantic_actions import SemanticActionState
 from livestudio.utils.log import logger
@@ -13,7 +14,7 @@ from .controllers import AnimationController, AnimationType, ControllerSettings
 from .templates import AnimationTemplatePlayer, LoadedTemplateInfo
 
 
-class PlatformAnimationRuntime:
+class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
     """管理单个平台的动画模板与控制器生命周期"""
 
     def __init__(
@@ -84,13 +85,6 @@ class PlatformAnimationRuntime:
         await self._template_player.load()
         self._initialized = True
         logger.info("平台动画运行时已初始化: {}", self.platform_name)
-
-    async def restart(self) -> None:
-        """重启当前平台动画运行时"""
-
-        await self.stop()
-        await self.initialize()
-        await self.start()
 
     async def start(self) -> None:
         """启动当前平台所有已开启的待机控制器"""

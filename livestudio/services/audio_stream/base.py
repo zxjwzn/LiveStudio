@@ -7,10 +7,12 @@ import contextlib
 from abc import ABC, abstractmethod
 from uuid import uuid4
 
+from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
+
 from .models import AudioChunk, AudioChunkSubscription
 
 
-class AudioStreamSource(ABC):
+class AudioStreamSource(AsyncServiceLifecycleMixin, ABC):
     """统一音频流来源抽象"""
 
     def __init__(self):
@@ -28,13 +30,6 @@ class AudioStreamSource(ABC):
     @abstractmethod
     async def stop(self) -> None:
         """停止音频源"""
-
-    async def restart(self) -> None:
-        """重启音频源"""
-
-        await self.stop()
-        await self.initialize()
-        await self.start()
 
     def subscribe(self, *, queue_maxsize: int = 32) -> AudioChunkSubscription:
         """订阅当前音频源发布的音频块"""

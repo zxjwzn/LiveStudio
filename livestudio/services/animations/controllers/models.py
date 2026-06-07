@@ -3,10 +3,6 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from pathlib import Path
-from typing import Any, Literal
-
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AnimationType(StrEnum):

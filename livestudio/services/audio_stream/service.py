@@ -134,13 +134,6 @@ class AudioStreamRouter(AudioStreamSource):
         self._initialized = False
         self.is_started = False
 
-    async def restart(self) -> None:
-        """重启音频流路由器并重新加载配置"""
-
-        await self.stop()
-        await self.initialize()
-        await self.start()
-
     async def switch_source(
         self,
         source_kind: AudioSourceKind,

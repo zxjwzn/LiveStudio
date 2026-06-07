@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Literal
 
+from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.semantic_actions.adapter import (
     SemanticActionAdapter,
     SemanticActionState,
@@ -14,7 +15,7 @@ from livestudio.services.semantic_actions.models import SemanticTweenRequest
 from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 
 
-class PlatformService(ABC):
+class PlatformService(AsyncServiceLifecycleMixin, ABC):
     """所有平台服务必须实现的统一生命周期接口"""
 
     @property
@@ -76,9 +77,3 @@ class PlatformService(ABC):
     async def stop(self) -> None:
         """停止平台服务并释放资源"""
 
-    async def restart(self) -> None:
-        """重启平台服务"""
-
-        await self.stop()
-        await self.initialize()
-        await self.start()

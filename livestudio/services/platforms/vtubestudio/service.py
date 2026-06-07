@@ -33,7 +33,6 @@ from ....clients.vtube_studio.models import (
     InjectParameterValue,
     ParameterValueRequest,
     ParameterValueRequestData,
-    VTSEventEnvelope,
     VTubeStudioAPIStateBroadcast,
 )
 from ..base import PlatformService
@@ -181,11 +180,6 @@ class VTubeStudio(PlatformService):
         self._initialized = True
 
     async def stop(self) -> None:
-        """释放该服务持有的后台资源"""
-
-        await self._stop(save_config=True)
-
-    async def _stop(self, *, save_config: bool) -> None:
         """停止服务并按需保存配置"""
 
         if not self._initialized:
@@ -193,10 +187,9 @@ class VTubeStudio(PlatformService):
         await self.tween.stop()
         if self._client is not None:
             await self._client.disconnect()
-        if save_config:
-            await self.config_manager.save()
-            if self._model_config_service is not None:
-                await self._model_config_service.save()
+        await self.config_manager.save()
+        if self._model_config_service is not None:
+            await self._model_config_service.save()
         self._client = None
         self._events = None
         self._discovery = None
@@ -223,13 +216,6 @@ class VTubeStudio(PlatformService):
                 await self._client.disconnect()
             self._started = False
             raise
-
-    async def restart(self) -> None:
-        """重启 VTube Studio 服务并重新加载配置"""
-
-        await self._stop(save_config=False)
-        await self.initialize()
-        await self.start()
 
     async def reload_model_config(
         self,
@@ -351,13 +337,13 @@ class VTubeStudio(PlatformService):
         timeout: float | None = None,
         max_messages: int | None = None,
     ) -> list[VTubeStudioAPIStateBroadcast]:
-        broadcasts: list[VTubeStudioAPIStateBroadcast] = []
-        async for broadcast in self.discovery.listen(
-            timeout=timeout,
-            max_messages=max_messages,
-        ):
-            broadcasts.append(broadcast)
-        return broadcasts
+        return [
+            broadcast
+            async for broadcast in self.discovery.listen(
+                timeout=timeout,
+                max_messages=max_messages,
+            )
+        ]
 
     async def _send_parameter_states(
         self,

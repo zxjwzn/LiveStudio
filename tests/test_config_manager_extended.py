@@ -14,10 +14,7 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Literal
-
 import pytest
 import yaml
 from pydantic import BaseModel

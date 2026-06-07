@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms import PlatformService
 from livestudio.utils.log import logger
 from livestudio.utils.paths import resource_path
@@ -17,7 +18,7 @@ from .runtime import PlatformAnimationRuntime
 from .templates import AnimationTemplatePlayer
 
 
-class AnimationManager:
+class AnimationManager(AsyncServiceLifecycleMixin):
     """管理全部平台动画运行时"""
 
     def __init__(
@@ -139,13 +140,6 @@ class AnimationManager:
         await asyncio.gather(*(runtime.stop() for runtime in self._runtimes.values()))
         self._started = False
         logger.info("动画管理器已停止")
-
-    async def restart(self) -> None:
-        """重启动画管理器"""
-
-        await self.stop()
-        await self.initialize()
-        await self.start()
 
     async def reload_templates(self, platform_name: str | None = None) -> None:
         """重载指定平台或全部平台的动画模板"""

@@ -110,13 +110,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             self.is_started = False
             logger.info("麦克风音频流已停止")
 
-    async def restart(self) -> None:
-        """重启麦克风音频源"""
-
-        await self.stop()
-        await self.initialize()
-        await self.start()
-
     async def list_input_devices(self) -> list[InputDeviceInfo]:
         """列出当前系统可用的输入设备"""
 

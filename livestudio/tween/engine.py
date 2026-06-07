@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Literal
 
 from livestudio.utils.log import logger
 
-from .easing import EASING_REGISTRY, Easing, EasingFunction
+from .easing import EASING_REGISTRY, EasingFunction
 from .models import ActiveTween, ControlledParameterState, TweenRequest
 
 ParameterSender = Callable[
