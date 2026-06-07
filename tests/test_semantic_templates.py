@@ -2,54 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal
 
 import pytest
 from pydantic import ValidationError
 
+from tests.conftest import _SemanticPlatform
 from livestudio.services.animations.templates import AnimationTemplatePlayer
 from livestudio.services.animations.templates.models import AnimationTemplate
-from livestudio.services.platforms import PlatformService
-from livestudio.services.semantic_actions.models import (
-    SemanticAction,
-    SemanticTweenRequest,
-)
-from livestudio.tween import ControlledParameterState, ParameterTweenEngine
-
-
-class _SemanticPlatform(PlatformService):
-    def __init__(self) -> None:
-        self.requests: list[SemanticTweenRequest] = []
-        self._tween = ParameterTweenEngine(self.send_parameter_states)
-
-    @property
-    def name(self) -> str:
-        return "semantic-template-test"
-
-    @property
-    def tween(self) -> ParameterTweenEngine:
-        return self._tween
-
-    async def tween_semantic(self, request: SemanticTweenRequest) -> None:
-        self.requests.append(request)
-
-    async def initialize(self) -> None:
-        pass
-
-    async def start(self) -> None:
-        pass
-
-    async def stop(self) -> None:
-        pass
-
-    async def _send_parameter_states(
-        self,
-        states: Iterable[ControlledParameterState],
-        mode: Literal["set", "add"] = "set",
-    ) -> None:
-        _ = states, mode
+from livestudio.services.semantic_actions.models import SemanticAction
 
 
 def _template() -> AnimationTemplate:
@@ -79,7 +40,7 @@ def _template() -> AnimationTemplate:
 
 def test_template_render_outputs_semantic_actions(tmp_path: Path) -> None:
     player = AnimationTemplatePlayer(
-        platform=_SemanticPlatform(),
+        platform=_SemanticPlatform("semantic-template-test"),
         template_dir=tmp_path,
     )
 
@@ -93,7 +54,7 @@ def test_template_render_outputs_semantic_actions(tmp_path: Path) -> None:
 
 
 async def test_template_play_uses_platform_semantic_tween(tmp_path: Path) -> None:
-    platform = _SemanticPlatform()
+    platform = _SemanticPlatform("semantic-template-test")
     template_path = tmp_path / "smile.jsonc"
     template_path.write_text(
         """

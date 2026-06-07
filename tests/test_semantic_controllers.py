@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Literal
-
 import pytest
 from pydantic import ValidationError
 
@@ -19,62 +16,9 @@ from livestudio.services.animations.controllers import (
     MouthExpressionControllerSettings,
 )
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
-from livestudio.services.animations.templates import AnimationTemplatePlayer
-from livestudio.services.platforms import PlatformService
 from livestudio.services.semantic_actions.adapter import SemanticActionState
-from livestudio.services.semantic_actions.models import (
-    SemanticAction,
-    SemanticTweenRequest,
-)
-from livestudio.tween import ControlledParameterState, ParameterTweenEngine
-
-
-class _TemplatePlayer(AnimationTemplatePlayer):
-    def __init__(self, platform: PlatformService) -> None:
-        self._platform = platform
-
-    async def load(self) -> None:
-        pass
-
-    async def reload(self) -> None:
-        pass
-
-
-class _SemanticPlatform(PlatformService):
-    def __init__(self) -> None:
-        self.requests: list[SemanticTweenRequest] = []
-        self.semantic_values: dict[str, SemanticActionState] = {}
-        self._tween = ParameterTweenEngine(self.send_parameter_states)
-
-    @property
-    def name(self) -> str:
-        return "semantic-test"
-
-    @property
-    def tween(self) -> ParameterTweenEngine:
-        return self._tween
-
-    async def tween_semantic(self, request: SemanticTweenRequest) -> None:
-        self.requests.append(request)
-
-    async def get_semantic_value(self, action: str) -> SemanticActionState | None:
-        return self.semantic_values.get(action)
-
-    async def initialize(self) -> None:
-        pass
-
-    async def start(self) -> None:
-        pass
-
-    async def stop(self) -> None:
-        pass
-
-    async def _send_parameter_states(
-        self,
-        states: Iterable[ControlledParameterState],
-        mode: Literal["set", "add"] = "set",
-    ) -> None:
-        _ = states, mode
+from livestudio.services.semantic_actions.models import SemanticAction
+from tests.conftest import _SemanticPlatform, _TemplatePlayer
 
 
 def _runtime(platform: _SemanticPlatform) -> PlatformAnimationRuntime:

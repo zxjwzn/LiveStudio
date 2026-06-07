@@ -15,7 +15,14 @@
       "Bash(uv sync *)",
       "Bash(uv pip *)",
       "Bash(.venv/Scripts/python.exe -m pytest -v)",
-      "Bash(python -m pytest tests/test_tween_engine_extended.py tests/test_easing.py tests/test_config_manager_extended.py tests/test_vtube_studio_client_extended.py -v --tb=short)"
+      "Bash(python -m pytest tests/test_tween_engine_extended.py tests/test_easing.py tests/test_config_manager_extended.py tests/test_vtube_studio_client_extended.py -v --tb=short)",
+      "mcp__ide__executeCode",
+      "Bash(not exist *)",
+      "Bash(mkdir -p /mnt/c/Users/Zaxpris/.claude/plans)",
+      "Read(//mnt/c/Users/Zaxpris/.claude/**)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/plans)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "PowerShell(python -m pytest tests/ -v --tb=short 2>&1)"
     ]
   }
 }

@@ -104,17 +104,7 @@ class ParameterTweenEngine:
     async def release(self, parameter_name: str) -> None:
         """释放某个参数的控制权，并在需要时取消其缓动任务"""
 
-        task_to_cancel: asyncio.Task[None] | None = None
-        async with self._lock:
-            self._controlled_params.pop(parameter_name, None)
-            active = self._active_tweens.pop(parameter_name, None)
-            if active is not None:
-                task_to_cancel = active.task
-
-        if task_to_cancel is not None:
-            task_to_cancel.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task_to_cancel
+        await self.cancel(parameter_name, release=True)
 
     async def release_many(self, parameter_names: Iterable[str]) -> None:
         """释放多个参数的控制权"""
@@ -168,6 +158,48 @@ class ParameterTweenEngine:
             raise ValueError(f"未知缓动函数: {easing}")
         return EASING_REGISTRY[easing]
 
+    def _try_acquire(
+        self,
+        current_task: asyncio.Task[None],
+        request: TweenRequest,
+        *,
+        context: str = "缓动",
+    ) -> bool:
+        """在持有 _lock 的前提下，尝试获取参数的缓动控制权
+
+        如果当前已有更高或相同优先级的缓动占用该参数，则拒绝并返回 False。
+        否则注册新的 ActiveTween 并返回 True。
+        """
+
+        existing = self._active_tweens.get(request.parameter_name)
+        if existing is not None and request.priority <= existing.priority:
+            logger.debug(
+                "参数 {} 的{}被拒绝，当前优先级 {} >= 新优先级 {}",
+                request.parameter_name,
+                context,
+                existing.priority,
+                request.priority,
+            )
+            return False
+        self._active_tweens[request.parameter_name] = ActiveTween(
+            task=current_task,
+            priority=request.priority,
+            mode=request.mode,
+            keep_alive=request.keep_alive,
+        )
+        return True
+
+    def _release_active(
+        self,
+        current_task: asyncio.Task[None],
+        parameter_name: str,
+    ) -> None:
+        """在持有 _lock 的前提下，释放当前任务对参数的缓动控制权"""
+
+        active = self._active_tweens.get(parameter_name)
+        if active is not None and active.task is current_task:
+            del self._active_tweens[parameter_name]
+
     async def _run_tween(self, request: TweenRequest) -> None:
         current_task = asyncio.current_task()
         if current_task is None:
@@ -194,21 +226,8 @@ class ParameterTweenEngine:
         interval = request.duration / steps
 
         async with self._lock:
-            existing = self._active_tweens.get(request.parameter_name)
-            if existing is not None and request.priority <= existing.priority:
-                logger.debug(
-                    "参数 {} 的缓动被拒绝，当前优先级 {} >= 新优先级 {}",
-                    request.parameter_name,
-                    existing.priority,
-                    request.priority,
-                )
+            if not self._try_acquire(current_task, request, context="缓动"):
                 return
-            self._active_tweens[request.parameter_name] = ActiveTween(
-                task=current_task,
-                priority=request.priority,
-                mode=request.mode,
-                keep_alive=request.keep_alive,
-            )
 
         try:
             for step in range(steps):
@@ -243,9 +262,7 @@ class ParameterTweenEngine:
             raise
         finally:
             async with self._lock:
-                active = self._active_tweens.get(request.parameter_name)
-                if active is not None and active.task is current_task:
-                    del self._active_tweens[request.parameter_name]
+                self._release_active(current_task, request.parameter_name)
 
     async def _apply_immediate_value(
         self,
@@ -255,22 +272,9 @@ class ParameterTweenEngine:
     ) -> None:
         _ = start_value
         async with self._lock:
-            existing = self._active_tweens.get(request.parameter_name)
-            if existing is not None and request.priority <= existing.priority:
-                logger.debug(
-                    "参数 {} 的即时设置被拒绝，当前优先级 {} >= 新优先级 {}",
-                    request.parameter_name,
-                    existing.priority,
-                    request.priority,
-                )
+            if not self._try_acquire(current_task, request, context="即时设置"):
                 return
 
-            self._active_tweens[request.parameter_name] = ActiveTween(
-                task=current_task,
-                priority=request.priority,
-                mode=request.mode,
-                keep_alive=request.keep_alive,
-            )
             self._controlled_params[request.parameter_name] = ControlledParameterState(
                 name=request.parameter_name,
                 value=request.end_value,
@@ -284,9 +288,7 @@ class ParameterTweenEngine:
             )
         finally:
             async with self._lock:
-                active = self._active_tweens.get(request.parameter_name)
-                if active is not None and active.task is current_task:
-                    del self._active_tweens[request.parameter_name]
+                self._release_active(current_task, request.parameter_name)
 
     async def _keep_alive_loop(self) -> None:
         try:

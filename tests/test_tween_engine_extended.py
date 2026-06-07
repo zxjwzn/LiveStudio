@@ -19,29 +19,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
-from typing import Literal
 
 import pytest
 
+from tests.conftest import _SenderRecorder
 from livestudio.tween import Easing, ParameterTweenEngine, TweenRequest
-from livestudio.tween.models import ControlledParameterState
-
-
-class _SenderRecorder:
-    """记录每次 sender 调用的参数与 mode"""
-
-    def __init__(self) -> None:
-        self.calls: list[
-            tuple[Literal["set", "add"], list[ControlledParameterState]]
-        ] = []
-
-    async def __call__(
-        self,
-        states: Iterable[ControlledParameterState],
-        mode: Literal["set", "add"],
-    ) -> None:
-        self.calls.append((mode, list(states)))
 
 
 # ── release ──────────────────────────────────────────────────────────

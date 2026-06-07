@@ -40,7 +40,7 @@ def test_registry_values_match_class_methods() -> None:
         )
 
 
-@pytest.mark.parametrize("name", [n for n in EASING_REGISTRY if n != "out_quart"])
+@pytest.mark.parametrize("name", list(EASING_REGISTRY.keys()))
 def test_easing_at_zero(name: str) -> None:
     fn = EASING_REGISTRY[name]
     assert fn(0.0) == pytest.approx(0.0, abs=0.01), (
@@ -48,12 +48,9 @@ def test_easing_at_zero(name: str) -> None:
     )
 
 
-def test_out_quart_at_zero_known_deviation() -> None:
-    """out_quart 的实现在 t=0 时返回 1.0 而非 0.0，
-    这是因为 `t = (t-1)*t` 在 t=0 时得到 0 而非 -1。
-    此测试记录该行为，若实现修正后应改为 approx(0.0)。
-    """
-    assert Easing.out_quart(0.0) == pytest.approx(1.0, abs=0.01)
+def test_out_quart_at_midpoint() -> None:
+    # 四次方缓出 f(0.5) = 1 - (0.5-1)^4 = 1 - 0.0625 = 0.9375
+    assert Easing.out_quart(0.5) == pytest.approx(0.9375)
 
 
 @pytest.mark.parametrize("name", list(EASING_REGISTRY.keys()))

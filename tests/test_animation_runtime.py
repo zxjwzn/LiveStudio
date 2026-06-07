@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Any, Literal
+from typing import Any
 
 import pytest
 
+from tests.conftest import _SemanticPlatform as _Platform
+from tests.conftest import _TemplatePlayer
 from livestudio.services.animations.controllers import (
     AnimationController,
     AnimationType,
@@ -14,56 +15,6 @@ from livestudio.services.animations.controllers import (
 )
 from livestudio.services.animations.manager import AnimationManager
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
-from livestudio.services.animations.templates import (
-    AnimationTemplatePlayer,
-    LoadedTemplateInfo,
-)
-from livestudio.services.platforms import PlatformService
-from livestudio.tween import ControlledParameterState, ParameterTweenEngine
-
-
-class _TemplatePlayer(AnimationTemplatePlayer):
-    def __init__(self, platform: PlatformService) -> None:
-        self._platform = platform
-
-    async def load(self) -> None:
-        pass
-
-    async def reload(self) -> None:
-        pass
-
-    def list_loaded_templates(self) -> list[LoadedTemplateInfo]:
-        return []
-
-
-class _Platform(PlatformService):
-    def __init__(self, name: str = "test") -> None:
-        self._name = name
-        self._tween = ParameterTweenEngine(self.send_parameter_states)
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def tween(self) -> ParameterTweenEngine:
-        return self._tween
-
-    async def initialize(self) -> None:
-        pass
-
-    async def start(self) -> None:
-        pass
-
-    async def stop(self) -> None:
-        pass
-
-    async def _send_parameter_states(
-        self,
-        states: Iterable[ControlledParameterState],
-        mode: Literal["set", "add"] = "set",
-    ) -> None:
-        _ = states, mode
 
 
 class _Controller(AnimationController[ControllerSettings]):

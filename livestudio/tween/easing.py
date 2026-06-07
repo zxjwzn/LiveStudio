@@ -72,8 +72,9 @@ class Easing:
     @staticmethod
     def out_quart(t):
         """四次方缓出函数，最终减速度非常大"""
-        t = (t - 1) * t
-        return 1 - t * t
+        t -= 1
+        t2 = t * t
+        return 1 - t2 * t2
 
     @staticmethod
     def in_out_quart(t):
@@ -81,8 +82,9 @@ class Easing:
         if t < 0.5:
             t *= t
             return 8 * t * t
-        t = (t - 1) * t
-        return 1 - 8 * t * t
+        t -= 1
+        t2 = t * t
+        return 1 - 8 * t2 * t2
 
     @staticmethod
     def in_quint(t):

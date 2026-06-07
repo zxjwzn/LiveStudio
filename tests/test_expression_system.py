@@ -10,6 +10,7 @@ from typing import Literal, Protocol, cast
 import pytest
 import yaml
 
+from tests.conftest import _SenderRecorder
 from livestudio.clients.vtube_studio.client import VTubeStudioClient
 from livestudio.services.expressions import (
     BUILTIN_EXPRESSION_UNITS,
@@ -39,20 +40,6 @@ from livestudio.tween import (
     ParameterTweenEngine,
     TweenRequest,
 )
-
-
-class _SenderRecorder:
-    def __init__(self) -> None:
-        self.calls: list[
-            tuple[Literal["set", "add"], list[ControlledParameterState]]
-        ] = []
-
-    async def __call__(
-        self,
-        states: Iterable[ControlledParameterState],
-        mode: Literal["set", "add"],
-    ) -> None:
-        self.calls.append((mode, list(states)))
 
 
 class _SemanticVtsPlatform(VTubeStudio):
