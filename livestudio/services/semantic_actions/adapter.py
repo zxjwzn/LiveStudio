@@ -115,8 +115,6 @@ class SemanticActionProfile(BaseModel):
             existing = self.bindings.get(action)
             if existing is not None:
                 continue
-            if existing == binding:
-                continue
             self.bindings[action] = binding
             changed = True
 

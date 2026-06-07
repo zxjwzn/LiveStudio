@@ -50,7 +50,7 @@ class VTubeStudioModelConfig(PlatformModelConfig):
 
     def ensure_semantic_profile_defaults(
         self,
-        bindings: Iterable[SemanticActionBinding] | None = None,
+        bindings: Iterable[SemanticActionBinding] = (),
     ) -> bool:
         """补齐当前模型的语义动作映射默认值"""
 
@@ -70,7 +70,7 @@ class VTubeStudioModelConfig(PlatformModelConfig):
 
     def ensure_parameter_spec_defaults(
         self,
-        specs: Iterable[PlatformParameterSpec] | None = None,
+        specs: Iterable[PlatformParameterSpec] = (),
     ) -> bool:
         """补齐当前模型缺失的 VTube Studio 参数范围默认值"""
 

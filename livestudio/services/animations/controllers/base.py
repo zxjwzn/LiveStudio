@@ -15,7 +15,7 @@ from .models import AnimationType
 if TYPE_CHECKING:
     from livestudio.services.animations.runtime import PlatformAnimationRuntime
 
-ConfigT = TypeVar("ConfigT", bound=ControllerSettings, covariant=True)
+ConfigT = TypeVar("ConfigT", bound=ControllerSettings)
 
 
 class AnimationController(ABC, Generic[ConfigT]):
@@ -96,8 +96,6 @@ class AnimationController(ABC, Generic[ConfigT]):
                 await self._run_idle_loop()
                 return
             await self.execute(**kwargs)
-        except asyncio.CancelledError:
-            raise
         except Exception:
             logger.exception("动画控制器 {} 运行失败", self.name)
         finally:
@@ -105,7 +103,10 @@ class AnimationController(ABC, Generic[ConfigT]):
 
     async def _run_idle_loop(self) -> None:
         while not self._stop_event.is_set():
-            await self.run_cycle()
+            try:
+                await self.run_cycle()
+            except Exception:
+                logger.exception("动画控制器 {} 循环周期运行失败", self.name)
 
     @abstractmethod
     async def run_cycle(self) -> None:

@@ -98,6 +98,7 @@ class ParameterTweenEngine:
 
         if request.fps <= 0:
             request.fps = self._default_fps
+        # 让 _run_tween 能通过 asyncio.current_task() 获取自身引用。
         task = asyncio.create_task(self._run_tween(request))
         await task
 
@@ -217,7 +218,7 @@ class ParameterTweenEngine:
             start_value = request.start_value
 
         if request.duration <= 0 or start_value == request.end_value:
-            await self._apply_immediate_value(current_task, request, start_value)
+            await self._apply_immediate_value(current_task, request)
             return
 
         loop = asyncio.get_running_loop()
@@ -268,9 +269,7 @@ class ParameterTweenEngine:
         self,
         current_task: asyncio.Task[None],
         request: TweenRequest,
-        start_value: float,
     ) -> None:
-        _ = start_value
         async with self._lock:
             if not self._try_acquire(current_task, request, context="即时设置"):
                 return
@@ -314,8 +313,6 @@ class ParameterTweenEngine:
                     continue
 
                 await self._send_parameter_values(states_to_send)
-        except asyncio.CancelledError:
-            raise
         except Exception:
             logger.exception("缓动引擎保活循环出错")
 

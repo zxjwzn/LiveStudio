@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from livestudio.services.semantic_actions import (
     SemanticAction,
@@ -16,13 +17,16 @@ from ..base import AnimationController
 from ..config import EyeCenteringControllerSettings
 from ..models import AnimationType
 
+if TYPE_CHECKING:
+    from livestudio.services.animations.runtime import PlatformAnimationRuntime
+
 
 class EyeCenteringController(AnimationController[EyeCenteringControllerSettings]):
     """根据头部姿势反向调整视线，让瞳孔看起来保持在中间"""
 
     def __init__(
         self,
-        runtime,
+        runtime: PlatformAnimationRuntime,
         name: str,
         config: EyeCenteringControllerSettings,
     ) -> None:

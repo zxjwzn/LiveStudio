@@ -120,7 +120,7 @@ BUILTIN_EXPRESSION_UNITS: tuple[ExpressionUnit, ...] = (
         id="mouth_press",
         regions=frozenset({ExpressionRegion.MOUTH}),
         targets=(
-            _target(SemanticAction.MOUTH_SMILE, value_range=(0.5, 0.5), jitter=0.02),
+            _target(SemanticAction.MOUTH_SMILE, value=0.5, jitter=0.02),
             _target(
                 SemanticAction.MOUTH_OPEN,
                 value_range=(0.00, 0.03),
