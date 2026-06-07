@@ -18,7 +18,6 @@ dependencies = [
     "json5>=0.12.0,<0.13.0",
     "pyyaml>=6.0.2,<7.0.0",
     "httpx>=0.27.0,<0.28.0",
-    "flet[all]==0.28.3",
     "sounddevice>=0.5.5",
 ]
 

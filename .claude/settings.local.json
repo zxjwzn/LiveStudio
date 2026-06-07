@@ -14,7 +14,8 @@
       "Bash(uv --version)",
       "Bash(uv sync *)",
       "Bash(uv pip *)",
-      "Bash(.venv/Scripts/python.exe -m pytest -v)"
+      "Bash(.venv/Scripts/python.exe -m pytest -v)",
+      "Bash(python -m pytest tests/test_tween_engine_extended.py tests/test_easing.py tests/test_config_manager_extended.py tests/test_vtube_studio_client_extended.py -v --tb=short)"
     ]
   }
 }
