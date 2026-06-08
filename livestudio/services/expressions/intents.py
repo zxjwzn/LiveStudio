@@ -60,7 +60,7 @@ BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
             ExpressionIntentOptional(
                 id="嘴巴微张",
                 units=frozenset({"嘴巴微张"}),
-                weight=0.35,
+                weight=0.6,
             ),
             ExpressionIntentOptional(
                 id="眯眼",
@@ -70,12 +70,12 @@ BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
             ExpressionIntentOptional(
                 id="左歪头",
                 units=frozenset({"左歪头"}),
-                weight=0.35,
+                weight=0.4,
             ),
             ExpressionIntentOptional(
                 id="右歪头",
                 units=frozenset({"右歪头"}),
-                weight=0.35,
+                weight=0.4,
             ),
             ExpressionIntentOptional(
                 id="轻微抬眉",
