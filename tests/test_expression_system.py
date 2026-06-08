@@ -130,6 +130,83 @@ def test_anger_selects_tense_mouth_with_semantic_tags() -> None:
     assert 0.0 <= target_values[SemanticAction.MOUTH_SMILE.value] <= 1.0
 
 
+def test_mouth_corner_and_mouth_open_states_are_separate_units() -> None:
+    units_by_id = {unit.id: unit for unit in BUILTIN_EXPRESSION_UNITS}
+
+    mouth_corner_up_actions = {
+        target.action for target in units_by_id["mouth_corner_up"].targets
+    }
+    mouth_slight_open_actions = {
+        target.action for target in units_by_id["mouth_slight_open"].targets
+    }
+
+    assert mouth_corner_up_actions == {SemanticAction.MOUTH_SMILE.value}
+    assert mouth_slight_open_actions == {SemanticAction.MOUTH_OPEN.value}
+
+
+def test_mouth_press_can_mix_with_mouth_corner_up_on_same_parameters() -> None:
+    units_by_id = {unit.id: unit for unit in BUILTIN_EXPRESSION_UNITS}
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+    )
+
+    targets = selector.merge_unit_targets(
+        (units_by_id["mouth_corner_up"], units_by_id["mouth_press"]),
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 1.0, EmotionKind.ANGER: 0.4},
+            intensity=1.0,
+            randomness=0.0,
+        ),
+    )
+
+    target_values = {target.action: target.value for target in targets}
+    assert {SemanticAction.MOUTH_SMILE.value, SemanticAction.MOUTH_OPEN.value} <= set(
+        target_values,
+    )
+    assert 0.0 < target_values[SemanticAction.MOUTH_SMILE.value] < 1.0
+    assert target_values[SemanticAction.MOUTH_OPEN.value] <= 0.04
+
+
+def test_eye_units_are_closed_narrow_and_open_states() -> None:
+    units_by_id = {unit.id: unit for unit in BUILTIN_EXPRESSION_UNITS}
+
+    assert {"eye_closed", "eye_narrow", "eye_open"}.issubset(units_by_id)
+    assert units_by_id["eye_closed"].conflicts == frozenset(
+        {"eye_narrow", "eye_open"},
+    )
+    assert units_by_id["eye_narrow"].conflicts == frozenset(
+        {"eye_closed", "eye_open"},
+    )
+    assert units_by_id["eye_open"].conflicts == frozenset(
+        {"eye_closed", "eye_narrow"},
+    )
+
+
+def test_pure_joy_can_select_mouth_slight_open_as_optional_unit() -> None:
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+    )
+
+    selected = selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 1.0},
+            intensity=1.0,
+            randomness=0.0,
+        ),
+    )
+
+    unit_ids = {unit.id for unit in selected.units}
+    target_actions = {target.action for target in selected.targets}
+
+    assert "mouth_corner_up" in unit_ids
+    assert "mouth_slight_open" in unit_ids
+    assert SemanticAction.MOUTH_OPEN.value in target_actions
+
+
 def test_single_strong_unit_can_be_selected_without_full_region_coverage() -> None:
     strong_unit = ExpressionUnit(
         id="single_smile",
@@ -152,7 +229,7 @@ def test_single_strong_unit_can_be_selected_without_full_region_coverage() -> No
         intents=(
             ExpressionIntent(
                 id="single_smile_intent",
-                emotions={EmotionKind.JOY: 1.0},
+                emotion_profile={EmotionKind.JOY: 1.0},
                 required_units=frozenset({"single_smile"}),
                 optional_units={"weak_brow": 0.1},
                 output_tags=frozenset({"single_smile_intent"}),
@@ -213,7 +290,7 @@ def test_combination_rules_can_block_otherwise_compatible_units() -> None:
         intents=(
             ExpressionIntent(
                 id="smile_with_optional_wide",
-                emotions={EmotionKind.JOY: 1.0},
+                emotion_profile={EmotionKind.JOY: 1.0},
                 required_units=frozenset({"smile"}),
                 optional_units={"wide": 1.0},
                 output_tags=frozenset({"smile_with_optional_wide"}),
@@ -255,7 +332,7 @@ def test_selector_expresses_sadness_with_low_mouth_smile() -> None:
         ),
     )
 
-    assert any(unit.id == "mouth_down" for unit in selected.units)
+    assert any(unit.id == "mouth_corner_down" for unit in selected.units)
     assert {"sadness", "restrained"}.issubset(selected.semantic_tags)
     target_values = {target.action: target.value for target in selected.targets}
     assert target_values[SemanticAction.MOUTH_SMILE.value] <= 0.08
@@ -280,11 +357,12 @@ def test_selector_accepts_partial_emotion_weight() -> None:
     assert "sadness" in selected.semantic_tags
 
 
-def test_emotion_request_rejects_weight_sum_over_one() -> None:
-    with pytest.raises(ValueError, match=r"总和不能超过 1\.0"):
-        EmotionRequest(
-            emotions={EmotionKind.JOY: 0.8, EmotionKind.ANGER: 0.3},
-        )
+def test_emotion_request_accepts_independent_emotion_vector_values() -> None:
+    request = EmotionRequest(
+        emotions={EmotionKind.JOY: 0.8, EmotionKind.ANGER: 0.3},
+    )
+
+    assert request.emotions == {EmotionKind.JOY: 0.8, EmotionKind.ANGER: 0.3}
 
 
 def test_selector_builds_mischievous_downcast_white_eye_smile() -> None:
@@ -304,7 +382,7 @@ def test_selector_builds_mischievous_downcast_white_eye_smile() -> None:
 
     unit_ids = {unit.id for unit in selected.units}
     assert {
-        "mouth_sinister_smile",
+        "mouth_corner_up",
         "head_down_mischievous",
         "gaze_up_white",
     }.issubset(unit_ids)
@@ -314,7 +392,7 @@ def test_selector_builds_mischievous_downcast_white_eye_smile() -> None:
     target_values = {target.action: target.value for target in selected.targets}
     assert target_values[SemanticAction.HEAD_PITCH.value] < 0.0
     assert target_values[SemanticAction.EYE_GAZE_Y.value] > 0.0
-    assert target_values[SemanticAction.MOUTH_SMILE.value] > 0.5
+    assert target_values[SemanticAction.MOUTH_SMILE.value] > 0.35
 
 
 def test_selector_uses_explicit_expression_intent_template() -> None:
@@ -336,7 +414,7 @@ def test_selector_uses_explicit_expression_intent_template() -> None:
     unit_ids = {unit.id for unit in selected.units}
     assert selected.intent_id == "sinister_smile"
     assert {
-        "mouth_sinister_smile",
+        "mouth_corner_up",
         "head_down_mischievous",
         "gaze_up_white",
     }.issubset(unit_ids)
@@ -362,6 +440,63 @@ def test_selector_auto_selects_expression_intent_from_emotion_signature() -> Non
     assert "sinister_smile" in selected.semantic_tags
 
 
+def test_selector_builds_bitter_smile_from_joy_sadness_vector() -> None:
+    selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+    )
+
+    selected = selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 1.0, EmotionKind.SADNESS: 0.5},
+            intensity=1.0,
+            randomness=0.0,
+        ),
+    )
+
+    unit_ids = {unit.id for unit in selected.units}
+    assert selected.intent_id == "bitter_smile"
+    assert {"mouth_corner_up", "brow_knit"}.issubset(unit_ids)
+    assert "bitter_smile" in selected.semantic_tags
+
+
+def test_emotion_vector_energy_controls_expression_strength() -> None:
+    low_energy_selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+    )
+    high_energy_selector = ExpressionSelector(
+        BUILTIN_EXPRESSION_UNITS,
+        default_vtube_studio_semantic_profile(),
+        rng=random.Random(1),
+    )
+
+    low_energy = low_energy_selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 0.45, EmotionKind.ANGER: 0.35},
+            intensity=1.0,
+            randomness=0.0,
+        ),
+    )
+    high_energy = high_energy_selector.select(
+        EmotionRequest(
+            emotions={EmotionKind.JOY: 0.9, EmotionKind.ANGER: 0.7},
+            intensity=1.0,
+            randomness=0.0,
+        ),
+    )
+
+    low_targets = {target.action: target.value for target in low_energy.targets}
+    high_targets = {target.action: target.value for target in high_energy.targets}
+
+    assert low_energy.intent_id == "sinister_smile"
+    assert high_energy.intent_id == "sinister_smile"
+    assert high_energy.expression_strength > low_energy.expression_strength
+    assert high_targets[SemanticAction.MOUTH_SMILE.value] > low_targets[SemanticAction.MOUTH_SMILE.value]
+
+
 def test_sinister_smile_variants_follow_emotion_deviation() -> None:
     playful_selector = ExpressionSelector(
         BUILTIN_EXPRESSION_UNITS,
@@ -383,7 +518,7 @@ def test_sinister_smile_variants_follow_emotion_deviation() -> None:
     )
     threatening = threatening_selector.select(
         EmotionRequest(
-            emotions={EmotionKind.JOY: 0.5, EmotionKind.ANGER: 0.5},
+            emotions={EmotionKind.JOY: 0.7, EmotionKind.ANGER: 0.7},
             intensity=1.0,
             randomness=0.0,
         ),

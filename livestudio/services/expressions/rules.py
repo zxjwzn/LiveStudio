@@ -16,7 +16,7 @@ BUILTIN_COMBINATION_RULES: tuple[ExpressionCombinationRule, ...] = (
     ExpressionCombinationRule(
         id="sadness_blocks_bright_smiles",
         emotions=frozenset({EmotionKind.SADNESS}),
-        forbid_tags=frozenset({"bright", "smile"}),
+        forbid_tags=frozenset({"bright"}),
         penalty=math.inf,
     ),
     ExpressionCombinationRule(
@@ -26,8 +26,8 @@ BUILTIN_COMBINATION_RULES: tuple[ExpressionCombinationRule, ...] = (
         penalty=math.inf,
     ),
     ExpressionCombinationRule(
-        id="narrow_and_wide_eyes_are_incompatible",
-        require_tags=frozenset({"eye_narrow", "wide"}),
+        id="narrow_and_open_eyes_are_incompatible",
+        require_tags=frozenset({"eye_narrow", "eye_open"}),
         penalty=math.inf,
     ),
     ExpressionCombinationRule(

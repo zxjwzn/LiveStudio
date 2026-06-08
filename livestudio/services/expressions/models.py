@@ -132,15 +132,11 @@ class EmotionRequest(BaseModel):
     ) -> dict[EmotionKind, float]:
         if not value:
             return {EmotionKind.NEUTRAL: 1.0}
-        normalized = {
+        return {
             emotion: max(0.0, min(1.0, weight))
             for emotion, weight in value.items()
             if weight > 0.0
         } or {EmotionKind.NEUTRAL: 1.0}
-        total_weight = sum(normalized.values())
-        if total_weight > 1.0:
-            raise ValueError("EmotionRequest.emotions 总和不能超过 1.0")
-        return normalized
 
 
 @dataclass(frozen=True, slots=True)

@@ -196,7 +196,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--emotion",
         action="append",
         default=[],
-        help="情绪名称或 name=weight，可以重复写，比如 --emotion joy=0.8 --emotion sadness=0.2",
+        help="情绪名称或 name=weight，可以重复写；每个情绪独立 0~1，比如 --emotion joy=0.9 --emotion anger=0.7",
     )
     parser.add_argument(
         "--intent",

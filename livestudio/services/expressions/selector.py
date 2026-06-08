@@ -6,6 +6,7 @@ import math
 import random
 from collections import deque
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
 from livestudio.services.semantic_actions import (
     DEFAULT_SEMANTIC_ACTION_SPECS,
@@ -27,6 +28,14 @@ from .models import (
     SelectedExpression,
 )
 from .rules import BUILTIN_COMBINATION_RULES
+
+
+@dataclass(frozen=True, slots=True)
+class EmotionVectorState:
+    composition: Mapping[EmotionKind, float]
+    energy: float
+    effective_intensity: float
+    explicit_intent: bool
 
 
 class ExpressionSelector:
@@ -59,10 +68,15 @@ class ExpressionSelector:
         self.combination_rules = tuple(combination_rules)
 
     def select(self, request: EmotionRequest) -> SelectedExpression:
-        intent = self._resolve_intent(request)
-        return self._select_from_intent(intent, request)
+        emotion_state = self._emotion_vector_state(request)
+        intent = self._resolve_intent(request, emotion_state)
+        return self._select_from_intent(intent, request, emotion_state)
 
-    def _resolve_intent(self, request: EmotionRequest) -> ExpressionIntent:
+    def _resolve_intent(
+        self,
+        request: EmotionRequest,
+        emotion_state: EmotionVectorState,
+    ) -> ExpressionIntent:
         if request.intent is not None:
             intent = self.intents_by_id.get(request.intent)
             if intent is None:
@@ -70,7 +84,8 @@ class ExpressionSelector:
             return intent
 
         scored = [
-            (self._score_intent(intent, request), intent) for intent in self.intents
+            (self._score_intent(intent, request, emotion_state), intent)
+            for intent in self.intents
         ]
         scored.sort(key=lambda item: item[0], reverse=True)
         if not scored or scored[0][0] < 0.5:
@@ -81,10 +96,23 @@ class ExpressionSelector:
         self,
         intent: ExpressionIntent,
         request: EmotionRequest,
+        emotion_state: EmotionVectorState,
     ) -> float:
-        emotion_score = self._emotion_signature_match(intent.emotions, request.emotions)
+        emotion_score = self._emotion_signature_match(
+            intent.emotion_profile,
+            emotion_state.composition,
+        )
         if emotion_score <= 0.0:
             return 0.0
+        energy_low, energy_high = intent.energy_range
+        if energy_low <= emotion_state.energy <= energy_high:
+            energy_score = 1.0
+        else:
+            energy_distance = min(
+                abs(emotion_state.energy - energy_low),
+                abs(emotion_state.energy - energy_high),
+            )
+            energy_score = max(0.0, 1.0 - energy_distance)
         intensity_low, intensity_high = intent.intensity_range
         if intensity_low <= request.intensity <= intensity_high:
             intensity_score = 1.0
@@ -96,10 +124,11 @@ class ExpressionSelector:
             intensity_score = max(0.0, 1.0 - distance)
         available_score = self._intent_availability_score(intent)
         return (
-            emotion_score * 0.68
-            + intensity_score * 0.14
-            + available_score * 0.10
-            + intent.naturalness * 0.08
+            emotion_score * 0.62
+            + energy_score * 0.14
+            + intensity_score * 0.10
+            + available_score * 0.08
+            + intent.naturalness * 0.06
         )
 
     def _emotion_signature_match(
@@ -107,10 +136,6 @@ class ExpressionSelector:
         expected: Mapping[EmotionKind, float],
         actual: Mapping[EmotionKind, float],
     ) -> float:
-        expected_total = sum(max(0.0, value) for value in expected.values())
-        actual_total = sum(max(0.0, value) for value in actual.values())
-        if expected_total > 1.0 or actual_total > 1.0:
-            return 0.0
         all_emotions = set(expected) | set(actual)
         distance = sum(
             abs(
@@ -119,8 +144,32 @@ class ExpressionSelector:
             )
             for emotion in all_emotions
         )
-        distance += abs(expected_total - actual_total) * 0.25
-        return max(0.0, 1.0 - distance)
+        return max(0.0, 1.0 - distance / 2.0)
+
+    def _emotion_vector_state(self, request: EmotionRequest) -> EmotionVectorState:
+        expressive = {
+            emotion: max(0.0, value)
+            for emotion, value in request.emotions.items()
+            if emotion is not EmotionKind.NEUTRAL and value > 0.0
+        }
+        if not expressive:
+            expressive = {EmotionKind.NEUTRAL: max(0.0, request.emotions.get(EmotionKind.NEUTRAL, 1.0))}
+
+        total = sum(expressive.values())
+        composition = (
+            {emotion: value / total for emotion, value in expressive.items()}
+            if total > 0.0
+            else {EmotionKind.NEUTRAL: 1.0}
+        )
+        energy = max(expressive.values(), default=0.0)
+        explicit_intent = request.intent is not None
+        effective_intensity = request.intensity if explicit_intent else request.intensity * energy
+        return EmotionVectorState(
+            composition=composition,
+            energy=energy,
+            effective_intensity=effective_intensity,
+            explicit_intent=explicit_intent,
+        )
 
     def _intent_availability_score(self, intent: ExpressionIntent) -> float:
         required_units = [
@@ -140,6 +189,7 @@ class ExpressionSelector:
         self,
         intent: ExpressionIntent,
         request: EmotionRequest,
+        emotion_state: EmotionVectorState,
     ) -> SelectedExpression:
         missing = [
             unit_id
@@ -153,7 +203,7 @@ class ExpressionSelector:
 
         required = [self.units_by_id[unit_id] for unit_id in intent.required_units]
         forbidden = set(intent.forbidden_units)
-        variant_strengths = self._intent_variant_strengths(intent, request)
+        variant_strengths = self._intent_variant_strengths(intent, emotion_state)
         optional_weights = self._intent_optional_weights(intent, variant_strengths)
         candidates = [
             self._score_unit_for_template(unit, optional_weights.get(unit.id, 0.0))
@@ -207,7 +257,12 @@ class ExpressionSelector:
 
         units = tuple(selected_units)
         target_offsets = self._intent_target_offsets(intent, variant_strengths)
-        targets = self._merge_targets(units, request, target_offsets=target_offsets)
+        targets = self._merge_targets(
+            units,
+            request,
+            emotion_state=emotion_state,
+            target_offsets=target_offsets,
+        )
         action_tags = frozenset().union(*(unit.action_tags for unit in units))
         semantic_tags = frozenset(
             {
@@ -231,11 +286,8 @@ class ExpressionSelector:
             intent_id=intent.id,
             units_by_region=self._units_by_region(units),
             score=combo_score,
-            intent_match=self._score_intent(intent, request),
-            expression_strength=max(
-                (scored.template_weight for scored in scored_combo),
-                default=0.0,
-            ),
+            intent_match=self._score_intent(intent, request, emotion_state),
+            expression_strength=emotion_state.effective_intensity,
             semantic_tags=semantic_tags,
             targets=targets,
         )
@@ -243,17 +295,32 @@ class ExpressionSelector:
     def _intent_variant_strengths(
         self,
         intent: ExpressionIntent,
-        request: EmotionRequest,
+        emotion_state: EmotionVectorState,
     ) -> dict[str, float]:
+        intent_composition = self._normalized_emotions(intent.emotion_profile)
         strengths: dict[str, float] = {}
         for variant in intent.variants:
-            expected = max(0.0, intent.emotions.get(variant.emotion, 0.0))
-            actual = max(0.0, request.emotions.get(variant.emotion, 0.0))
+            expected = max(0.0, intent_composition.get(variant.emotion, 0.0))
+            actual = max(0.0, emotion_state.composition.get(variant.emotion, 0.0))
             delta = actual - expected
             if variant.direction == "below":
                 delta = -delta
-            strengths[variant.id] = max(0.0, min(1.0, delta))
+            strengths[variant.id] = max(0.0, min(1.0, delta * emotion_state.energy * 4.0))
         return strengths
+
+    def _normalized_emotions(
+        self,
+        emotions: Mapping[EmotionKind, float],
+    ) -> dict[EmotionKind, float]:
+        values = {
+            emotion: max(0.0, value)
+            for emotion, value in emotions.items()
+            if value > 0.0
+        }
+        total = sum(values.values())
+        if total <= 0.0:
+            return {EmotionKind.NEUTRAL: 1.0}
+        return {emotion: value / total for emotion, value in values.items()}
 
     def _intent_optional_weights(
         self,
@@ -392,7 +459,6 @@ class ExpressionSelector:
         score += self._coverage_score(combo) * 0.18
         score += self._synergy_score(combo) * 0.10
         score -= self._soft_conflict_penalty(combo)
-        score -= self._target_collision_penalty(combo, request)
         score -= self._history_penalty(combo, request)
         score -= max(0, len(combo) - 1) * 0.08
         return score
@@ -450,24 +516,6 @@ class ExpressionSelector:
             penalty += rule.penalty
         return penalty
 
-    def _target_collision_penalty(
-        self,
-        combo: tuple[ScoredExpressionUnit, ...],
-        request: EmotionRequest,
-    ) -> float:
-        values: dict[str, list[float]] = {}
-        for scored in combo:
-            for target in self._targets_for_unit(scored.unit, request):
-                values.setdefault(target.action, []).append(
-                    self._target_base_value(target),
-                )
-        penalty = 0.0
-        for action_values in values.values():
-            if len(action_values) <= 1:
-                continue
-            penalty += (max(action_values) - min(action_values)) * 0.25
-        return penalty
-
     def _history_penalty(
         self,
         combo: tuple[ScoredExpressionUnit, ...],
@@ -494,17 +542,19 @@ class ExpressionSelector:
         units: Iterable[ExpressionUnit],
         request: EmotionRequest,
         *,
+        emotion_state: EmotionVectorState | None = None,
         target_offsets: Mapping[str, float] | None = None,
     ) -> tuple[SemanticActionTarget, ...]:
         merged: dict[str, tuple[float, float]] = {}
         order: list[str] = []
         offsets = target_offsets or {}
+        state = emotion_state or self._emotion_vector_state(request)
         for unit in units:
             for target in self._targets_for_unit(unit, request):
                 if target.action not in merged:
                     order.append(target.action)
                     merged[target.action] = (0.0, 0.0)
-                value = self._resolve_target_value(target, request)
+                value = self._resolve_target_value(target, request, state)
                 weight = max(0.0, target.weight)
                 weighted_value, total_weight = merged[target.action]
                 merged[target.action] = (
@@ -529,12 +579,13 @@ class ExpressionSelector:
         self,
         target: ExpressionTarget,
         request: EmotionRequest,
+        emotion_state: EmotionVectorState,
     ) -> float:
         value = self._sample_target_value(target)
         if target.scale_by_intensity:
             spec = DEFAULT_SEMANTIC_ACTION_SPECS.get(target.action)
             neutral = spec.neutral if spec is not None else 0.0
-            value = neutral + (value - neutral) * request.intensity
+            value = neutral + (value - neutral) * emotion_state.effective_intensity
         jitter = max(target.jitter, request.value_jitter) * request.randomness
         if jitter > 0.0:
             value += self.rng.uniform(-jitter, jitter)
@@ -544,11 +595,6 @@ class ExpressionSelector:
         if target.value_range is None:
             return target.value if target.value is not None else 0.0
         return self.rng.uniform(target.value_range[0], target.value_range[1])
-
-    def _target_base_value(self, target: ExpressionTarget) -> float:
-        if target.value_range is None:
-            return target.value if target.value is not None else 0.0
-        return (target.value_range[0] + target.value_range[1]) / 2.0
 
     def _targets_for_unit(
         self,

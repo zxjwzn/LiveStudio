@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from livestudio.clients.vtube_studio.models import (
     EventSubscriptionResponse,
     ExpressionActivationRequest,
@@ -17,7 +19,6 @@ from livestudio.services.animations import (
     BlinkController,
     BodySwingController,
     BreathingController,
-    ControllerSettings,
     EyeCenteringController,
     MouthExpressionController,
     MouthSyncController,
@@ -225,7 +226,7 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         """把模型配置用到 VTube Studio 动画运行流程里"""
 
         runtime = self.animation_manager.get_runtime(self.platform.name)
-        controllers: list[AnimationController[ControllerSettings]] = [
+        controllers: list[AnimationController[Any]] = [
             BlinkController(runtime, "blink", config.controllers.blink),
             BreathingController(runtime, "breathing", config.controllers.breathing),
             BodySwingController(runtime, "body_swing", config.controllers.body_swing),

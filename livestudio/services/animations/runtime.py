@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
+from typing import Any
 
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms import PlatformService
 from livestudio.services.semantic_actions import SemanticActionState
 from livestudio.utils.log import logger
 
-from .controllers import AnimationController, AnimationType, ControllerSettings
+from .controllers import AnimationController, AnimationType
 from .templates import AnimationTemplatePlayer, LoadedTemplateInfo
 
 
@@ -21,11 +22,11 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
         self,
         platform: PlatformService,
         template_player: AnimationTemplatePlayer,
-        controllers: Iterable[AnimationController[ControllerSettings]] | None = None,
+        controllers: Iterable[AnimationController[Any]] | None = None,
     ) -> None:
         self._platform = platform
         self._template_player = template_player
-        self._controllers: dict[str, AnimationController[ControllerSettings]] = {}
+        self._controllers: dict[str, AnimationController[Any]] = {}
         self._initialized = False
         self._started = False
 
@@ -57,7 +58,7 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
         return self._template_player
 
     @property
-    def controllers(self) -> dict[str, AnimationController[ControllerSettings]]:
+    def controllers(self) -> dict[str, AnimationController[Any]]:
         """返回控制器快照"""
 
         return dict(self._controllers)
@@ -134,7 +135,7 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
 
     async def reload_controllers(
         self,
-        controllers: Iterable[AnimationController[ControllerSettings]],
+        controllers: Iterable[AnimationController[Any]],
     ) -> None:
         """重新加载当前平台控制器"""
 
@@ -153,7 +154,7 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
 
     def register_controller(
         self,
-        controller: AnimationController[ControllerSettings],
+        controller: AnimationController[Any],
     ) -> None:
         """注册当前平台的控制器实例"""
 
@@ -174,7 +175,7 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
         if controller is not None:
             await controller.stop_without_wait()
 
-    def get_controller(self, name: str) -> AnimationController[ControllerSettings]:
+    def get_controller(self, name: str) -> AnimationController[Any]:
         """获取当前平台的控制器"""
 
         controller = self._controllers.get(name)

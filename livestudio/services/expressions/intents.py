@@ -26,12 +26,13 @@ class ExpressionIntent:
     """比 AU 更高一层的组合表情意图"""
 
     id: str
-    emotions: Mapping[EmotionKind, float]
+    emotion_profile: Mapping[EmotionKind, float]
     required_units: frozenset[str]
     optional_units: Mapping[str, float] = field(default_factory=dict)
     forbidden_units: frozenset[str] = frozenset()
     output_tags: frozenset[str] = frozenset()
     style_tags: frozenset[str] = frozenset()
+    energy_range: tuple[float, float] = (0.0, 1.0)
     intensity_range: tuple[float, float] = (0.0, 1.0)
     variants: tuple[ExpressionIntentVariant, ...] = ()
     priority: int = 50
@@ -41,11 +42,16 @@ class ExpressionIntent:
 BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
     ExpressionIntent(
         id="pure_joy",
-        emotions={EmotionKind.JOY: 1.0},
-        required_units=frozenset({"mouth_smile"}),
-        optional_units={"head_tilt": 0.55, "eye_narrow": 0.35, "brow_raise_soft": 0.25},
+        emotion_profile={EmotionKind.JOY: 1.0},
+        required_units=frozenset({"mouth_corner_up"}),
+        optional_units={
+            "mouth_slight_open": 0.45,
+            "head_tilt": 0.55,
+            "eye_narrow": 0.35,
+            "brow_raise_soft": 0.25,
+        },
         forbidden_units=frozenset(
-            {"mouth_sinister_smile", "mouth_down", "mouth_press", "gaze_up_white"},
+            {"mouth_corner_down", "mouth_press", "gaze_up_white"},
         ),
         output_tags=frozenset({"pure_joy"}),
         style_tags=frozenset({"bright", "friendly"}),
@@ -54,10 +60,10 @@ BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
     ),
     ExpressionIntent(
         id="anger_tense",
-        emotions={EmotionKind.ANGER: 1.0},
+        emotion_profile={EmotionKind.ANGER: 1.0},
         required_units=frozenset({"mouth_press", "brow_knit"}),
         optional_units={"eye_narrow": 0.85, "head_forward": 0.45},
-        forbidden_units=frozenset({"mouth_smile", "brow_raise_soft", "head_tilt"}),
+        forbidden_units=frozenset({"mouth_corner_up", "brow_raise_soft", "head_tilt"}),
         output_tags=frozenset({"anger_tense"}),
         style_tags=frozenset({"tense", "focused"}),
         intensity_range=(0.35, 1.0),
@@ -65,15 +71,15 @@ BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
     ),
     ExpressionIntent(
         id="sad_downcast",
-        emotions={EmotionKind.SADNESS: 1.0},
-        required_units=frozenset({"mouth_down"}),
+        emotion_profile={EmotionKind.SADNESS: 1.0},
+        required_units=frozenset({"mouth_corner_down"}),
         optional_units={
             "brow_knit": 0.75,
             "gaze_averted_down": 0.65,
             "head_down_averted": 0.55,
         },
         forbidden_units=frozenset(
-            {"mouth_smile", "mouth_sinister_smile", "gaze_up_white"},
+            {"mouth_corner_up", "gaze_up_white"},
         ),
         output_tags=frozenset({"sad_downcast"}),
         style_tags=frozenset({"restrained", "pained"}),
@@ -82,16 +88,18 @@ BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
     ),
     ExpressionIntent(
         id="sinister_smile",
-        emotions={EmotionKind.JOY: 0.65, EmotionKind.ANGER: 0.35},
+        emotion_profile={EmotionKind.JOY: 0.65, EmotionKind.ANGER: 0.35},
         required_units=frozenset(
             {
-                "mouth_sinister_smile",
+                "mouth_corner_up",
                 "head_down_mischievous",
                 "gaze_up_white",
             },
         ),
         optional_units={"eye_narrow": 0.8, "brow_knit": 0.35},
-        forbidden_units=frozenset({"mouth_down", "mouth_press", "brow_raise_soft"}),
+        forbidden_units=frozenset(
+            {"mouth_corner_down", "mouth_slight_open", "mouth_press", "brow_raise_soft"},
+        ),
         output_tags=frozenset({"sinister_smile"}),
         style_tags=frozenset({"sinister", "mischievous", "threatening"}),
         intensity_range=(0.65, 1.0),
@@ -119,10 +127,14 @@ BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
     ),
     ExpressionIntent(
         id="bitter_smile",
-        emotions={EmotionKind.JOY: 0.45, EmotionKind.SADNESS: 0.55},
-        required_units=frozenset({"mouth_smile", "brow_knit"}),
-        optional_units={"gaze_averted_down": 0.65, "head_down_averted": 0.55},
-        forbidden_units=frozenset({"mouth_sinister_smile", "gaze_up_white"}),
+        emotion_profile={EmotionKind.JOY: 0.45, EmotionKind.SADNESS: 0.55},
+        required_units=frozenset({"mouth_corner_up", "brow_knit"}),
+        optional_units={
+            "mouth_slight_open": 0.3,
+            "gaze_averted_down": 0.65,
+            "head_down_averted": 0.55,
+        },
+        forbidden_units=frozenset({"gaze_up_white"}),
         output_tags=frozenset({"bitter_smile"}),
         style_tags=frozenset({"restrained", "pained", "soft"}),
         intensity_range=(0.35, 0.85),
@@ -130,11 +142,11 @@ BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
     ),
     ExpressionIntent(
         id="wronged",
-        emotions={EmotionKind.SADNESS: 1.0},
-        required_units=frozenset({"brow_raise_soft", "mouth_down"}),
+        emotion_profile={EmotionKind.SADNESS: 1.0},
+        required_units=frozenset({"brow_raise_soft", "mouth_corner_down"}),
         optional_units={"gaze_averted_down": 0.85, "head_down_averted": 0.65},
         forbidden_units=frozenset(
-            {"mouth_sinister_smile", "gaze_up_white", "eye_narrow"},
+            {"mouth_corner_up", "gaze_up_white", "eye_narrow"},
         ),
         output_tags=frozenset({"wronged"}),
         style_tags=frozenset({"vulnerable", "restrained", "soft"}),
@@ -145,3 +157,4 @@ BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
 
 
 BUILTIN_INTENTS_BY_ID = {intent.id: intent for intent in BUILTIN_EXPRESSION_INTENTS}
+

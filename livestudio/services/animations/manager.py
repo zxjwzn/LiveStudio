@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms import PlatformService
@@ -12,7 +13,6 @@ from livestudio.utils.paths import resource_path
 
 from .controllers import (
     AnimationController,
-    ControllerSettings,
 )
 from .runtime import PlatformAnimationRuntime
 from .templates import AnimationTemplatePlayer
@@ -86,7 +86,7 @@ class AnimationManager(AsyncServiceLifecycleMixin):
     def register_controller(
         self,
         platform_name: str,
-        controller: AnimationController[ControllerSettings],
+        controller: AnimationController[Any],
     ) -> None:
         """向指定平台运行时注册控制器实例"""
 
