@@ -18,16 +18,21 @@ class ColorToken:
     """#RRGGBB 或 #AARRGGBB 格式"""
 
     def with_opacity(self, opacity: float) -> str:
-        """返回带透明度的 hex 字符串 (#AARRGGBB)
+        """返回带透明度的 Flet hex 字符串 (#AARRGGBB)
 
         Args:
             opacity: 0.0 ~ 1.0 之间的透明度值
         """
         alpha = max(0, min(255, int(opacity * 255)))
         raw = self.hex.lstrip("#")
-        # 如果已有 alpha 通道则替换，否则添加
+        # 假设之前的格式是 RRGGBBAA 或者原本就是 RRGGBB
         if len(raw) == 8:
-            raw = raw[2:]  # 去掉原有 alpha
+            raw = (
+                raw[2:] if raw[0:2] != "FF" else raw[:6]
+            )  # Try to remove alpha roughly, keeping RRGGBB
+            # 其实我们可以直接取后 6 位，或者认为原生的 hex 这里主要是 RRGGBB
+        if len(raw) > 6:
+            raw = raw[-6:]
         return f"#{alpha:02X}{raw}"
 
 

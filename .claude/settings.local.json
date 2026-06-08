@@ -22,7 +22,11 @@
       "Read(//mnt/c/Users/Zaxpris/.claude/**)",
       "Bash(mkdir -p __TRACKED_VAR__/.claude/plans)",
       "Bash(python -m pytest tests/ -v --tb=short)",
-      "PowerShell(python -m pytest tests/ -v --tb=short 2>&1)"
+      "PowerShell(python -m pytest tests/ -v --tb=short 2>&1)",
+      "WebSearch",
+      "WebFetch(domain:nicegui.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "PowerShell(New-Item *)"
     ]
   }
 }
