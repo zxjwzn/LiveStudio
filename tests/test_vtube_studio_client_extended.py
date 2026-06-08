@@ -13,7 +13,9 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
+
 import pytest
+
 from livestudio.clients.vtube_studio.client import VTubeStudioClient
 from livestudio.clients.vtube_studio.config import VTubeStudioConfig
 from livestudio.clients.vtube_studio.errors import (
@@ -49,30 +51,34 @@ def test_parse_response_invalid_json_raises() -> None:
 
 def test_parse_response_request_id_mismatch_raises() -> None:
     client = _make_client()
-    payload = json.dumps({
-        "apiName": "VTubeStudioPublicAPI",
-        "apiVersion": "1.0",
-        "requestID": "wrong-id",
-        "messageType": "APIStateResponse",
-        "data": {},
-    })
+    payload = json.dumps(
+        {
+            "apiName": "VTubeStudioPublicAPI",
+            "apiVersion": "1.0",
+            "requestID": "wrong-id",
+            "messageType": "APIStateResponse",
+            "data": {},
+        },
+    )
     with pytest.raises(ResponseError, match="requestID 不匹配"):
         client._parse_response(payload, "correct-id", APIStateResponse)
 
 
 def test_parse_response_api_error_raises() -> None:
     client = _make_client()
-    payload = json.dumps({
-        "apiName": "VTubeStudioPublicAPI",
-        "apiVersion": "1.0",
-        "timestamp": 1700000000000,
-        "requestID": "req-1",
-        "messageType": "APIError",
-        "data": {
-            "errorID": 1,
-            "message": "Something went wrong",
+    payload = json.dumps(
+        {
+            "apiName": "VTubeStudioPublicAPI",
+            "apiVersion": "1.0",
+            "timestamp": 1700000000000,
+            "requestID": "req-1",
+            "messageType": "APIError",
+            "data": {
+                "errorID": 1,
+                "message": "Something went wrong",
+            },
         },
-    })
+    )
     with pytest.raises(APIError) as exc_info:
         client._parse_response(payload, "req-1", APIStateResponse)
     assert exc_info.value.error_id == 1

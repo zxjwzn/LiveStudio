@@ -76,4 +76,3 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
     @abstractmethod
     async def stop(self) -> None:
         """停止平台服务并释放资源"""
-

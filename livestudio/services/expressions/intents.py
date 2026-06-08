@@ -10,15 +10,23 @@ from .models import EmotionKind
 
 
 @dataclass(frozen=True, slots=True)
+class ExpressionIntentOptional:
+    """一个可选表情动作项，触发后会整体加入里面的全部 AU"""
+
+    id: str
+    units: frozenset[str]
+    weight: float
+
+
+@dataclass(frozen=True, slots=True)
 class ExpressionIntentVariant:
     """同一个意图内部由情绪偏移驱动的表现变体"""
 
     id: str
     emotion: EmotionKind
     direction: Literal["above", "below"] = "above"
-    optional_unit_adjustments: Mapping[str, float] = field(default_factory=dict)
+    optional_adjustments: Mapping[str, float] = field(default_factory=dict)
     target_offsets: Mapping[str, float] = field(default_factory=dict)
-    style_tags: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,10 +36,8 @@ class ExpressionIntent:
     id: str
     emotion_profile: Mapping[EmotionKind, float]
     required_units: frozenset[str]
-    optional_units: Mapping[str, float] = field(default_factory=dict)
+    optional_units: tuple[ExpressionIntentOptional, ...] = ()
     forbidden_units: frozenset[str] = frozenset()
-    output_tags: frozenset[str] = frozenset()
-    style_tags: frozenset[str] = frozenset()
     energy_range: tuple[float, float] = (0.0, 1.0)
     intensity_range: tuple[float, float] = (0.0, 1.0)
     variants: tuple[ExpressionIntentVariant, ...] = ()
@@ -41,120 +47,202 @@ class ExpressionIntent:
 
 BUILTIN_EXPRESSION_INTENTS: tuple[ExpressionIntent, ...] = (
     ExpressionIntent(
-        id="pure_joy",
-        emotion_profile={EmotionKind.JOY: 1.0},
-        required_units=frozenset({"mouth_corner_up"}),
-        optional_units={
-            "mouth_slight_open": 0.45,
-            "head_tilt": 0.55,
-            "eye_narrow": 0.35,
-            "brow_raise_soft": 0.25,
+        id="喜悦",
+        emotion_profile={
+            EmotionKind.JOY: 1.0,
         },
-        forbidden_units=frozenset(
-            {"mouth_corner_down", "mouth_press", "gaze_up_white"},
+        required_units=frozenset(
+            {
+                "嘴角上扬",
+            },
         ),
-        output_tags=frozenset({"pure_joy"}),
-        style_tags=frozenset({"bright", "friendly"}),
-        intensity_range=(0.25, 1.0),
+        optional_units=(
+            ExpressionIntentOptional(
+                id="嘴巴微张",
+                units=frozenset({"嘴巴微张"}),
+                weight=0.35,
+            ),
+            ExpressionIntentOptional(
+                id="眯眼",
+                units=frozenset({"眯眼"}),
+                weight=0.8,
+            ),
+            ExpressionIntentOptional(
+                id="左歪头",
+                units=frozenset({"左歪头"}),
+                weight=0.35,
+            ),
+            ExpressionIntentOptional(
+                id="右歪头",
+                units=frozenset({"右歪头"}),
+                weight=0.35,
+            ),
+            ExpressionIntentOptional(
+                id="轻微抬眉",
+                units=frozenset({"轻微抬眉"}),
+                weight=0.25,
+            ),
+            ExpressionIntentOptional(
+                id="左转头",
+                units=frozenset({"左转头"}),
+                weight=0.2,
+            ),
+            ExpressionIntentOptional(
+                id="右转头",
+                units=frozenset({"右转头"}),
+                weight=0.2,
+            ),
+        ),
+        forbidden_units=frozenset(
+            {
+                "嘴角下压",
+                "抿嘴",
+                "眼睛上看",
+            },
+        ),
+        intensity_range=(0.0, 1.0),
         naturalness=0.92,
     ),
     ExpressionIntent(
-        id="anger_tense",
-        emotion_profile={EmotionKind.ANGER: 1.0},
-        required_units=frozenset({"mouth_press", "brow_knit"}),
-        optional_units={"eye_narrow": 0.85, "head_forward": 0.45},
-        forbidden_units=frozenset({"mouth_corner_up", "brow_raise_soft", "head_tilt"}),
-        output_tags=frozenset({"anger_tense"}),
-        style_tags=frozenset({"tense", "focused"}),
+        id="愤怒",
+        emotion_profile={
+            EmotionKind.ANGER: 1.0,
+        },
+        required_units=frozenset(
+            {
+                "抿嘴",
+                "皱眉",
+                "眯眼",
+            },
+        ),
+        optional_units=(
+            ExpressionIntentOptional(
+                id="怒视",
+                units=frozenset({"低头", "眼睛上看"}),
+                weight=0.5,
+            ),
+        ),
+        forbidden_units=frozenset(
+            {
+                "嘴角上扬",
+                "轻微抬眉",
+                "左歪头",
+                "右歪头",
+            },
+        ),
         intensity_range=(0.35, 1.0),
         naturalness=0.82,
     ),
     ExpressionIntent(
-        id="sad_downcast",
+        id="悲伤",
         emotion_profile={EmotionKind.SADNESS: 1.0},
-        required_units=frozenset({"mouth_corner_down"}),
-        optional_units={
-            "brow_knit": 0.75,
-            "gaze_averted_down": 0.65,
-            "head_down_averted": 0.55,
-        },
-        forbidden_units=frozenset(
-            {"mouth_corner_up", "gaze_up_white"},
+        required_units=frozenset(
+            {"嘴角下压", "皱眉"},
         ),
-        output_tags=frozenset({"sad_downcast"}),
-        style_tags=frozenset({"restrained", "pained"}),
+        optional_units=(
+            ExpressionIntentOptional(
+                id="眼睛下看",
+                units=frozenset({"眼睛下看"}),
+                weight=0.70,
+            ),
+            ExpressionIntentOptional(
+                id="眼睛左看",
+                units=frozenset({"眼睛左看"}),
+                weight=0.7,
+            ),
+            ExpressionIntentOptional(
+                id="眼睛右看",
+                units=frozenset({"眼睛右看"}),
+                weight=0.7,
+            ),
+            ExpressionIntentOptional(
+                id="低头",
+                units=frozenset({"低头"}),
+                weight=0.65,
+            ),
+        ),
+        forbidden_units=frozenset(
+            {"嘴角上扬", "眼睛上看"},
+        ),
         intensity_range=(0.25, 1.0),
         naturalness=0.88,
     ),
     ExpressionIntent(
-        id="sinister_smile",
-        emotion_profile={EmotionKind.JOY: 0.65, EmotionKind.ANGER: 0.35},
+        id="阴险笑",
+        emotion_profile={EmotionKind.JOY: 0.60, EmotionKind.ANGER: 0.40},
         required_units=frozenset(
             {
-                "mouth_corner_up",
-                "head_down_mischievous",
-                "gaze_up_white",
+                "嘴角上扬",
+                "低头",
+                "眼睛上看",
             },
         ),
-        optional_units={"eye_narrow": 0.8, "brow_knit": 0.35},
+        optional_units=(
+            ExpressionIntentOptional(id="眯眼", units=frozenset({"眯眼"}), weight=0.7),
+            ExpressionIntentOptional(
+                id="左歪头",
+                units=frozenset({"左歪头"}),
+                weight=0.6,
+            ),
+            ExpressionIntentOptional(
+                id="右歪头",
+                units=frozenset({"右歪头"}),
+                weight=0.6,
+            ),
+            ExpressionIntentOptional(
+                id="嘴部左移",
+                units=frozenset({"嘴部左移"}),
+                weight=0.5,
+            ),
+            ExpressionIntentOptional(
+                id="嘴部右移",
+                units=frozenset({"嘴部右移"}),
+                weight=0.5,
+            ),
+        ),
         forbidden_units=frozenset(
-            {"mouth_corner_down", "mouth_slight_open", "mouth_press", "brow_raise_soft"},
+            {"嘴角下压", "嘴巴微张", "抿嘴", "轻微抬眉"},
         ),
-        output_tags=frozenset({"sinister_smile"}),
-        style_tags=frozenset({"sinister", "mischievous", "threatening"}),
         intensity_range=(0.65, 1.0),
-        variants=(
-            ExpressionIntentVariant(
-                id="mischief",
-                emotion=EmotionKind.JOY,
-                optional_unit_adjustments={"eye_narrow": 0.2},
-                target_offsets={"mouth.smile": 0.08, "head.roll": 0.06},
-                style_tags=frozenset({"mischief_high"}),
-            ),
-            ExpressionIntentVariant(
-                id="threat",
-                emotion=EmotionKind.ANGER,
-                optional_unit_adjustments={"brow_knit": 1.2, "eye_narrow": 0.4},
-                target_offsets={
-                    "eye.gaze.y": 0.18,
-                    "eye.open": -0.12,
-                    "head.pitch": -0.1,
-                },
-                style_tags=frozenset({"threat_high"}),
-            ),
-        ),
         naturalness=0.78,
     ),
     ExpressionIntent(
-        id="bitter_smile",
+        id="苦笑",
         emotion_profile={EmotionKind.JOY: 0.45, EmotionKind.SADNESS: 0.55},
-        required_units=frozenset({"mouth_corner_up", "brow_knit"}),
-        optional_units={
-            "mouth_slight_open": 0.3,
-            "gaze_averted_down": 0.65,
-            "head_down_averted": 0.55,
-        },
-        forbidden_units=frozenset({"gaze_up_white"}),
-        output_tags=frozenset({"bitter_smile"}),
-        style_tags=frozenset({"restrained", "pained", "soft"}),
+        required_units=frozenset(
+            {
+                "嘴角上扬",
+                "皱眉",
+            },
+        ),
+        optional_units=(
+            ExpressionIntentOptional(
+                id="嘴巴微张",
+                units=frozenset({"嘴巴微张"}),
+                weight=0.6,
+            ),
+            ExpressionIntentOptional(
+                id="眼睛下看",
+                units=frozenset({"眼睛下看"}),
+                weight=0.8,
+            ),
+            ExpressionIntentOptional(id="低头", units=frozenset({"低头"}), weight=0.6),
+            ExpressionIntentOptional(
+                id="眼睛左看",
+                units=frozenset({"眼睛左看"}),
+                weight=0.5,
+            ),
+            ExpressionIntentOptional(
+                id="眼睛右看",
+                units=frozenset({"眼睛右看"}),
+                weight=0.5,
+            ),
+        ),
+        forbidden_units=frozenset({"眼睛上看"}),
         intensity_range=(0.35, 0.85),
         naturalness=0.84,
-    ),
-    ExpressionIntent(
-        id="wronged",
-        emotion_profile={EmotionKind.SADNESS: 1.0},
-        required_units=frozenset({"brow_raise_soft", "mouth_corner_down"}),
-        optional_units={"gaze_averted_down": 0.85, "head_down_averted": 0.65},
-        forbidden_units=frozenset(
-            {"mouth_corner_up", "gaze_up_white", "eye_narrow"},
-        ),
-        output_tags=frozenset({"wronged"}),
-        style_tags=frozenset({"vulnerable", "restrained", "soft"}),
-        intensity_range=(0.45, 0.9),
-        naturalness=0.88,
     ),
 )
 
 
 BUILTIN_INTENTS_BY_ID = {intent.id: intent for intent in BUILTIN_EXPRESSION_INTENTS}
-

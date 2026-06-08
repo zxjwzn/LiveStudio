@@ -12,16 +12,9 @@ from livestudio.utils.paths import (
 
 def test_default_config_dir_is_project_configs() -> None:
     assert CONFIG_DIR == PROJECT_ROOT / "configs"
-    assert (
-        config_path("vtube_studio.yaml")
-        == PROJECT_ROOT / "configs" / "vtube_studio.yaml"
-    )
+    assert config_path("vtube_studio.yaml") == PROJECT_ROOT / "configs" / "vtube_studio.yaml"
 
 
 def test_resolve_config_path_keeps_configs_relative_to_project_root() -> None:
-    assert resolve_config_path("models/vtubestudio") == (
-        PROJECT_ROOT / "configs" / "models" / "vtubestudio"
-    )
-    assert resolve_config_path("configs/models/vtubestudio") == (
-        PROJECT_ROOT / "configs" / "models" / "vtubestudio"
-    )
+    assert resolve_config_path("models/vtubestudio") == (PROJECT_ROOT / "configs" / "models" / "vtubestudio")
+    assert resolve_config_path("configs/models/vtubestudio") == (PROJECT_ROOT / "configs" / "models" / "vtubestudio")

@@ -507,8 +507,10 @@ class ItemPinRequestData(VTSEmptyData):
         ]
         | None
     ) = Field(default=None, alias="angleRelativeTo", description="角度参考系")
-    size_relative_to: Literal["RelativeToWorld", "RelativeToCurrentItemSize"] | None = (
-        Field(default=None, alias="sizeRelativeTo", description="尺寸参考系")
+    size_relative_to: Literal["RelativeToWorld", "RelativeToCurrentItemSize"] | None = Field(
+        default=None,
+        alias="sizeRelativeTo",
+        description="尺寸参考系",
     )
     vertex_pin_type: Literal["Provided", "Center", "Random"] | None = Field(
         default=None,

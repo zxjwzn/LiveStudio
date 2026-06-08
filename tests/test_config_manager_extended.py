@@ -15,17 +15,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 import yaml
 from pydantic import BaseModel
 
+from livestudio.config.errors import ConfigFormatError, ConfigLoadError
 from livestudio.config.manager import (
     ConfigManager,
     _delete_at_path,
     _merge_defaults,
     _reset_to_default_at_path,
 )
-from livestudio.config.errors import ConfigFormatError, ConfigLoadError
 
 
 class _Inner(BaseModel):

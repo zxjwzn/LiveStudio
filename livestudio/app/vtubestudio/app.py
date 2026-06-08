@@ -189,10 +189,7 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
             return
 
         current_by_file = {expression.file: expression for expression in expressions}
-        config_by_file = {
-            expression_config.file: expression_config
-            for expression_config in config.expressions
-        }
+        config_by_file = {expression_config.file: expression_config for expression_config in config.expressions}
         changed = False
         for expression in expressions:
             if expression.file in config_by_file:

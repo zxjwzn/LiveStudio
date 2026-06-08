@@ -260,11 +260,7 @@ class AnimationTemplatePlayer:
         *,
         context: Mapping[str, TemplateScalar],
     ) -> SemanticTweenRequest:
-        from_value = (
-            None
-            if action.from_value is None
-            else float(self._evaluate_value(action.from_value, context))
-        )
+        from_value = None if action.from_value is None else float(self._evaluate_value(action.from_value, context))
         return SemanticTweenRequest(
             targets=(
                 SemanticActionTarget(

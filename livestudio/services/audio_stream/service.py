@@ -58,10 +58,7 @@ class AudioStreamRouter(AudioStreamSource):
 
     @property
     def active_source(self) -> AudioStreamSource:
-        if (
-            self._active_source_kind is None
-            or self._sources.get(self._active_source_kind) is None
-        ):
+        if self._active_source_kind is None or self._sources.get(self._active_source_kind) is None:
             raise RuntimeError("音频流路由器当前没有可用的活动音频源")
         return self._sources[self._active_source_kind]
 

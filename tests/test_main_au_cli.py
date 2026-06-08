@@ -20,7 +20,7 @@ def test_au_cli_builds_emotion_request() -> None:
             "--randomness",
             "0",
             "--intent",
-            "bitter_smile",
+            "苦笑",
         ],
     )
 
@@ -32,4 +32,4 @@ def test_au_cli_builds_emotion_request() -> None:
     }
     assert request.intensity == 0.6
     assert request.randomness == 0.0
-    assert request.intent == "bitter_smile"
+    assert request.intent == "苦笑"

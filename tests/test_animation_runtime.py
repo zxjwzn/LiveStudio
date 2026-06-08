@@ -6,8 +6,6 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import _SemanticPlatform as _Platform
-from tests.conftest import _TemplatePlayer
 from livestudio.services.animations.controllers import (
     AnimationController,
     AnimationType,
@@ -15,6 +13,8 @@ from livestudio.services.animations.controllers import (
 )
 from livestudio.services.animations.manager import AnimationManager
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
+from tests.conftest import _SemanticPlatform as _Platform
+from tests.conftest import _TemplatePlayer
 
 
 class _Controller(AnimationController[ControllerSettings]):

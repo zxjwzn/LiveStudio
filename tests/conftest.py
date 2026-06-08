@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterable
 from typing import Literal
-
-import pytest
 
 from livestudio.services.animations.templates import (
     AnimationTemplatePlayer,
@@ -20,9 +17,7 @@ from livestudio.tween import ControlledParameterState, ParameterTweenEngine
 
 class _SenderRecorder:
     def __init__(self) -> None:
-        self.calls: list[
-            tuple[Literal["set", "add"], list[ControlledParameterState]]
-        ] = []
+        self.calls: list[tuple[Literal["set", "add"], list[ControlledParameterState]]] = []
 
     async def __call__(
         self,
@@ -82,10 +77,3 @@ class _SemanticPlatform(PlatformService):
         mode: Literal["set", "add"] = "set",
     ) -> None:
         _ = states, mode
-
-
-@pytest.fixture
-def event_loop_policy():
-    """让 asyncio 使用默认策略，Windows 上 selector 已经够用"""
-
-    return asyncio.DefaultEventLoopPolicy()

@@ -22,9 +22,8 @@ import asyncio
 
 import pytest
 
-from tests.conftest import _SenderRecorder
 from livestudio.tween import Easing, ParameterTweenEngine, TweenRequest
-
+from tests.conftest import _SenderRecorder
 
 # ── release ──────────────────────────────────────────────────────────
 
@@ -262,7 +261,7 @@ async def test_keep_alive_resends_controlled_params() -> None:
 
     assert len(sender.calls) > initial_count, "keep-alive 应该额外发送了参数值"
     # 验证 keep-alive 发送的是正确的参数
-    for mode, states in sender.calls[initial_count:]:
+    for _mode, states in sender.calls[initial_count:]:
         for state in states:
             if state.name == "H":
                 assert state.value == pytest.approx(0.8)
@@ -288,7 +287,7 @@ async def test_keep_alive_does_not_resend_non_keep_alive_params() -> None:
     await engine.stop()
 
     # keep_alive=False 的参数不应被保活循环重发
-    for mode, states in sender.calls[initial_count:]:
+    for _mode, states in sender.calls[initial_count:]:
         for state in states:
             assert state.name != "NoKeep", "keep_alive=False 的参数不应被重发"
 
@@ -340,17 +339,10 @@ async def test_tween_interpolation_is_monotonic_for_linear() -> None:
         ),
     )
 
-    values = [
-        state.value
-        for _, states in sender.calls
-        for state in states
-        if state.name == "Mono"
-    ]
+    values = [state.value for _, states in sender.calls for state in states if state.name == "Mono"]
     assert len(values) >= 2, "应该至少有两次发送"
     for i in range(1, len(values)):
-        assert values[i] >= values[i - 1] - 1e-9, (
-            f"线性缓动应单调递增: values[{i-1}]={values[i-1]}, values[{i}]={values[i]}"
-        )
+        assert values[i] >= values[i - 1] - 1e-9, f"线性缓动应单调递增: values[{i-1}]={values[i-1]}, values[{i}]={values[i]}"
 
 
 # ── delay ────────────────────────────────────────────────────────────
@@ -476,18 +468,8 @@ async def test_concurrent_tweens_on_different_params() -> None:
         ),
     )
 
-    left_values = [
-        state.value
-        for _, states in sender.calls
-        for state in states
-        if state.name == "Left"
-    ]
-    right_values = [
-        state.value
-        for _, states in sender.calls
-        for state in states
-        if state.name == "Right"
-    ]
+    left_values = [state.value for _, states in sender.calls for state in states if state.name == "Left"]
+    right_values = [state.value for _, states in sender.calls for state in states if state.name == "Right"]
     assert left_values, "Left 参数应有发送记录"
     assert right_values, "Right 参数应有发送记录"
     assert left_values[-1] == pytest.approx(0.3, abs=0.05)
@@ -579,12 +561,7 @@ async def test_tween_inherits_current_value_when_start_value_is_none() -> None:
         ),
     )
 
-    values = [
-        state.value
-        for _, states in sender.calls
-        for state in states
-        if state.name == "Inherit"
-    ]
+    values = [state.value for _, states in sender.calls for state in states if state.name == "Inherit"]
     # 第一个缓动发送的值应该是 0.5，后续应从 0.5 开始递增
     assert values[0] == pytest.approx(0.5)
     assert values[-1] == pytest.approx(1.0, abs=0.05)

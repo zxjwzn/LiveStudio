@@ -18,6 +18,8 @@ class SemanticAction(StrEnum):
     EYE_GAZE_Y = "eye.gaze.y"
     MOUTH_OPEN = "mouth.open"
     MOUTH_SMILE = "mouth.smile"
+    MOUTH_X = "mouth.x"
+    MOUTH_Y = "mouth.y"
     HEAD_YAW = "head.yaw"
     HEAD_PITCH = "head.pitch"
     HEAD_ROLL = "head.roll"
@@ -90,6 +92,24 @@ DEFAULT_SEMANTIC_ACTION_SPECS: dict[str, SemanticActionSpec] = {
         default=0.0,
         region="mouth",
         description="嘴角往上扬的程度",
+    ),
+    SemanticAction.MOUTH_X.value: SemanticActionSpec(
+        id=SemanticAction.MOUTH_X.value,
+        minimum=-1.0,
+        maximum=1.0,
+        neutral=0.0,
+        default=0.0,
+        region="mouth",
+        description="嘴部左右移动的位置",
+    ),
+    SemanticAction.MOUTH_Y.value: SemanticActionSpec(
+        id=SemanticAction.MOUTH_Y.value,
+        minimum=-1.0,
+        maximum=1.0,
+        neutral=0.0,
+        default=0.0,
+        region="mouth",
+        description="嘴部上下移动的位置",
     ),
     SemanticAction.HEAD_YAW.value: SemanticActionSpec(
         id=SemanticAction.HEAD_YAW.value,

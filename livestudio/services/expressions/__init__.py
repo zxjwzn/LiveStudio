@@ -4,6 +4,7 @@ from .intents import (
     BUILTIN_EXPRESSION_INTENTS,
     BUILTIN_INTENTS_BY_ID,
     ExpressionIntent,
+    ExpressionIntentOptional,
 )
 from .models import (
     EmotionKind,
@@ -31,6 +32,7 @@ __all__ = [
     "EmotionRequest",
     "ExpressionCombinationRule",
     "ExpressionIntent",
+    "ExpressionIntentOptional",
     "ExpressionRegion",
     "ExpressionSelector",
     "ExpressionService",

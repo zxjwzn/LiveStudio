@@ -19,9 +19,7 @@ class VTubeStudioSemanticAdapter(SemanticActionAdapter):
     def __init__(
         self,
         profile: SemanticActionProfile,
-        parameter_specs: Iterable[PlatformParameterSpec]
-        | dict[str, PlatformParameterSpec]
-        | None = None,
+        parameter_specs: Iterable[PlatformParameterSpec] | dict[str, PlatformParameterSpec] | None = None,
     ) -> None:
         super().__init__(
             profile,
@@ -177,18 +175,12 @@ def default_vtube_studio_parameter_specs() -> tuple[PlatformParameterSpec, ...]:
 
 
 def _merge_parameter_specs(
-    parameter_specs: Iterable[PlatformParameterSpec]
-    | dict[str, PlatformParameterSpec]
-    | None,
+    parameter_specs: Iterable[PlatformParameterSpec] | dict[str, PlatformParameterSpec] | None,
 ) -> dict[str, PlatformParameterSpec]:
     merged = {spec.name: spec for spec in default_vtube_studio_parameter_specs()}
     if parameter_specs is None:
         return merged
-    overrides = (
-        parameter_specs.values()
-        if isinstance(parameter_specs, dict)
-        else parameter_specs
-    )
+    overrides = parameter_specs.values() if isinstance(parameter_specs, dict) else parameter_specs
     merged.update({spec.name: spec for spec in overrides})
     return merged
 
@@ -222,6 +214,10 @@ def default_vtube_studio_semantic_bindings() -> tuple[SemanticActionBinding, ...
             platform_params=["MouthSmile"],
         ),
         SemanticActionBinding(
+            action=SemanticAction.MOUTH_X.value,
+            platform_params=["MouthX"],
+        ),
+        SemanticActionBinding(
             action=SemanticAction.HEAD_YAW.value,
             platform_params=["FaceAngleX"],
         ),
@@ -244,8 +240,5 @@ def default_vtube_studio_semantic_profile(
     return SemanticActionProfile(
         model_id=model_id,
         model_name=model_name,
-        bindings={
-            binding.action: binding
-            for binding in default_vtube_studio_semantic_bindings()
-        },
+        bindings={binding.action: binding for binding in default_vtube_studio_semantic_bindings()},
     )

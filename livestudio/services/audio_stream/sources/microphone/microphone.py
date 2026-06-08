@@ -72,8 +72,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         stream = sd.InputStream(
             device=self._device_info.index,
             channels=self.config.channels,
-            samplerate=self.config.samplerate
-            or int(self._device_info.default_samplerate),
+            samplerate=self.config.samplerate or int(self._device_info.default_samplerate),
             dtype=self.config.dtype,
             blocksize=self.config.blocksize,
             latency=self.config.latency,
@@ -180,10 +179,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self,
         indata: np.ndarray[
             tuple[int, int],
-            np.dtype[np.float32]
-            | np.dtype[np.int16]
-            | np.dtype[np.int32]
-            | np.dtype[np.uint8],
+            np.dtype[np.float32] | np.dtype[np.int16] | np.dtype[np.int32] | np.dtype[np.uint8],
         ],
         frames: int,
         time_info: SoundDeviceTimeInfo,
@@ -195,8 +191,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         chunk = AudioChunk(
             frames=frames,
-            samplerate=self.config.samplerate
-            or int(self.device_info.default_samplerate),
+            samplerate=self.config.samplerate or int(self.device_info.default_samplerate),
             channels=self.config.channels,
             data=indata.copy(),
             overflowed=bool(status.input_overflow),

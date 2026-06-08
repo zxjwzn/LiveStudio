@@ -32,8 +32,7 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
 
         if template_player.platform is not platform:
             raise ValueError(
-                "动画模板播放器绑定的平台与运行时平台不一致: "
-                f"{template_player.platform.name} != {platform.name}",
+                f"动画模板播放器绑定的平台与运行时平台不一致: {template_player.platform.name} != {platform.name}",
             )
 
         for controller in controllers or ():
@@ -96,9 +95,7 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
             await self.initialize()
 
         idle_controllers = [
-            controller
-            for controller in self._controllers.values()
-            if controller.animation_type is AnimationType.IDLE
+            controller for controller in self._controllers.values() if controller.animation_type is AnimationType.IDLE
         ]
         try:
             results = await asyncio.gather(

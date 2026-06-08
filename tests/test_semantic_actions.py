@@ -165,7 +165,7 @@ def test_semantic_adapter_normalizes_platform_values_to_semantic_range() -> None
 def test_semantic_adapter_reports_bound_platform_parameters() -> None:
     adapter = VTubeStudioSemanticAdapter(default_vtube_studio_semantic_profile())
 
-    assert adapter.platform_parameters_for(SemanticAction.MOUTH_SMILE.value) == (
-        "MouthSmile",
-    )
+    assert adapter.platform_parameters_for(SemanticAction.MOUTH_SMILE.value) == ("MouthSmile",)
+    assert adapter.platform_parameters_for(SemanticAction.MOUTH_X.value) == ("MouthX",)
+    assert adapter.platform_parameters_for(SemanticAction.MOUTH_Y.value) == ()
     assert adapter.platform_parameters_for("unknown.action") == ()

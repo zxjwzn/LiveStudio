@@ -95,11 +95,10 @@ def _log_selected_expression(
     )
     for unit in selected.units:
         logger.info(
-            "[AU] {} -> {} targets={} tags={}",
+            "[AU] {} -> {} targets={}",
             "/".join(sorted(region.value for region in unit.regions)),
             unit.id,
             len(unit.targets),
-            ",".join(sorted(unit.action_tags)) or "-",
         )
     for target in selected.targets:
         states = adapter.resolve(target)
@@ -201,7 +200,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--intent",
         default=None,
-        help="指定组合表情意图，比如 sinister_smile、bitter_smile、wronged",
+        help="指定组合表情意图，比如 阴险笑、苦笑、委屈",
     )
     parser.add_argument("--intensity", type=float, default=0.7, help="表情强度 0~1")
     parser.add_argument(

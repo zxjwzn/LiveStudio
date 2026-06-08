@@ -54,12 +54,8 @@ class ExpressionUnit:
     id: str
     regions: frozenset[ExpressionRegion]
     targets: tuple[ExpressionTarget, ...]
-    action_tags: frozenset[str]
     naturalness: float = 1.0
     base_weight: float = 1.0
-    conflicts: frozenset[str] = frozenset()
-    soft_conflicts: Mapping[str, float] = field(default_factory=dict)
-    synergies: Mapping[str, float] = field(default_factory=dict)
     priority: int = 40
     easing: str = "in_out_sine"
 
@@ -73,12 +69,12 @@ class ExpressionCombinationRule:
     """表情动作组合时要遵守的全局兼容规则"""
 
     id: str
+    required_unit_ids: frozenset[str] = frozenset()
+    excluded_unit_ids: frozenset[str] = frozenset()
+    any_of_unit_ids: frozenset[str] = frozenset()
     emotions: frozenset[EmotionKind] = frozenset()
-    require_tags: frozenset[str] = frozenset()
-    forbid_tags: frozenset[str] = frozenset()
-    require_unit_ids: frozenset[str] = frozenset()
-    forbid_unit_ids: frozenset[str] = frozenset()
-    penalty: float = 1.0
+    penalty: float = 0.0
+    bonus: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +85,6 @@ class ScoredExpressionUnit:
     score: float
     template_weight: float
     platform_support: float
-    action_tags: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +109,7 @@ class EmotionRequest(BaseModel):
     )
     intent: str | None = Field(
         default=None,
-        description="可选的组合表情意图，比如 sinister_smile、bitter_smile",
+        description="可选的组合表情意图，比如 阴险笑、苦笑",
     )
     intensity: float = Field(default=0.7, ge=0.0, le=1.0)
     randomness: float = Field(default=0.25, ge=0.0, le=1.0)
@@ -122,7 +117,7 @@ class EmotionRequest(BaseModel):
     history_avoidance: float = Field(default=0.35, ge=0.0, le=1.0)
     duration_scale: float = Field(default=1.0, gt=0.0)
     min_intent_score: float = Field(default=0.28, ge=0.0)
-    max_units: int = Field(default=4, ge=1)
+    max_units: int = Field(default=99, ge=1)
 
     @field_validator("emotions")
     @classmethod
@@ -132,11 +127,9 @@ class EmotionRequest(BaseModel):
     ) -> dict[EmotionKind, float]:
         if not value:
             return {EmotionKind.NEUTRAL: 1.0}
-        return {
-            emotion: max(0.0, min(1.0, weight))
-            for emotion, weight in value.items()
-            if weight > 0.0
-        } or {EmotionKind.NEUTRAL: 1.0}
+        return {emotion: max(0.0, min(1.0, weight)) for emotion, weight in value.items() if weight > 0.0} or {
+            EmotionKind.NEUTRAL: 1.0,
+        }
 
 
 @dataclass(frozen=True, slots=True)

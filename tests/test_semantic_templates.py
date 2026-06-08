@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from tests.conftest import _SemanticPlatform
 from livestudio.services.animations.templates import AnimationTemplatePlayer
 from livestudio.services.animations.templates.models import AnimationTemplate
 from livestudio.services.semantic_actions.models import SemanticAction
+from tests.conftest import _SemanticPlatform
 
 
 def _template() -> AnimationTemplate:

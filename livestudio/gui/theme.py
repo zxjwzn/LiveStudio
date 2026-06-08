@@ -27,9 +27,7 @@ class ColorToken:
         raw = self.hex.lstrip("#")
         # 假设之前的格式是 RRGGBBAA 或者原本就是 RRGGBB
         if len(raw) == 8:
-            raw = (
-                raw[2:] if raw[0:2] != "FF" else raw[:6]
-            )  # Try to remove alpha roughly, keeping RRGGBB
+            raw = raw[2:] if raw[0:2] != "FF" else raw[:6]  # Try to remove alpha roughly, keeping RRGGBB
             # 其实我们可以直接取后 6 位，或者认为原生的 hex 这里主要是 RRGGBB
         if len(raw) > 6:
             raw = raw[-6:]

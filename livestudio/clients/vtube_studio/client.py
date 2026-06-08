@@ -136,11 +136,7 @@ class VTubeStudioClient:
     def is_connected(self) -> bool:
         """现在有没有连上 WebSocket"""
 
-        return (
-            self._connection is not None
-            and self._reader_task is not None
-            and not self._reader_task.done()
-        )
+        return self._connection is not None and self._reader_task is not None and not self._reader_task.done()
 
     async def connect(self) -> None:
         """连上 VTube Studio 的 WebSocket"""
