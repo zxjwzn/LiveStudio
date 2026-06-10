@@ -9,10 +9,10 @@ from livestudio.app import VTubeStudioApp
 from livestudio.services import AudioSourceKind, AudioStreamRouter
 from livestudio.services.animations import AnimationManager
 from livestudio.services.expressions import (
-    BUILTIN_EXPRESSION_UNITS,
     EmotionKind,
     EmotionRequest,
     ExpressionSelector,
+    default_expression_profile,
 )
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudioSemanticAdapter,
@@ -74,7 +74,6 @@ def _parse_emotion_vector(raw_values: list[str]) -> dict[EmotionKind, float]:
 def _build_emotion_request(args: argparse.Namespace) -> EmotionRequest:
     return EmotionRequest(
         emotions=_parse_emotion_vector(args.emotion),
-        intent=args.intent,
         intensity=args.intensity,
         randomness=args.randomness,
         duration_scale=args.duration_scale,
@@ -86,11 +85,11 @@ def _log_selected_expression(
     adapter: SemanticActionAdapter,
 ) -> None:
     logger.info(
-        "[AU] score={:.3f}, intent_match={:.3f}, expression_strength={:.3f}, intent={}, tags={}",
+        "[AU] score={:.3f}, emotion_match={:.3f}, expression_strength={:.3f}, emotion={}, tags={}",
         selected.score,
-        selected.intent_match,
+        selected.emotion_match,
         selected.expression_strength,
-        selected.intent_id or "-",
+        selected.emotion.value,
         ",".join(sorted(selected.semantic_tags)) or "-",
     )
     for unit in selected.units:
@@ -124,9 +123,14 @@ async def preview_au_system(args: argparse.Namespace) -> None:
     """在不连接 VTS 的情况下预览 AU 选择与默认语义映射"""
 
     profile = default_vtube_studio_semantic_profile()
+    expression_profile = default_expression_profile()
     adapter = VTubeStudioSemanticAdapter(profile)
-    selector = ExpressionSelector(BUILTIN_EXPRESSION_UNITS, profile)
-    request = _build_emotion_request(args)
+    selector = ExpressionSelector(
+        expression_profile.to_units(),
+        profile,
+        combination_rules=expression_profile.to_rules(),
+    )
+    request = expression_profile.request_with_runtime_defaults(_build_emotion_request(args))
     selected = selector.preview(request)
     _log_selected_expression(selected, adapter)
 
@@ -195,12 +199,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--emotion",
         action="append",
         default=[],
-        help="情绪名称或 name=weight，可以重复写；每个情绪独立 0~1，比如 --emotion joy=0.9 --emotion anger=0.7",
-    )
-    parser.add_argument(
-        "--intent",
-        default=None,
-        help="指定组合表情意图，比如 阴险笑、苦笑、委屈",
+        help="情绪名称或 name=weight，只能写一个正向情绪，比如 --emotion joy=0.8",
     )
     parser.add_argument("--intensity", type=float, default=0.7, help="表情强度 0~1")
     parser.add_argument(

@@ -10,7 +10,12 @@ from livestudio.services.semantic_actions import (
     SemanticTweenRequest,
 )
 
-from .models import EmotionRequest, ExpressionUnit, SelectedExpression
+from .models import (
+    EmotionRequest,
+    ExpressionProfileConfig,
+    ExpressionUnit,
+    SelectedExpression,
+)
 from .selector import ExpressionSelector
 
 
@@ -22,11 +27,14 @@ class ExpressionService:
         *,
         platform: PlatformService,
         selector: ExpressionSelector,
+        expression_profile: ExpressionProfileConfig | None = None,
     ) -> None:
         self.platform = platform
         self.selector = selector
+        self.expression_profile = expression_profile
 
     async def express(self, request: EmotionRequest) -> SelectedExpression:
+        request = self._with_runtime_defaults(request)
         selected = self.selector.select(request)
         await self.apply_targets(
             selected.targets,
@@ -37,7 +45,7 @@ class ExpressionService:
         return selected
 
     def preview(self, request: EmotionRequest) -> SelectedExpression:
-        return self.selector.preview(request)
+        return self.selector.preview(self._with_runtime_defaults(request))
 
     async def apply_units(
         self,
@@ -79,3 +87,8 @@ class ExpressionService:
             if unit.targets:
                 return unit.easing
         return "in_out_sine"
+
+    def _with_runtime_defaults(self, request: EmotionRequest) -> EmotionRequest:
+        if self.expression_profile is None:
+            return request
+        return self.expression_profile.request_with_runtime_defaults(request)

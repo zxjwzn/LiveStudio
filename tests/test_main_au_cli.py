@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from livestudio.services.expressions import EmotionKind
 from main import _build_emotion_request, _build_parser
 
@@ -13,23 +15,31 @@ def test_au_cli_builds_emotion_request() -> None:
             "--au-preview",
             "--emotion",
             "joy=0.8",
-            "--emotion",
-            "sadness=0.2",
             "--intensity",
             "0.6",
             "--randomness",
             "0",
-            "--intent",
-            "苦笑",
         ],
     )
 
     request = _build_emotion_request(args)
 
-    assert request.emotions == {
-        EmotionKind.JOY: 0.8,
-        EmotionKind.SADNESS: 0.2,
-    }
+    assert request.emotions == {EmotionKind.JOY: 0.8}
     assert request.intensity == 0.6
     assert request.randomness == 0.0
-    assert request.intent == "苦笑"
+
+
+def test_au_cli_rejects_multiple_emotions() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "--au-preview",
+            "--emotion",
+            "joy=0.8",
+            "--emotion",
+            "sadness=0.2",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="只能包含一个正向情绪强度"):
+        _build_emotion_request(args)
