@@ -24,7 +24,11 @@ from livestudio.services.animations import (
     MouthSyncController,
 )
 from livestudio.services.audio_stream import AudioStreamSource
-from livestudio.services.expressions import ExpressionSelector, ExpressionService
+from livestudio.services.expressions import (
+    BUILTIN_EXPRESSION_UNITS,
+    ExpressionSelector,
+    ExpressionService,
+)
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
@@ -247,12 +251,10 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         """按当前模型配置刷新情绪驱动表情服务"""
 
         selector = ExpressionSelector(
-            config.expression_profile.to_units(),
+            BUILTIN_EXPRESSION_UNITS,
             config.semantic_profile,
-            combination_rules=config.expression_profile.to_rules(),
         )
         self._expression_service = ExpressionService(
             platform=self.platform,
             selector=selector,
-            expression_profile=config.expression_profile,
         )

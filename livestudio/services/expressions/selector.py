@@ -1,4 +1,4 @@
-"""按单个情绪强度解算 AU 组合的选择器"""
+"""按情绪挑表情动作的选择器"""
 
 from __future__ import annotations
 
@@ -15,31 +15,42 @@ from livestudio.services.semantic_actions import (
     clamp_semantic_value,
 )
 
+from .intents import (
+    BUILTIN_EXPRESSION_INTENTS,
+    ExpressionIntent,
+    ExpressionIntentOptional,
+)
 from .models import (
     EmotionKind,
     EmotionRequest,
     ExpressionCombinationRule,
     ExpressionRegion,
-    ExpressionRuleKind,
     ExpressionSignature,
     ExpressionTarget,
     ExpressionUnit,
     ScoredExpressionUnit,
     SelectedExpression,
-    units_by_region,
 )
 from .rules import BUILTIN_COMBINATION_RULES
 
 
 @dataclass(frozen=True, slots=True)
-class EmotionSolverState:
-    emotion: EmotionKind
-    strength: float
+class EmotionVectorState:
+    composition: Mapping[EmotionKind, float]
+    energy: float
     effective_intensity: float
+    explicit_intent: bool
+
+
+@dataclass(frozen=True, slots=True)
+class OptionalUnitCandidate:
+    units: tuple[ExpressionUnit, ...]
+    score: float
+    weight: float
 
 
 class ExpressionSelector:
-    """根据一个归一化情绪强度，从 AU 相关性和规则中解算表情"""
+    """根据情绪请求挑出一个或多个能表达意图的表情动作"""
 
     def __init__(
         self,
@@ -47,66 +58,326 @@ class ExpressionSelector:
         semantic_profile: SemanticActionProfile,
         *,
         rng: random.Random | None = None,
-        top_candidates: int = 14,
+        top_candidates: int = 12,
+        beam_width: int = 8,
         recent_size: int = 16,
-        combination_rules: Iterable[
-            ExpressionCombinationRule
-        ] = BUILTIN_COMBINATION_RULES,
+        intents: Iterable[ExpressionIntent] = BUILTIN_EXPRESSION_INTENTS,
+        combination_rules: Iterable[ExpressionCombinationRule] = BUILTIN_COMBINATION_RULES,
     ) -> None:
         self.units = tuple(units)
         self.units_by_id = {unit.id: unit for unit in self.units}
         self.semantic_profile = semantic_profile
         self.rng = rng or random.Random()
         self.top_candidates = top_candidates
+        self.beam_width = beam_width
         self._recent_unit_ids: deque[str] = deque(maxlen=recent_size)
         self._recent_expressions: deque[ExpressionSignature] = deque(maxlen=recent_size)
+        self.intents = tuple(intents)
+        self.intents_by_id = {intent.id: intent for intent in self.intents}
         self.combination_rules = tuple(combination_rules)
 
     def select(self, request: EmotionRequest) -> SelectedExpression:
-        state = self._emotion_solver_state(request)
-        candidates = self._score_candidates(request, state)
-        selected_scored = self._select_scored_units(candidates, request, state)
-        if not selected_scored:
-            raise ValueError(f"no AU candidates match emotion {state.emotion.value}")
+        emotion_state = self._emotion_vector_state(request)
+        intent = self._resolve_intent(request, emotion_state)
+        return self._select_from_intent(intent, request, emotion_state)
 
-        combo_score = self._score_combo(selected_scored, request, state)
-        if not math.isfinite(combo_score):
+    def _resolve_intent(
+        self,
+        request: EmotionRequest,
+        emotion_state: EmotionVectorState,
+    ) -> ExpressionIntent:
+        if request.intent is not None:
+            intent = self.intents_by_id.get(request.intent)
+            if intent is None:
+                raise ValueError(f"unknown expression intent: {request.intent}")
+            return intent
+
+        scored = [(self._score_intent(intent, request, emotion_state), intent) for intent in self.intents]
+        scored.sort(key=lambda item: item[0], reverse=True)
+        if not scored or scored[0][0] < 0.5:
+            raise ValueError("no expression intent matches request")
+        return scored[0][1]
+
+    def _score_intent(
+        self,
+        intent: ExpressionIntent,
+        request: EmotionRequest,
+        emotion_state: EmotionVectorState,
+    ) -> float:
+        emotion_score = self._emotion_signature_match(
+            intent.emotion_profile,
+            emotion_state.composition,
+        )
+        if emotion_score <= 0.0:
+            return 0.0
+        energy_low, energy_high = intent.energy_range
+        if energy_low <= emotion_state.energy <= energy_high:
+            energy_score = 1.0
+        else:
+            energy_distance = min(
+                abs(emotion_state.energy - energy_low),
+                abs(emotion_state.energy - energy_high),
+            )
+            energy_score = max(0.0, 1.0 - energy_distance)
+        intensity_low, intensity_high = intent.intensity_range
+        if intensity_low <= request.intensity <= intensity_high:
+            intensity_score = 1.0
+        else:
+            distance = min(
+                abs(request.intensity - intensity_low),
+                abs(request.intensity - intensity_high),
+            )
+            intensity_score = max(0.0, 1.0 - distance)
+        available_score = self._intent_availability_score(intent)
+        return (
+            emotion_score * 0.62
+            + energy_score * 0.14
+            + intensity_score * 0.10
+            + available_score * 0.08
+            + intent.naturalness * 0.06
+        )
+
+    def _emotion_signature_match(
+        self,
+        expected: Mapping[EmotionKind, float],
+        actual: Mapping[EmotionKind, float],
+    ) -> float:
+        all_emotions = set(expected) | set(actual)
+        distance = sum(
+            abs(
+                max(0.0, expected.get(emotion, 0.0)) - max(0.0, actual.get(emotion, 0.0)),
+            )
+            for emotion in all_emotions
+        )
+        return max(0.0, 1.0 - distance / 2.0)
+
+    def _emotion_vector_state(self, request: EmotionRequest) -> EmotionVectorState:
+        expressive = {
+            emotion: max(0.0, value)
+            for emotion, value in request.emotions.items()
+            if emotion is not EmotionKind.NEUTRAL and value > 0.0
+        }
+        if not expressive:
+            expressive = {
+                EmotionKind.NEUTRAL: max(
+                    0.0,
+                    request.emotions.get(EmotionKind.NEUTRAL, 1.0),
+                ),
+            }
+
+        total = sum(expressive.values())
+        composition = (
+            {emotion: value / total for emotion, value in expressive.items()} if total > 0.0 else {EmotionKind.NEUTRAL: 1.0}
+        )
+        energy = max(expressive.values(), default=0.0)
+        explicit_intent = request.intent is not None
+        effective_intensity = request.intensity if explicit_intent else request.intensity * energy
+        return EmotionVectorState(
+            composition=composition,
+            energy=energy,
+            effective_intensity=effective_intensity,
+            explicit_intent=explicit_intent,
+        )
+
+    def _intent_availability_score(self, intent: ExpressionIntent) -> float:
+        required_units = [self.units_by_id[unit_id] for unit_id in intent.required_units if unit_id in self.units_by_id]
+        if len(required_units) != len(intent.required_units):
+            return 0.0
+        return self.semantic_profile.support_score(
+            SemanticActionTarget(target.action, 0.0, target.weight) for unit in required_units for target in unit.targets
+        )
+
+    def _select_from_intent(
+        self,
+        intent: ExpressionIntent,
+        request: EmotionRequest,
+        emotion_state: EmotionVectorState,
+    ) -> SelectedExpression:
+        missing = [unit_id for unit_id in intent.required_units if unit_id not in self.units_by_id]
+        if missing:
             raise ValueError(
-                f"cannot build a compatible AU expression for {state.emotion.value}"
+                f"intent {intent.id} references unknown required units: {', '.join(missing)}",
             )
 
-        targets = self._merge_scored_targets(selected_scored, request, state)
-        units = tuple(scored.unit for scored in selected_scored)
-        semantic_tags = frozenset({state.emotion.value, "au_solver"})
+        required = [self.units_by_id[unit_id] for unit_id in intent.required_units]
+        forbidden = set(intent.forbidden_units)
+        variant_strengths = self._intent_variant_strengths(intent, emotion_state)
+        optional_items = self._intent_optional_items(intent, variant_strengths)
+        optional_weights = self._unit_optional_weights(optional_items)
+        candidates = [
+            self._score_unit_for_template(unit, optional_weights.get(unit.id, 0.0))
+            for unit in self.units
+            if unit.id not in forbidden and unit.id not in intent.required_units
+        ]
+        candidates = [
+            candidate for candidate in candidates if candidate.platform_support >= 1.0 and candidate.template_weight >= 0.2
+        ]
+        candidates = self._choose_optional_exclusive_candidates(
+            candidates,
+            optional_weights,
+            request,
+        )
+        candidates = self._filter_optional_candidates_by_randomness(
+            candidates,
+            request,
+        )
+        optional_candidates = self._build_optional_candidates(
+            intent,
+            optional_items,
+            candidates,
+            optional_weights,
+            forbidden,
+            request,
+        )
+        optional_candidates.sort(
+            key=lambda candidate: (candidate.weight, candidate.score),
+            reverse=True,
+        )
+
+        selected_units = list(required)
+        selected_unit_ids = {unit.id for unit in selected_units}
+        for candidate in optional_candidates:
+            if len(selected_units) >= request.max_units:
+                break
+            candidate_unit_ids = {unit.id for unit in candidate.units}
+            if selected_unit_ids.intersection(candidate_unit_ids):
+                continue
+            if len(selected_units) + len(candidate.units) > request.max_units:
+                continue
+            trial_units = (*selected_units, *candidate.units)
+            trial_scored = tuple(
+                self._score_unit_for_template(
+                    unit,
+                    1.0 if unit.id in intent.required_units else optional_weights.get(unit.id, 0.0),
+                )
+                for unit in trial_units
+            )
+            if math.isfinite(self._score_combo(trial_scored, request)):
+                selected_units.extend(candidate.units)
+                selected_unit_ids.update(candidate_unit_ids)
+
+        scored_combo = tuple(
+            self._score_unit_for_template(
+                unit,
+                1.0 if unit.id in intent.required_units else optional_weights.get(unit.id, 0.0),
+            )
+            for unit in selected_units
+        )
+        combo_score = self._score_combo(scored_combo, request)
+        if not math.isfinite(combo_score):
+            raise ValueError(f"intent {intent.id} cannot build a compatible expression")
+
+        units = tuple(selected_units)
+        target_offsets = self._intent_target_offsets(intent, variant_strengths)
+        targets = self._merge_targets(
+            units,
+            request,
+            emotion_state=emotion_state,
+            target_offsets=target_offsets,
+        )
+        semantic_tags = frozenset({self._dominant_emotion(request).value, intent.id})
 
         for unit in units:
             self._recent_unit_ids.append(unit.id)
         self._recent_expressions.append(
-            self._build_signature(units, targets, semantic_tags, request, state),
+            self._build_signature(units, targets, semantic_tags, request),
         )
 
         return SelectedExpression(
             units=units,
-            emotion=state.emotion,
-            units_by_region=units_by_region(units),
+            intent_id=intent.id,
+            units_by_region=self._units_by_region(units),
             score=combo_score,
-            emotion_match=max(
-                (scored.correlation for scored in selected_scored), default=0.0
-            ),
-            expression_strength=state.effective_intensity,
+            intent_match=self._score_intent(intent, request, emotion_state),
+            expression_strength=emotion_state.effective_intensity,
             semantic_tags=semantic_tags,
             targets=targets,
         )
 
+    def _intent_variant_strengths(
+        self,
+        intent: ExpressionIntent,
+        emotion_state: EmotionVectorState,
+    ) -> dict[str, float]:
+        intent_composition = self._normalized_emotions(intent.emotion_profile)
+        strengths: dict[str, float] = {}
+        for variant in intent.variants:
+            expected = max(0.0, intent_composition.get(variant.emotion, 0.0))
+            actual = max(0.0, emotion_state.composition.get(variant.emotion, 0.0))
+            delta = actual - expected
+            if variant.direction == "below":
+                delta = -delta
+            strengths[variant.id] = max(
+                0.0,
+                min(1.0, delta * emotion_state.energy * 4.0),
+            )
+        return strengths
+
+    def _normalized_emotions(
+        self,
+        emotions: Mapping[EmotionKind, float],
+    ) -> dict[EmotionKind, float]:
+        values = {emotion: max(0.0, value) for emotion, value in emotions.items() if value > 0.0}
+        total = sum(values.values())
+        if total <= 0.0:
+            return {EmotionKind.NEUTRAL: 1.0}
+        return {emotion: value / total for emotion, value in values.items()}
+
+    def _intent_optional_items(
+        self,
+        intent: ExpressionIntent,
+        variant_strengths: Mapping[str, float],
+    ) -> tuple[ExpressionIntentOptional, ...]:
+        weights = {item.id: item.weight for item in intent.optional_units}
+        variants_by_id = {variant.id: variant for variant in intent.variants}
+        for variant_id, strength in variant_strengths.items():
+            variant = variants_by_id[variant_id]
+            for item_id, adjustment in variant.optional_adjustments.items():
+                weights[item_id] = max(
+                    0.0,
+                    weights.get(item_id, 0.0) + adjustment * strength,
+                )
+        return tuple(
+            ExpressionIntentOptional(
+                id=item.id,
+                units=item.units,
+                weight=weights.get(item.id, item.weight),
+            )
+            for item in intent.optional_units
+        )
+
+    def _unit_optional_weights(
+        self,
+        optional_items: tuple[ExpressionIntentOptional, ...],
+    ) -> dict[str, float]:
+        weights: dict[str, float] = {}
+        for item in optional_items:
+            for unit_id in item.units:
+                weights[unit_id] = max(weights.get(unit_id, 0.0), item.weight)
+        return weights
+
+    def _intent_target_offsets(
+        self,
+        intent: ExpressionIntent,
+        variant_strengths: Mapping[str, float],
+    ) -> dict[str, float]:
+        offsets: dict[str, float] = {}
+        variants_by_id = {variant.id: variant for variant in intent.variants}
+        for variant_id, strength in variant_strengths.items():
+            variant = variants_by_id[variant_id]
+            for action, offset in variant.target_offsets.items():
+                offsets[action] = offsets.get(action, 0.0) + offset * strength
+        return offsets
+
     def preview(self, request: EmotionRequest) -> SelectedExpression:
-        unit_state = tuple(self._recent_unit_ids)
+        state = tuple(self._recent_unit_ids)
         expression_state = tuple(self._recent_expressions)
         rng_state = self.rng.getstate()
         try:
             return self.select(request)
         finally:
             self._recent_unit_ids.clear()
-            self._recent_unit_ids.extend(unit_state)
+            self._recent_unit_ids.extend(state)
             self._recent_expressions.clear()
             self._recent_expressions.extend(expression_state)
             self.rng.setstate(rng_state)
@@ -116,231 +387,66 @@ class ExpressionSelector:
         units: Iterable[ExpressionUnit],
         request: EmotionRequest | None = None,
     ) -> tuple[SemanticActionTarget, ...]:
-        resolved_request = request or EmotionRequest(
-            emotions={EmotionKind.NEUTRAL: 1.0},
-            intensity=1.0,
-            randomness=0.0,
-            diversity=0.0,
-            history_avoidance=0.0,
-        )
-        state = self._emotion_solver_state(resolved_request)
-        scored_units = tuple(
-            ScoredExpressionUnit(
-                unit=unit,
-                score=1.0,
-                activation=1.0,
-                correlation=max(0.0, unit.correlation_for(state.emotion)),
-                platform_support=self._platform_support(unit),
-            )
-            for unit in units
-        )
-        return self._merge_scored_targets(scored_units, resolved_request, state)
-
-    def _emotion_solver_state(self, request: EmotionRequest) -> EmotionSolverState:
-        strength = request.emotion_strength
-        effective_intensity = request.intensity * strength
-        return EmotionSolverState(
-            emotion=request.emotion,
-            strength=strength,
-            effective_intensity=effective_intensity,
+        return self._merge_targets(
+            units,
+            request
+            or EmotionRequest(
+                emotions={EmotionKind.NEUTRAL: 1.0},
+                intensity=1.0,
+                randomness=0.0,
+            ),
         )
 
-    def _score_candidates(
+    def _score_unit_for_template(
         self,
-        request: EmotionRequest,
-        state: EmotionSolverState,
-    ) -> list[ScoredExpressionUnit]:
-        candidates: list[ScoredExpressionUnit] = []
-        for unit in self.units:
-            scored = self._score_unit(unit, request, state)
-            if scored is None:
-                continue
-            candidates.append(scored)
-
-        candidates.sort(key=lambda scored: scored.score, reverse=True)
-        return candidates[: self.top_candidates]
+        unit: ExpressionUnit,
+        template_weight: float,
+    ) -> ScoredExpressionUnit:
+        target_tuple = self._targets_for_unit(unit, None)
+        platform_support = self.semantic_profile.support_score(
+            SemanticActionTarget(target.action, 0.0, target.weight) for target in target_tuple
+        )
+        novelty = 0.3 if unit.id in self._recent_unit_ids else 1.0
+        score = (
+            max(0.0, template_weight) * 0.55
+            + platform_support * 0.20
+            + unit.naturalness * 0.15
+            + unit.base_weight * 0.05
+            + novelty * 0.05
+        )
+        return ScoredExpressionUnit(
+            unit=unit,
+            score=max(0.0, score),
+            template_weight=max(0.0, template_weight),
+            platform_support=platform_support,
+        )
 
     def _score_unit(
         self,
         unit: ExpressionUnit,
         request: EmotionRequest,
-        state: EmotionSolverState,
-    ) -> ScoredExpressionUnit | None:
-        platform_support = self._platform_support(unit)
-        if platform_support < 1.0:
-            return None
-
-        correlation = unit.correlation_for(state.emotion)
-        if correlation <= 0.0:
-            return None
-
-        activation_input = correlation * state.effective_intensity
-        if activation_input <= unit.activation_threshold:
-            return None
-
-        denominator = max(1e-6, 1.0 - unit.activation_threshold)
-        activation = max(
-            0.0, min(1.0, (activation_input - unit.activation_threshold) / denominator)
-        )
-        if activation <= 0.0:
-            return None
-
-        novelty = 0.35 if unit.id in self._recent_unit_ids else 1.0
-        score = (
-            activation * 0.52
-            + correlation * 0.18
-            + unit.naturalness * 0.12
-            + unit.base_weight * 0.08
-            + platform_support * 0.05
-            + novelty * 0.05
-        )
-        score *= unit.base_weight
-        score -= self._unit_history_penalty(unit, request, state)
-
-        if score < request.min_au_score:
-            return None
-
-        return ScoredExpressionUnit(
-            unit=unit,
-            score=max(0.0, score),
-            activation=activation,
-            correlation=correlation,
-            platform_support=platform_support,
-        )
-
-    def _platform_support(self, unit: ExpressionUnit) -> float:
-        return self.semantic_profile.support_score(
-            SemanticActionTarget(target.action, 0.0, target.weight)
-            for target in unit.targets
-        )
-
-    def _unit_history_penalty(
-        self,
-        unit: ExpressionUnit,
-        request: EmotionRequest,
-        state: EmotionSolverState,
-    ) -> float:
-        if request.history_avoidance <= 0.0 or not self._recent_expressions:
-            return 0.0
-
-        recency_weight = 0.0
-        total = len(self._recent_expressions)
-        for index, signature in enumerate(self._recent_expressions):
-            if (
-                signature.emotion is not state.emotion
-                or unit.id not in signature.unit_ids
-            ):
-                continue
-            recency_weight = max(recency_weight, (index + 1) / total)
-        return recency_weight * request.history_avoidance * 0.18
-
-    def _select_scored_units(
-        self,
-        candidates: list[ScoredExpressionUnit],
-        request: EmotionRequest,
-        state: EmotionSolverState,
-    ) -> tuple[ScoredExpressionUnit, ...]:
-        selected: list[ScoredExpressionUnit] = []
-        ordered = sorted(
-            candidates,
-            key=lambda scored: self._selection_rank(scored, request),
-            reverse=True,
-        )
-
-        for candidate in ordered:
-            if len(selected) >= request.max_units:
-                break
-            if not self._should_select_candidate(candidate, request):
-                continue
-            resolved = self._resolve_mutex_conflicts(selected, candidate)
-            if resolved is None:
-                continue
-            trial = [*resolved, candidate]
-            if not math.isfinite(self._score_combo(tuple(trial), request, state)):
-                continue
-            selected = trial
-
-        if selected:
-            return tuple(
-                sorted(selected, key=lambda scored: scored.score, reverse=True)
-            )
-        return tuple(candidates[:1])
-
-    def _selection_rank(
-        self, scored: ScoredExpressionUnit, request: EmotionRequest
-    ) -> float:
-        if request.randomness <= 0.0:
-            return scored.score
-        noise = (
-            self.rng.uniform(-1.0, 1.0) * request.randomness * request.diversity * 0.25
-        )
-        return scored.score + noise
-
-    def _should_select_candidate(
-        self,
-        scored: ScoredExpressionUnit,
-        request: EmotionRequest,
-    ) -> bool:
-        if scored.score >= request.core_score or scored.activation >= 0.66:
-            return True
-        if request.randomness <= 0.0:
-            return True
-        probability = min(
-            1.0,
-            max(0.05, scored.score) * (0.55 + request.diversity * 0.55)
-            + scored.activation * 0.25,
-        )
-        return self.rng.random() <= probability
-
-    def _resolve_mutex_conflicts(
-        self,
-        selected: list[ScoredExpressionUnit],
-        candidate: ScoredExpressionUnit,
-    ) -> list[ScoredExpressionUnit] | None:
-        resolved = list(selected)
-        for rule in self.combination_rules:
-            if rule.kind is not ExpressionRuleKind.MUTEX:
-                continue
-            if candidate.unit.id not in rule.unit_ids:
-                continue
-            conflicts = [
-                scored for scored in resolved if scored.unit.id in rule.unit_ids
-            ]
-            for conflict in conflicts:
-                if self._candidate_beats_conflict(candidate, conflict):
-                    resolved.remove(conflict)
-                    continue
-                return None
-        return resolved
-
-    def _candidate_beats_conflict(
-        self,
-        candidate: ScoredExpressionUnit,
-        conflict: ScoredExpressionUnit,
-    ) -> bool:
-        if candidate.score > conflict.score + 0.03:
-            return True
-        if abs(candidate.score - conflict.score) <= 0.03:
-            return candidate.unit.priority > conflict.unit.priority
-        return False
+    ) -> ScoredExpressionUnit:
+        _ = request
+        return self._score_unit_for_template(unit, unit.base_weight)
 
     def _score_combo(
         self,
         combo: tuple[ScoredExpressionUnit, ...],
         request: EmotionRequest,
-        state: EmotionSolverState,
     ) -> float:
         if not combo:
             return -math.inf
 
         unit_ids = {scored.unit.id for scored in combo}
-        score = sum(scored.score for scored in combo)
-        score += self._coverage_score(combo) * 0.14
-        score -= max(0, len(combo) - 1) * 0.06
-        score += self._combination_rule_score(unit_ids, state)
-        if not math.isfinite(score):
+        rule_score = self._combination_rule_score(unit_ids, request)
+        if rule_score == -math.inf:
             return -math.inf
-        score -= self._history_penalty(combo, request, state)
+
+        score = sum(scored.score for scored in combo)
+        score += rule_score
+        score += self._coverage_score(combo) * 0.18
+        score -= self._history_penalty(combo, request)
+        score -= max(0, len(combo) - 1) * 0.08
         return score
 
     def _coverage_score(self, combo: tuple[ScoredExpressionUnit, ...]) -> float:
@@ -350,50 +456,156 @@ class ExpressionSelector:
     def _combination_rule_score(
         self,
         unit_ids: set[str],
-        state: EmotionSolverState,
+        request: EmotionRequest,
     ) -> float:
         score = 0.0
+        active_emotions = {emotion for emotion, weight in request.emotions.items() if weight > 0.0}
         for rule in self.combination_rules:
-            if rule.emotions and state.emotion not in rule.emotions:
+            if rule.emotions and not rule.emotions.intersection(active_emotions):
                 continue
-            if rule.kind is ExpressionRuleKind.MUTEX:
-                if len(unit_ids & rule.unit_ids) > 1:
-                    return -math.inf
+            if rule.required_unit_ids and not rule.required_unit_ids.issubset(unit_ids):
                 continue
-            if rule.kind is ExpressionRuleKind.SYNERGY:
-                if rule.unit_ids and rule.unit_ids.issubset(unit_ids):
-                    score += rule.bonus
-                continue
-            if rule.kind is ExpressionRuleKind.SUPPRESSION:
-                if rule.source_unit_id in unit_ids and rule.target_unit_id in unit_ids:
-                    score -= max(rule.penalty, rule.strength)
-                continue
-            if rule.kind is ExpressionRuleKind.DEPENDENCY:
-                if (
-                    rule.source_unit_id in unit_ids
-                    and rule.target_unit_id not in unit_ids
-                ):
-                    if math.isinf(rule.penalty):
-                        return -math.inf
-                    score -= rule.penalty
-                continue
-            if rule.kind is ExpressionRuleKind.PRESERVE and rule.unit_ids.intersection(
-                unit_ids
+            if rule.excluded_unit_ids and not rule.excluded_unit_ids.intersection(
+                unit_ids,
             ):
-                score += rule.bonus
+                continue
+            if rule.any_of_unit_ids and len(rule.any_of_unit_ids.intersection(unit_ids)) <= 1:
+                continue
+            if math.isinf(rule.penalty):
+                return -math.inf
+            score += rule.bonus - rule.penalty
         return score
+
+    def _choose_optional_exclusive_candidates(
+        self,
+        candidates: list[ScoredExpressionUnit],
+        optional_weights: Mapping[str, float],
+        request: EmotionRequest,
+    ) -> list[ScoredExpressionUnit]:
+        candidates_by_id = {candidate.unit.id: candidate for candidate in candidates}
+        chosen_unit_ids: set[str] = set()
+        handled_unit_ids: set[str] = set()
+
+        for rule in self.combination_rules:
+            if not rule.any_of_unit_ids or not math.isinf(rule.penalty):
+                continue
+            group_candidates = [
+                candidates_by_id[unit_id]
+                for unit_id in rule.any_of_unit_ids
+                if unit_id in candidates_by_id and unit_id in optional_weights
+            ]
+            if len(group_candidates) <= 1:
+                continue
+            handled_unit_ids.update(candidate.unit.id for candidate in group_candidates)
+            chosen = self._choose_one_optional_candidate(group_candidates, request)
+            chosen_unit_ids.add(chosen.unit.id)
+
+        return [
+            candidate
+            for candidate in candidates
+            if candidate.unit.id not in handled_unit_ids or candidate.unit.id in chosen_unit_ids
+        ]
+
+    def _filter_optional_candidates_by_randomness(
+        self,
+        candidates: list[ScoredExpressionUnit],
+        request: EmotionRequest,
+    ) -> list[ScoredExpressionUnit]:
+        if request.randomness <= 0.0:
+            return candidates
+
+        filtered: list[ScoredExpressionUnit] = []
+        for candidate in candidates:
+            if self._optional_weight_is_triggered(candidate.template_weight, request):
+                filtered.append(candidate)
+        return filtered
+
+    def _build_optional_candidates(
+        self,
+        intent: ExpressionIntent,
+        optional_items: tuple[ExpressionIntentOptional, ...],
+        unit_candidates: list[ScoredExpressionUnit],
+        optional_weights: Mapping[str, float],
+        forbidden: set[str],
+        request: EmotionRequest,
+    ) -> list[OptionalUnitCandidate]:
+        _ = optional_weights
+        optional_candidates: list[OptionalUnitCandidate] = []
+        candidate_unit_ids = {candidate.unit.id for candidate in unit_candidates}
+
+        for item in optional_items:
+            if item.weight < 0.2:
+                continue
+            if request.randomness > 0.0 and not self._optional_weight_is_triggered(
+                item.weight,
+                request,
+            ):
+                continue
+            item_units = tuple(
+                self.units_by_id[unit_id]
+                for unit_id in item.units
+                if unit_id in self.units_by_id
+                and unit_id not in forbidden
+                and unit_id not in intent.required_units
+                and unit_id in candidate_unit_ids
+            )
+            if len(item_units) != len(item.units):
+                continue
+            scored_units = tuple(self._score_unit_for_template(unit, item.weight) for unit in item_units)
+            if any(scored.platform_support < 1.0 for scored in scored_units):
+                continue
+            optional_candidates.append(
+                OptionalUnitCandidate(
+                    units=item_units,
+                    score=sum(scored.score for scored in scored_units),
+                    weight=item.weight,
+                ),
+            )
+
+        return optional_candidates
+
+    def _optional_weight_is_triggered(
+        self,
+        weight: float,
+        request: EmotionRequest,
+    ) -> bool:
+        exponent = 1.0 + request.randomness * 2.0
+        chance = 1.0 - (1.0 - min(1.0, weight)) ** exponent
+        return self.rng.random() <= chance
+
+    def _choose_one_optional_candidate(
+        self,
+        candidates: list[ScoredExpressionUnit],
+        request: EmotionRequest,
+    ) -> ScoredExpressionUnit:
+        ranked = sorted(
+            candidates,
+            key=lambda candidate: (candidate.template_weight, candidate.score),
+            reverse=True,
+        )
+        if request.randomness <= 0.0:
+            return ranked[0]
+
+        weights = [max(0.001, candidate.template_weight * max(0.001, candidate.score)) for candidate in ranked]
+        total = sum(weights)
+        threshold = self.rng.random() * total
+        cumulative = 0.0
+        for candidate, weight in zip(ranked, weights, strict=True):
+            cumulative += weight
+            if cumulative >= threshold:
+                return candidate
+        return ranked[-1]
 
     def _history_penalty(
         self,
         combo: tuple[ScoredExpressionUnit, ...],
         request: EmotionRequest,
-        state: EmotionSolverState,
     ) -> float:
         if not self._recent_expressions or request.history_avoidance <= 0.0:
             return 0.0
         units = tuple(scored.unit for scored in combo)
-        targets = self._merge_scored_targets(combo, request, state)
-        signature = self._build_signature(units, targets, frozenset(), request, state)
+        targets = self._merge_targets(units, request)
+        signature = self._build_signature(units, targets, frozenset(), request)
         max_similarity = 0.0
         total = len(self._recent_expressions)
         for index, recent in enumerate(self._recent_expressions):
@@ -404,17 +616,21 @@ class ExpressionSelector:
             )
         return max_similarity * request.history_avoidance
 
-    def _merge_scored_targets(
+    def _merge_targets(
         self,
-        scored_units: Iterable[ScoredExpressionUnit],
+        units: Iterable[ExpressionUnit],
         request: EmotionRequest,
-        state: EmotionSolverState,
+        *,
+        emotion_state: EmotionVectorState | None = None,
+        target_offsets: Mapping[str, float] | None = None,
     ) -> tuple[SemanticActionTarget, ...]:
         merged: dict[str, tuple[float, float]] = {}
         range_limits: dict[str, tuple[float, float]] = {}
         order: list[str] = []
-        for scored in scored_units:
-            for target in scored.unit.targets:
+        offsets = target_offsets or {}
+        state = emotion_state or self._emotion_vector_state(request)
+        for unit in units:
+            for target in self._targets_for_unit(unit, request):
                 if target.action not in merged:
                     order.append(target.action)
                     merged[target.action] = (0.0, 0.0)
@@ -424,10 +640,8 @@ class ExpressionSelector:
                         max(low, target.value_range[0]),
                         min(high, target.value_range[1]),
                     )
-                value = self._resolve_target_value(
-                    target, scored.activation, request, state
-                )
-                weight = max(0.0, target.weight) * max(0.05, scored.activation)
+                value = self._resolve_target_value(target, request, state)
+                weight = max(0.0, target.weight)
                 weighted_value, total_weight = merged[target.action]
                 merged[target.action] = (
                     weighted_value + value * weight,
@@ -439,30 +653,29 @@ class ExpressionSelector:
             weighted_value, total_weight = merged[action]
             if total_weight <= 0.0:
                 continue
-            value = weighted_value / total_weight
+            value = weighted_value / total_weight + offsets.get(action, 0.0)
             if action in range_limits:
                 low, high = range_limits[action]
                 value = min(max(value, low), high)
             targets.append(
                 SemanticActionTarget(
-                    action=action, value=clamp_semantic_value(action, value)
-                )
+                    action=action,
+                    value=clamp_semantic_value(action, value),
+                ),
             )
         return tuple(targets)
 
     def _resolve_target_value(
         self,
         target: ExpressionTarget,
-        activation: float,
         request: EmotionRequest,
-        state: EmotionSolverState,
+        emotion_state: EmotionVectorState,
     ) -> float:
         value = self._sample_target_value(target)
         if target.scale_by_intensity:
             spec = DEFAULT_SEMANTIC_ACTION_SPECS.get(target.action)
             neutral = spec.neutral if spec is not None else 0.0
-            intensity = max(0.0, min(1.0, activation * state.effective_intensity))
-            value = neutral + (value - neutral) * intensity
+            value = neutral + (value - neutral) * emotion_state.effective_intensity
             if target.value_range is not None:
                 value = min(max(value, target.value_range[0]), target.value_range[1])
         jitter = max(target.jitter, request.value_jitter) * request.randomness
@@ -477,21 +690,40 @@ class ExpressionSelector:
             return target.value if target.value is not None else 0.0
         return self.rng.uniform(target.value_range[0], target.value_range[1])
 
+    def _targets_for_unit(
+        self,
+        unit: ExpressionUnit,
+        request: EmotionRequest | None,
+    ) -> tuple[ExpressionTarget, ...]:
+        _ = request
+        return unit.targets
+
+    def _dominant_emotion(self, request: EmotionRequest) -> EmotionKind:
+        return max(request.emotions.items(), key=lambda item: item[1])[0]
+
+    def _units_by_region(
+        self,
+        units: tuple[ExpressionUnit, ...],
+    ) -> dict[ExpressionRegion, tuple[ExpressionUnit, ...]]:
+        by_region: dict[ExpressionRegion, list[ExpressionUnit]] = {}
+        for unit in units:
+            for region in unit.regions:
+                by_region.setdefault(region, []).append(unit)
+        return {region: tuple(region_units) for region, region_units in by_region.items()}
+
     def _build_signature(
         self,
         units: tuple[ExpressionUnit, ...],
         targets: tuple[SemanticActionTarget, ...],
         semantic_tags: frozenset[str],
         request: EmotionRequest,
-        state: EmotionSolverState,
     ) -> ExpressionSignature:
-        _ = request
         return ExpressionSignature(
             unit_ids=tuple(unit.id for unit in units),
             target_values={target.action: target.value for target in targets},
             semantic_tags=semantic_tags,
-            emotion=state.emotion,
-            intensity=state.effective_intensity,
+            dominant_emotion=self._dominant_emotion(request),
+            intensity=request.intensity,
         )
 
     def _signature_similarity(
@@ -502,7 +734,8 @@ class ExpressionSelector:
         current_units = set(current.unit_ids)
         recent_units = set(recent.unit_ids)
         unit_similarity = len(current_units & recent_units) / max(
-            len(current_units | recent_units), 1
+            len(current_units | recent_units),
+            1,
         )
 
         shared_actions = set(current.target_values).intersection(recent.target_values)
@@ -510,25 +743,24 @@ class ExpressionSelector:
             target_similarity = sum(
                 max(
                     0.0,
-                    1.0
-                    - abs(current.target_values[action] - recent.target_values[action])
-                    / 2.0,
+                    1.0 - abs(current.target_values[action] - recent.target_values[action]) / 2.0,
                 )
                 for action in shared_actions
             ) / len(shared_actions)
         else:
             target_similarity = 0.0
 
-        tag_similarity = len(current.semantic_tags & recent.semantic_tags) / max(
+        shared_tags = current.semantic_tags & recent.semantic_tags
+        tag_similarity = len(shared_tags) / max(
             len(current.semantic_tags | recent.semantic_tags),
             1,
         )
-        emotion_similarity = 1.0 if current.emotion is recent.emotion else 0.0
+        emotion_similarity = 1.0 if current.dominant_emotion is recent.dominant_emotion else 0.0
         intensity_similarity = max(0.0, 1.0 - abs(current.intensity - recent.intensity))
         return (
             unit_similarity * 0.35
             + target_similarity * 0.25
-            + tag_similarity * 0.15
-            + emotion_similarity * 0.15
+            + tag_similarity * 0.20
+            + emotion_similarity * 0.10
             + intensity_similarity * 0.10
         )

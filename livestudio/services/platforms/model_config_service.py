@@ -68,8 +68,7 @@ class PlatformModelConfigService(Generic[ModelConfigT]):
 
         changed = config.sync_identity(identity)
         changed = config.ensure_semantic_profile_defaults(self.default_bindings) or changed
-        changed = config.ensure_parameter_spec_defaults(self.default_parameter_specs) or changed
-        return config.ensure_expression_profile_defaults() or changed
+        return config.ensure_parameter_spec_defaults(self.default_parameter_specs) or changed
 
     def build_path(self, identity: PlatformModelIdentity) -> Path:
         """返回某个平台模型对应的配置路径"""

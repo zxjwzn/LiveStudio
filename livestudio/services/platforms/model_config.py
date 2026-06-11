@@ -7,8 +7,6 @@ from collections.abc import Iterable
 from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.services.animations.controllers import AnimationControllerSettingsConfig
-from livestudio.services.expressions.models import ExpressionProfileConfig
-from livestudio.services.expressions.profile import default_expression_profile
 from livestudio.services.semantic_actions import (
     PlatformParameterSpec,
     SemanticActionBinding,
@@ -42,10 +40,6 @@ class PlatformModelConfig(BaseModel):
     controllers: AnimationControllerSettingsConfig = Field(
         default_factory=AnimationControllerSettingsConfig,
         description="各平台都能用的动画控制器设置",
-    )
-    expression_profile: ExpressionProfileConfig = Field(
-        default_factory=default_expression_profile,
-        description="当前模型自己的 AU、规则和解算运行时配置",
     )
 
     def sync_identity(self, identity: PlatformModelIdentity) -> bool:
@@ -83,8 +77,3 @@ class PlatformModelConfig(BaseModel):
             return False
         self.parameter_specs.extend(missing)
         return True
-
-    def ensure_expression_profile_defaults(self) -> bool:
-        """用内置 AU catalog 和规则补齐当前模型缺失的表情配置"""
-
-        return self.expression_profile.ensure_defaults(default_expression_profile())
