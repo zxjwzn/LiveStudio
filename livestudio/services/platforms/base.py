@@ -12,7 +12,7 @@ from livestudio.services.semantic_actions.adapter import (
     SemanticActionState,
 )
 from livestudio.services.semantic_actions.models import SemanticTweenRequest
-from livestudio.tween import ControlledParameterState, ParameterTweenEngine
+from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 
 
 class PlatformService(AsyncServiceLifecycleMixin, ABC):

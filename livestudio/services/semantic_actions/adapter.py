@@ -10,7 +10,7 @@ from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from livestudio.tween import (
+from livestudio.services.tween import (
     ControlledParameterState,
     ParameterTweenEngine,
     TweenRequest,
@@ -146,7 +146,8 @@ class SemanticActionAdapter:
         self,
         profile: SemanticActionProfile,
         *,
-        parameter_specs: Iterable[PlatformParameterSpec] | dict[str, PlatformParameterSpec],
+        parameter_specs: Iterable[PlatformParameterSpec]
+        | dict[str, PlatformParameterSpec],
     ) -> None:
         self.profile = profile
         self.parameter_specs = _normalize_parameter_specs(parameter_specs)
@@ -159,7 +160,11 @@ class SemanticActionAdapter:
         binding = self.profile.bindings.get(action)
         if binding is None:
             return ()
-        return tuple(parameter_name for parameter_name in binding.platform_params if parameter_name in self.parameter_specs)
+        return tuple(
+            parameter_name
+            for parameter_name in binding.platform_params
+            if parameter_name in self.parameter_specs
+        )
 
     def resolve(
         self,
@@ -350,11 +355,15 @@ def _resolve_bound_value(
     if semantic_value >= semantic_spec.neutral:
         span = semantic_spec.maximum - semantic_spec.neutral
         ratio = 0.0 if span <= 0.0 else (semantic_value - semantic_spec.neutral) / span
-        return spec.neutral + _apply_curve(ratio, binding.curve) * (spec.maximum - spec.neutral)
+        return spec.neutral + _apply_curve(ratio, binding.curve) * (
+            spec.maximum - spec.neutral
+        )
 
     span = semantic_spec.neutral - semantic_spec.minimum
     ratio = 0.0 if span <= 0.0 else (semantic_spec.neutral - semantic_value) / span
-    return spec.neutral - _apply_curve(ratio, binding.curve) * (spec.neutral - spec.minimum)
+    return spec.neutral - _apply_curve(ratio, binding.curve) * (
+        spec.neutral - spec.minimum
+    )
 
 
 def _normalize_bound_value(
@@ -376,11 +385,15 @@ def _normalize_bound_value(
     if platform_value >= spec.neutral:
         span = spec.maximum - spec.neutral
         ratio = 0.0 if span <= 0.0 else (platform_value - spec.neutral) / span
-        return semantic_spec.neutral + _unapply_curve(ratio, binding.curve) * (semantic_spec.maximum - semantic_spec.neutral)
+        return semantic_spec.neutral + _unapply_curve(ratio, binding.curve) * (
+            semantic_spec.maximum - semantic_spec.neutral
+        )
 
     span = spec.neutral - spec.minimum
     ratio = 0.0 if span <= 0.0 else (spec.neutral - platform_value) / span
-    return semantic_spec.neutral - _unapply_curve(ratio, binding.curve) * (semantic_spec.neutral - semantic_spec.minimum)
+    return semantic_spec.neutral - _unapply_curve(ratio, binding.curve) * (
+        semantic_spec.neutral - semantic_spec.minimum
+    )
 
 
 def _apply_curve(value: float, curve: CurveKind) -> float:
@@ -431,7 +444,9 @@ def _binding_references_known_parameters(
     binding: SemanticActionBinding,
     parameter_specs: dict[str, PlatformParameterSpec],
 ) -> bool:
-    return all(parameter_name in parameter_specs for parameter_name in binding.platform_params)
+    return all(
+        parameter_name in parameter_specs for parameter_name in binding.platform_params
+    )
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:

@@ -15,7 +15,7 @@ from livestudio.services.semantic_actions import (
     SemanticActionTarget,
     SemanticTweenRequest,
 )
-from livestudio.tween import Easing
+from livestudio.services.tween import Easing
 from livestudio.utils.log import logger
 
 from ..base import AnimationController
@@ -121,18 +121,23 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
     def _normalize_level(self, rms: float) -> float:
         if rms <= self.config.noise_floor:
             return 0.0
-        normalized = (rms - self.config.noise_floor) / (self.config.voice_ceiling - self.config.noise_floor)
+        normalized = (rms - self.config.noise_floor) / (
+            self.config.voice_ceiling - self.config.noise_floor
+        )
         return self._clamp01(normalized)
 
     def _smooth_open(self, target_open: float) -> float:
         target = self._clamp01(target_open)
         self._current_open = self._clamp01(
-            self._current_open + (target - self._current_open) * self.config.open_smoothing,
+            self._current_open
+            + (target - self._current_open) * self.config.open_smoothing,
         )
         return self._current_open
 
     async def _apply_open(self, open_value: float, *, is_opening: bool) -> None:
-        duration = self.config.attack_duration if is_opening else self.config.release_duration
+        duration = (
+            self.config.attack_duration if is_opening else self.config.release_duration
+        )
         await self.runtime.platform.tween_semantic(
             SemanticTweenRequest(
                 targets=(

@@ -36,7 +36,7 @@ from livestudio.services.semantic_actions import (
     SemanticActionTarget,
 )
 from livestudio.services.semantic_actions.adapter import PlatformParameterSpec
-from livestudio.tween import (
+from livestudio.services.tween import (
     ControlledParameterState,
     ParameterTweenEngine,
     TweenRequest,
@@ -687,7 +687,9 @@ def test_阴险笑_variants_follow_emotion_deviation() -> None:
         ),
     )
 
-    threatening_targets = {target.action: target.value for target in threatening.targets}
+    threatening_targets = {
+        target.action: target.value for target in threatening.targets
+    }
 
     assert playful.intent_id == "阴险笑"
     assert threatening.intent_id == "阴险笑"
@@ -785,7 +787,9 @@ def test_selector_builds_semantically_tagged_expression_for_emotion() -> None:
     assert selected.score > 0
     assert selected.semantic_tags == frozenset({"joy", "喜悦"})
     assert selected.units_by_region
-    assert any(target.action == SemanticAction.MOUTH_SMILE.value for target in selected.targets)
+    assert any(
+        target.action == SemanticAction.MOUTH_SMILE.value for target in selected.targets
+    )
 
 
 async def test_expression_service_applies_semantic_tweens() -> None:
@@ -819,7 +823,9 @@ async def test_expression_service_applies_semantic_tweens() -> None:
     assert "MouthSmile" in sent_names
 
 
-async def test_expression_service_uses_current_controlled_values_as_start_values() -> None:
+async def test_expression_service_uses_current_controlled_values_as_start_values() -> (
+    None
+):
     captured_start_values: dict[str, float | None] = {}
 
     async def sender(

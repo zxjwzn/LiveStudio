@@ -1,6 +1,6 @@
 """缓动引擎导出项"""
 
-from .easing import EASING_REGISTRY, Easing, EasingFunction
+from ...utils.easing import EASING_REGISTRY, Easing, EasingFunction
 from .engine import ParameterTweenEngine
 from .models import ActiveTween, ControlledParameterState, TweenRequest
 

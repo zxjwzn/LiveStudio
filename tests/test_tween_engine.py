@@ -12,8 +12,8 @@ import asyncio
 
 import pytest
 
-from livestudio.tween import Easing, ParameterTweenEngine, TweenRequest
-from livestudio.tween.models import ControlledParameterState
+from livestudio.services.tween import Easing, ParameterTweenEngine, TweenRequest
+from livestudio.services.tween.models import ControlledParameterState
 from tests.conftest import _SenderRecorder
 
 

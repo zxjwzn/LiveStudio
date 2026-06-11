@@ -12,12 +12,14 @@ from livestudio.services.animations.templates import (
 from livestudio.services.platforms import PlatformService
 from livestudio.services.semantic_actions.adapter import SemanticActionState
 from livestudio.services.semantic_actions.models import SemanticTweenRequest
-from livestudio.tween import ControlledParameterState, ParameterTweenEngine
+from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 
 
 class _SenderRecorder:
     def __init__(self) -> None:
-        self.calls: list[tuple[Literal["set", "add"], list[ControlledParameterState]]] = []
+        self.calls: list[
+            tuple[Literal["set", "add"], list[ControlledParameterState]]
+        ] = []
 
     async def __call__(
         self,

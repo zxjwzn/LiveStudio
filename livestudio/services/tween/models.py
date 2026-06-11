@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Literal
 
-from .easing import EasingFunction
+from ...utils.easing import EasingFunction
 
 
 @dataclass(slots=True)

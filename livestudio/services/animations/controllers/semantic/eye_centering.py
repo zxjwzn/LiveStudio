@@ -11,7 +11,7 @@ from livestudio.services.semantic_actions import (
     SemanticActionTarget,
     SemanticTweenRequest,
 )
-from livestudio.tween import Easing
+from livestudio.services.tween import Easing
 
 from ..base import AnimationController
 from ..config import EyeCenteringControllerSettings
@@ -97,10 +97,12 @@ class EyeCenteringController(AnimationController[EyeCenteringControllerSettings]
         roll_value = roll.value if roll is not None else 0.0
         return (
             self._clamp_unit(
-                -yaw_value * self.config.yaw_compensation - roll_value * self.config.roll_to_x_compensation,
+                -yaw_value * self.config.yaw_compensation
+                - roll_value * self.config.roll_to_x_compensation,
             ),
             self._clamp_unit(
-                -pitch_value * self.config.pitch_compensation - roll_value * self.config.roll_to_y_compensation,
+                -pitch_value * self.config.pitch_compensation
+                - roll_value * self.config.roll_to_y_compensation,
             ),
         )
 

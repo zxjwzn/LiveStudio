@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
-from livestudio.tween import EasingFunction
+from livestudio.services.tween import EasingFunction
 
 
 class SemanticAction(StrEnum):

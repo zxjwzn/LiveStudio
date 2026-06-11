@@ -9,7 +9,7 @@ from typing import Literal
 
 from livestudio.utils.log import logger
 
-from .easing import EASING_REGISTRY, EasingFunction
+from ...utils.easing import EASING_REGISTRY, EasingFunction
 from .models import ActiveTween, ControlledParameterState, TweenRequest
 
 ParameterSender = Callable[
@@ -240,7 +240,9 @@ class ParameterTweenEngine:
 
                 elapsed = min(request.duration, max(0.0, loop.time() - start_time))
                 t = min(1.0, elapsed / request.duration)
-                value = start_value + (request.end_value - start_value) * self._resolve_easing(request.easing)(t)
+                value = start_value + (
+                    request.end_value - start_value
+                ) * self._resolve_easing(request.easing)(t)
                 state_to_send: ControlledParameterState | None = None
 
                 async with self._lock:
@@ -303,7 +305,8 @@ class ParameterTweenEngine:
                     states_to_send = [
                         state
                         for parameter_name, state in self._controlled_params.items()
-                        if state.keep_alive and parameter_name not in self._active_tweens
+                        if state.keep_alive
+                        and parameter_name not in self._active_tweens
                     ]
 
                 if not states_to_send:

@@ -9,7 +9,7 @@ from livestudio.services.semantic_actions import (
     SemanticActionTarget,
     SemanticTweenRequest,
 )
-from livestudio.tween import Easing
+from livestudio.services.tween import Easing
 from livestudio.utils.log import logger
 
 from ..base import AnimationController

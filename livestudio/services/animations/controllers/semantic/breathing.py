@@ -7,7 +7,7 @@ from livestudio.services.semantic_actions import (
     SemanticActionTarget,
     SemanticTweenRequest,
 )
-from livestudio.tween import Easing
+from livestudio.services.tween import Easing
 
 from ..base import AnimationController
 from ..config import BreathingControllerSettings
@@ -35,7 +35,9 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
                     SemanticActionTarget(
                         SemanticAction.HEAD_PITCH.value,
                         self.config.pitch_amplitude,
-                        start_value=(current_pitch.value if current_pitch is not None else None),
+                        start_value=(
+                            current_pitch.value if current_pitch is not None else None
+                        ),
                     ),
                 ),
                 duration=self.config.inhale_duration,
@@ -52,7 +54,9 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
                     SemanticActionTarget(
                         SemanticAction.HEAD_PITCH.value,
                         -self.config.pitch_amplitude,
-                        start_value=(current_pitch.value if current_pitch is not None else None),
+                        start_value=(
+                            current_pitch.value if current_pitch is not None else None
+                        ),
                     ),
                 ),
                 duration=self.config.exhale_duration,
