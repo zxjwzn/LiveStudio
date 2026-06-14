@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from livestudio.services.animations.controllers import AnimationControllerSettingsConfig
+from livestudio.services.semantic_actions import (
+    PlatformParameterSpec,
+    SemanticActionProfile,
+)
+
 
 class PlatformModelIdentity(BaseModel):
     """平台当前加载模型的运行时身份"""
@@ -13,3 +19,33 @@ class PlatformModelIdentity(BaseModel):
     platform_name: str = Field(description="平台唯一名称")
     model_id: str = Field(description="平台模型唯一 ID")
     model_name: str = Field(description="平台模型显示名称")
+
+
+class PlatformModelConfig(BaseModel):
+    """每个模型都会保存的基础配置"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: PlatformModelIdentity = Field(
+        default_factory=lambda: PlatformModelIdentity(
+            platform_name="",
+            model_id="",
+            model_name="",
+        ),
+        description="这份配置属于哪个平台模型",
+    )
+    controllers: AnimationControllerSettingsConfig = Field(
+        default_factory=AnimationControllerSettingsConfig,
+        description="各平台都能用的动画控制器设置",
+    )
+    semantic_profile: SemanticActionProfile = Field(
+        default_factory=SemanticActionProfile,
+        description="通用动作到模型参数的对应关系",
+    )
+    parameter_specs: list[PlatformParameterSpec] = Field(
+        default_factory=list,
+        description="通用动作转换时会用到的模型参数范围",
+    )
+
+    def init_defaults(self) -> None:
+        """初始化该平台模型配置的默认内容。"""

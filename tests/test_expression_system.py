@@ -27,12 +27,13 @@ from livestudio.services.expressions import (
 )
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
-    VTubeStudioSemanticAdapter,
+    default_vtube_studio_parameter_specs,
     default_vtube_studio_semantic_profile,
 )
 from livestudio.services.platforms.vtubestudio.config import VTubeStudioModelConfig
 from livestudio.services.semantic_actions import (
     SemanticAction,
+    SemanticActionAdapter,
     SemanticActionTarget,
 )
 from livestudio.services.semantic_actions.adapter import PlatformParameterSpec
@@ -44,12 +45,19 @@ from livestudio.services.tween import (
 from tests.conftest import _SenderRecorder
 
 
+def _default_vts_adapter(profile) -> SemanticActionAdapter:
+    return SemanticActionAdapter(
+        profile,
+        parameter_specs=default_vtube_studio_parameter_specs(),
+    )
+
+
 class _SemanticVtsPlatform(VTubeStudio):
     def __init__(
         self,
         *,
         tween: ParameterTweenEngine,
-        adapter: VTubeStudioSemanticAdapter,
+        adapter: SemanticActionAdapter,
     ) -> None:
         self._tween = tween
         self._semantic_adapter = adapter
@@ -59,7 +67,7 @@ class _SemanticVtsPlatform(VTubeStudio):
         return self._tween
 
     @property
-    def semantic_adapter(self) -> VTubeStudioSemanticAdapter | None:
+    def semantic_adapter(self) -> SemanticActionAdapter | None:
         return self._semantic_adapter
 
     async def initialize(self) -> None:
@@ -804,7 +812,7 @@ async def test_expression_service_applies_semantic_tweens() -> None:
     service = ExpressionService(
         platform=_SemanticVtsPlatform(
             tween=tween,
-            adapter=VTubeStudioSemanticAdapter(profile),
+            adapter=_default_vts_adapter(profile),
         ),
         selector=selector,
     )
@@ -872,7 +880,7 @@ async def test_expression_service_uses_current_controlled_values_as_start_values
     service = ExpressionService(
         platform=_SemanticVtsPlatform(
             tween=tween,
-            adapter=VTubeStudioSemanticAdapter(profile),
+            adapter=_default_vts_adapter(profile),
         ),
         selector=selector,
     )
@@ -911,7 +919,7 @@ async def test_expression_service_falls_back_to_platform_neutral_start_values() 
     service = ExpressionService(
         platform=_SemanticVtsPlatform(
             tween=_CapturingTween(sender),
-            adapter=VTubeStudioSemanticAdapter(profile),
+            adapter=_default_vts_adapter(profile),
         ),
         selector=selector,
     )
@@ -924,50 +932,33 @@ async def test_expression_service_falls_back_to_platform_neutral_start_values() 
         ),
     )
 
-    assert captured_start_values["EyeOpenLeft"] == 0.75
-    assert captured_start_values["EyeOpenRight"] == 0.75
+    assert captured_start_values["EyeOpenLeft"] == 0.5
+    assert captured_start_values["EyeOpenRight"] == 0.5
 
 
 def test_vtube_model_config_contains_semantic_profile_defaults() -> None:
     config = VTubeStudioModelConfig()
-    config.model.model_id = "model-id"
-    config.model.model_name = "Model"
+    config.init_defaults()
 
-    changed = config.ensure_semantic_profile_defaults()
-
-    assert changed
-    assert config.semantic_profile.model_id == "model-id"
-    assert config.semantic_profile.model_name == "Model"
-    assert SemanticAction.MOUTH_OPEN.value in config.semantic_profile.bindings
-
-
-def test_vtube_model_config_contains_parameter_spec_defaults() -> None:
-    config = VTubeStudioModelConfig(parameter_specs=[])
-
-    changed = config.ensure_parameter_spec_defaults()
-
-    assert changed
-    assert any(spec.name == "MouthOpen" for spec in config.parameter_specs)
+    assert SemanticAction.MOUTH_OPEN.value in {
+        binding.action for binding in config.semantic_profile.bindings
+    }
 
 
 def test_vtube_semantic_adapter_uses_model_parameter_specs() -> None:
     profile = default_vtube_studio_semantic_profile()
-    adapter = VTubeStudioSemanticAdapter(
+    adapter = SemanticActionAdapter(
         profile,
-        [
+        parameter_specs=[
             PlatformParameterSpec(
                 name="EyeOpenLeft",
                 minimum=10.0,
                 maximum=20.0,
-                neutral=15.0,
-                default=20.0,
             ),
             PlatformParameterSpec(
                 name="EyeOpenRight",
                 minimum=30.0,
                 maximum=50.0,
-                neutral=40.0,
-                default=50.0,
             ),
         ],
     )
@@ -989,44 +980,32 @@ async def test_vtube_platform_queries_real_values_as_semantic_state() -> None:
         VTubeStudioClient,
         client,
     )
-    platform._semantic_adapter = VTubeStudioSemanticAdapter(profile)  # noqa: SLF001
+    platform._semantic_adapter = _default_vts_adapter(profile)  # noqa: SLF001
 
     state = await platform.get_semantic_value(SemanticAction.EYE_OPEN.value)
 
     assert state is not None
-    assert state.value == 0.75
+    assert state.value == 0.875
     assert client.requested == ["EyeOpenLeft", "EyeOpenRight"]
 
 
-async def test_reload_model_config_persists_backfilled_semantic_profile(
+async def test_reload_model_config_creates_default_model_config(
     tmp_path: Path,
 ) -> None:
     platform = VTubeStudio()
     platform.config.model_config_dir = str(tmp_path)
-    config_path = tmp_path / "Model_model-id.yaml"
-    config_path.write_text(
-        yaml.safe_dump(
-            {
-                "model": {
-                    "platform_name": "",
-                    "model_id": "",
-                    "model_name": "",
-                },
-                "controllers": {},
-                "expressions": [],
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
-    )
+    config_path = tmp_path / "Model_model.yaml"
 
     config = await platform.reload_model_config("model-id", "Model")
 
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    assert config.semantic_profile.model_id == "model-id"
-    assert raw["semantic_profile"]["model_id"] == "model-id"
+    assert config.model.model_id == "model-id"
+    assert "model_id" not in raw["semantic_profile"]
+    assert "model_name" not in raw["semantic_profile"]
     assert "parameter_specs" not in raw["semantic_profile"]
-    assert SemanticAction.MOUTH_OPEN.value in raw["semantic_profile"]["bindings"]
+    assert SemanticAction.MOUTH_OPEN.value in {
+        binding["action"] for binding in raw["semantic_profile"]["bindings"]
+    }
 
 
 async def test_reload_model_config_uses_configs_relative_model_dir(
@@ -1039,6 +1018,6 @@ async def test_reload_model_config_uses_configs_relative_model_dir(
 
     config = await platform.reload_model_config("model-id", "Model")
 
-    expected_path = tmp_path / "models" / "vtubestudio" / "Model_model-id.yaml"
+    expected_path = tmp_path / "models" / "vtubestudio" / "Model_model.yaml"
     assert expected_path.exists()
-    assert config.semantic_profile.model_id == "model-id"
+    assert config.model.model_id == "model-id"

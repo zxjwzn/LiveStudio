@@ -2,21 +2,95 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Any
+from pydantic import BaseModel, ConfigDict, Field
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from livestudio.services.platforms.model_config import PlatformModelConfig
+from livestudio.services.platforms.model import PlatformModelConfig
 from livestudio.services.semantic_actions import (
     PlatformParameterSpec,
+    SemanticAction,
     SemanticActionBinding,
+    SemanticActionProfile,
 )
 
-from .semantic import (
-    default_vtube_studio_parameter_specs,
-    default_vtube_studio_semantic_bindings,
-)
+
+def default_vtube_studio_parameter_specs() -> list[PlatformParameterSpec]:
+    """返回 VTube Studio 常用跟踪参数的范围"""
+
+    return [
+        PlatformParameterSpec(name="FacePositionX", minimum=-15.0, maximum=15.0),
+        PlatformParameterSpec(name="FacePositionY", minimum=-15.0, maximum=15.0),
+        PlatformParameterSpec(name="FacePositionZ", minimum=-10.0, maximum=10.0),
+        PlatformParameterSpec(name="FaceAngleX", minimum=-30.0, maximum=30.0),
+        PlatformParameterSpec(name="FaceAngleY", minimum=-30.0, maximum=30.0),
+        PlatformParameterSpec(name="FaceAngleZ", minimum=-90.0, maximum=90.0),
+        PlatformParameterSpec(name="MouthSmile", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="MouthOpen", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="Brows", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="BrowLeftY", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="BrowRightY", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeOpenLeft", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeOpenRight", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeLeftX", minimum=-1.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeLeftY", minimum=-1.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeRightX", minimum=-1.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeRightY", minimum=-1.0, maximum=1.0),
+        PlatformParameterSpec(name="MousePositionX", minimum=-1.0, maximum=1.0),
+        PlatformParameterSpec(name="MousePositionY", minimum=-1.0, maximum=1.0),
+        PlatformParameterSpec(name="MouthX", minimum=-1.0, maximum=1.0),
+    ]
+
+
+def default_vtube_studio_semantic_bindings() -> list[SemanticActionBinding]:
+    """返回常见 VTube Studio 模型的默认动作对应关系"""
+
+    return [
+        SemanticActionBinding(
+            action=SemanticAction.BROW_HEIGHT.value,
+            platform_params=["BrowLeftY", "BrowRightY"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.EYE_OPEN.value,
+            platform_params=["EyeOpenLeft", "EyeOpenRight"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.EYE_GAZE_X.value,
+            platform_params=["EyeLeftX", "EyeRightX"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.EYE_GAZE_Y.value,
+            platform_params=["EyeLeftY", "EyeRightY"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.MOUTH_OPEN.value,
+            platform_params=["MouthOpen"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.MOUTH_SMILE.value,
+            platform_params=["MouthSmile"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.MOUTH_X.value,
+            platform_params=["MouthX"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.HEAD_YAW.value,
+            platform_params=["FaceAngleX"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.HEAD_PITCH.value,
+            platform_params=["FaceAngleY"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.HEAD_ROLL.value,
+            platform_params=["FaceAngleZ"],
+        ),
+    ]
+
+
+def default_vtube_studio_semantic_profile() -> SemanticActionProfile:
+    return SemanticActionProfile(
+        bindings=list(default_vtube_studio_semantic_bindings()),
+    )
 
 
 class VTubeStudioExpressionStateConfig(BaseModel):
@@ -39,41 +113,6 @@ class VTubeStudioModelConfig(PlatformModelConfig):
         description="模型加载时需要同步的表情激活状态配置",
     )
 
-    @field_validator("expressions", mode="before")
-    @classmethod
-    def migrate_expression_mapping(cls, value: Any) -> Any:
-        """兼容旧版按文件名索引的表情配置"""
-
-        if isinstance(value, dict):
-            return list(value.values())
-        return value
-
-    def ensure_semantic_profile_defaults(
-        self,
-        bindings: Iterable[SemanticActionBinding] = (),
-    ) -> bool:
-        """补齐当前模型的语义动作映射默认值"""
-
-        changed = False
-        if self.semantic_profile.model_id != self.model.model_id:
-            self.semantic_profile.model_id = self.model.model_id
-            changed = True
-        if self.semantic_profile.model_name != self.model.model_name:
-            self.semantic_profile.model_name = self.model.model_name
-            changed = True
-        return (
-            super().ensure_semantic_profile_defaults(
-                bindings or default_vtube_studio_semantic_bindings(),
-            )
-            or changed
-        )
-
-    def ensure_parameter_spec_defaults(
-        self,
-        specs: Iterable[PlatformParameterSpec] = (),
-    ) -> bool:
-        """补齐当前模型缺失的 VTube Studio 参数范围默认值"""
-
-        return super().ensure_parameter_spec_defaults(
-            specs or default_vtube_studio_parameter_specs(),
-        )
+    def init_defaults(self) -> None:
+        self.semantic_profile = default_vtube_studio_semantic_profile()
+        self.parameter_specs = default_vtube_studio_parameter_specs()

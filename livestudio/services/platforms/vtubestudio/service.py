@@ -38,11 +38,6 @@ from ....clients.vtube_studio.models import (
 from ..base import PlatformService
 from ..model import PlatformModelIdentity
 from .config import VTubeStudioModelConfig
-from .semantic import (
-    VTubeStudioSemanticAdapter,
-    default_vtube_studio_parameter_specs,
-    default_vtube_studio_semantic_bindings,
-)
 
 
 class VTubeStudio(PlatformService):
@@ -63,7 +58,7 @@ class VTubeStudio(PlatformService):
         self._model_config_service: (
             PlatformModelConfigService[VTubeStudioModelConfig] | None
         ) = None
-        self._semantic_adapter: VTubeStudioSemanticAdapter | None = None
+        self._semantic_adapter: SemanticActionAdapter | None = None
         self._tween = ParameterTweenEngine(
             self.send_parameter_states,
         )
@@ -174,8 +169,6 @@ class VTubeStudio(PlatformService):
         self._model_config_service = PlatformModelConfigService(
             config_model=VTubeStudioModelConfig,
             model_config_dir=self.config.model_config_dir,
-            default_bindings=default_vtube_studio_semantic_bindings(),
-            default_parameter_specs=default_vtube_studio_parameter_specs(),
         )
         self._initialized = True
 
@@ -233,13 +226,11 @@ class VTubeStudio(PlatformService):
             self._model_config_service = PlatformModelConfigService(
                 config_model=VTubeStudioModelConfig,
                 model_config_dir=self.config.model_config_dir,
-                default_bindings=default_vtube_studio_semantic_bindings(),
-                default_parameter_specs=default_vtube_studio_parameter_specs(),
             )
         model_config = await self._model_config_service.load(identity)
-        self._semantic_adapter = VTubeStudioSemanticAdapter(
+        self._semantic_adapter = SemanticActionAdapter(
             model_config.semantic_profile,
-            model_config.parameter_specs,
+            parameter_specs=model_config.parameter_specs,
         )
         logger.info(
             "已加载 VTube Studio 模型配置: {} ({}) -> {}",

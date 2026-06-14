@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.services.tween import (
     ControlledParameterState,
@@ -56,18 +56,6 @@ class PlatformParameterSpec(BaseModel):
     name: str = Field(min_length=1)
     minimum: float
     maximum: float
-    neutral: float
-    default: float
-
-    @model_validator(mode="after")
-    def validate_range(self) -> PlatformParameterSpec:
-        if self.maximum < self.minimum:
-            raise ValueError("maximum cannot be less than minimum")
-        if not self.minimum <= self.neutral <= self.maximum:
-            raise ValueError("neutral must be within min/max range")
-        if not self.minimum <= self.default <= self.maximum:
-            raise ValueError("default must be within min/max range")
-        return self
 
 
 class SemanticActionBinding(BaseModel):
@@ -85,43 +73,13 @@ class SemanticActionProfile(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    model_id: str = ""
-    model_name: str = ""
-    bindings: dict[str, SemanticActionBinding] = Field(
-        default_factory=dict,
-        description="通用动作名字到平台参数的对应关系",
+    bindings: list[SemanticActionBinding] = Field(
+        default_factory=list,
+        description="通用动作到平台参数的对应关系",
     )
 
-    @model_validator(mode="after")
-    def validate_bindings(self) -> SemanticActionProfile:
-        for action, binding in self.bindings.items():
-            if binding.action != action:
-                raise ValueError("binding action must match its profile key")
-            if action not in DEFAULT_SEMANTIC_ACTION_SPECS:
-                raise ValueError(f"unknown semantic action: {action}")
-        return self
-
-    def ensure_defaults(
-        self,
-        *,
-        bindings: Iterable[SemanticActionBinding],
-    ) -> bool:
-        """把这份配置和平台默认设置对齐"""
-
-        changed = False
-        default_bindings = {binding.action: binding for binding in bindings}
-
-        for action, binding in default_bindings.items():
-            existing = self.bindings.get(action)
-            if existing is not None:
-                continue
-            self.bindings[action] = binding
-            changed = True
-
-        return changed
-
     def supports(self, action: str) -> bool:
-        return action in self.bindings
+        return any(binding.action == action for binding in self.bindings)
 
     def support_score(self, targets: Iterable[SemanticActionTarget]) -> float:
         target_tuple = tuple(targets)
@@ -146,18 +104,17 @@ class SemanticActionAdapter:
         self,
         profile: SemanticActionProfile,
         *,
-        parameter_specs: Iterable[PlatformParameterSpec]
-        | dict[str, PlatformParameterSpec],
+        parameter_specs: Iterable[PlatformParameterSpec],
     ) -> None:
         self.profile = profile
-        self.parameter_specs = _normalize_parameter_specs(parameter_specs)
-        self._validate_profile()
+        self.bindings = {binding.action: binding for binding in profile.bindings}
+        self.parameter_specs = {spec.name: spec for spec in parameter_specs}
 
     def support_score(self, targets: Iterable[SemanticActionTarget]) -> float:
         return self.profile.support_score(targets)
 
     def platform_parameters_for(self, action: str) -> tuple[str, ...]:
-        binding = self.profile.bindings.get(action)
+        binding = self.bindings.get(action)
         if binding is None:
             return ()
         return tuple(
@@ -174,7 +131,7 @@ class SemanticActionAdapter:
         keep_alive: bool = True,
     ) -> list[ResolvedPlatformParameter]:
         action_value = clamp_semantic_value(target.action, target.value)
-        binding = self.profile.bindings.get(target.action)
+        binding = self.bindings.get(target.action)
         if binding is None:
             return []
 
@@ -183,7 +140,7 @@ class SemanticActionAdapter:
             spec = self.parameter_specs.get(parameter_name)
             if spec is None:
                 continue
-            start_value = spec.neutral
+            start_value = _platform_midpoint(spec)
             if target.start_value is not None:
                 start_value = _resolve_bound_value(
                     binding,
@@ -208,7 +165,7 @@ class SemanticActionAdapter:
         action: str,
         platform_values: dict[str, float],
     ) -> SemanticActionState | None:
-        binding = self.profile.bindings.get(action)
+        binding = self.bindings.get(action)
         if binding is None:
             return None
 
@@ -330,12 +287,7 @@ class SemanticActionAdapter:
         spec = self.parameter_specs.get(resolved.name)
         if spec is None:
             raise KeyError(f"unknown platform parameter: {resolved.name}")
-        return spec.neutral
-
-    def _validate_profile(self) -> None:
-        for action, binding in self.profile.bindings.items():
-            if not _binding_references_known_parameters(binding, self.parameter_specs):
-                raise ValueError(f"binding {action} references unknown platform params")
+        return _platform_midpoint(spec)
 
 
 def _resolve_bound_value(
@@ -344,26 +296,25 @@ def _resolve_bound_value(
     spec: PlatformParameterSpec,
 ) -> float:
     semantic_spec = DEFAULT_SEMANTIC_ACTION_SPECS.get(binding.action)
+    midpoint = _platform_midpoint(spec)
     if semantic_spec is None:
         normalized = max(-1.0, min(1.0, value))
         curved = _apply_curve(abs(normalized), binding.curve)
         if normalized >= 0:
-            return spec.neutral + curved * (spec.maximum - spec.neutral)
-        return spec.neutral - curved * (spec.neutral - spec.minimum)
+            return midpoint + curved * (spec.maximum - midpoint)
+        return midpoint - curved * (midpoint - spec.minimum)
 
     semantic_value = max(semantic_spec.minimum, min(semantic_spec.maximum, value))
     if semantic_value >= semantic_spec.neutral:
         span = semantic_spec.maximum - semantic_spec.neutral
         ratio = 0.0 if span <= 0.0 else (semantic_value - semantic_spec.neutral) / span
-        return spec.neutral + _apply_curve(ratio, binding.curve) * (
-            spec.maximum - spec.neutral
+        return midpoint + _apply_curve(ratio, binding.curve) * (
+            spec.maximum - midpoint
         )
 
     span = semantic_spec.neutral - semantic_spec.minimum
     ratio = 0.0 if span <= 0.0 else (semantic_spec.neutral - semantic_value) / span
-    return spec.neutral - _apply_curve(ratio, binding.curve) * (
-        spec.neutral - spec.minimum
-    )
+    return midpoint - _apply_curve(ratio, binding.curve) * (midpoint - spec.minimum)
 
 
 def _normalize_bound_value(
@@ -373,27 +324,32 @@ def _normalize_bound_value(
 ) -> float:
     platform_value = _clamp(value, spec.minimum, spec.maximum)
     semantic_spec = DEFAULT_SEMANTIC_ACTION_SPECS.get(binding.action)
+    midpoint = _platform_midpoint(spec)
     if semantic_spec is None:
-        if platform_value >= spec.neutral:
-            span = spec.maximum - spec.neutral
-            ratio = 0.0 if span <= 0.0 else (platform_value - spec.neutral) / span
+        if platform_value >= midpoint:
+            span = spec.maximum - midpoint
+            ratio = 0.0 if span <= 0.0 else (platform_value - midpoint) / span
             return _unapply_curve(ratio, binding.curve)
-        span = spec.neutral - spec.minimum
-        ratio = 0.0 if span <= 0.0 else (spec.neutral - platform_value) / span
+        span = midpoint - spec.minimum
+        ratio = 0.0 if span <= 0.0 else (midpoint - platform_value) / span
         return -_unapply_curve(ratio, binding.curve)
 
-    if platform_value >= spec.neutral:
-        span = spec.maximum - spec.neutral
-        ratio = 0.0 if span <= 0.0 else (platform_value - spec.neutral) / span
+    if platform_value >= midpoint:
+        span = spec.maximum - midpoint
+        ratio = 0.0 if span <= 0.0 else (platform_value - midpoint) / span
         return semantic_spec.neutral + _unapply_curve(ratio, binding.curve) * (
             semantic_spec.maximum - semantic_spec.neutral
         )
 
-    span = spec.neutral - spec.minimum
-    ratio = 0.0 if span <= 0.0 else (spec.neutral - platform_value) / span
+    span = midpoint - spec.minimum
+    ratio = 0.0 if span <= 0.0 else (midpoint - platform_value) / span
     return semantic_spec.neutral - _unapply_curve(ratio, binding.curve) * (
         semantic_spec.neutral - semantic_spec.minimum
     )
+
+
+def _platform_midpoint(spec: PlatformParameterSpec) -> float:
+    return (spec.minimum + spec.maximum) / 2.0
 
 
 def _apply_curve(value: float, curve: CurveKind) -> float:
@@ -423,30 +379,6 @@ def _unapply_curve(value: float, curve: CurveKind) -> float:
             return math.sqrt(value / 2.0)
         return 1.0 - math.sqrt((1.0 - value) / 2.0)
     return value
-
-
-def _normalize_parameter_specs(
-    parameter_specs: Iterable[PlatformParameterSpec] | dict[str, PlatformParameterSpec],
-) -> dict[str, PlatformParameterSpec]:
-    if isinstance(parameter_specs, dict):
-        normalized: dict[str, PlatformParameterSpec] = {}
-        for name, spec in parameter_specs.items():
-            if not isinstance(name, str):
-                raise TypeError("parameter spec mapping keys must be strings")
-            if not isinstance(spec, PlatformParameterSpec):
-                raise TypeError("parameter spec mapping values must be specs")
-            normalized[name] = spec
-        return normalized
-    return {spec.name: spec for spec in parameter_specs}
-
-
-def _binding_references_known_parameters(
-    binding: SemanticActionBinding,
-    parameter_specs: dict[str, PlatformParameterSpec],
-) -> bool:
-    return all(
-        parameter_name in parameter_specs for parameter_name in binding.platform_params
-    )
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:

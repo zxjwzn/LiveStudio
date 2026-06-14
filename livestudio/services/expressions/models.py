@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.services.semantic_actions import SemanticActionTarget
 
@@ -40,13 +40,6 @@ class ExpressionTarget:
     scale_by_intensity: bool = True
     jitter: float = 0.0
 
-    def __post_init__(self) -> None:
-        if (self.value is None) == (self.value_range is None):
-            raise ValueError("ExpressionTarget 必须且只能设置 value 或 value_range")
-        if self.value_range is not None and self.value_range[1] < self.value_range[0]:
-            raise ValueError("ExpressionTarget.value_range 最大值不能小于最小值")
-
-
 @dataclass(frozen=True, slots=True)
 class ExpressionUnit:
     """可以重复使用的脸部动作单元，参考了 FACS 的动作单元"""
@@ -58,11 +51,6 @@ class ExpressionUnit:
     base_weight: float = 1.0
     priority: int = 40
     easing: str = "in_out_sine"
-
-    def __post_init__(self) -> None:
-        if not self.regions:
-            raise ValueError("ExpressionUnit.regions 不能为空")
-
 
 @dataclass(frozen=True, slots=True)
 class ExpressionCombinationRule:
@@ -118,19 +106,6 @@ class EmotionRequest(BaseModel):
     duration_scale: float = Field(default=1.0, gt=0.0)
     min_intent_score: float = Field(default=0.28, ge=0.0)
     max_units: int = Field(default=99, ge=1)
-
-    @field_validator("emotions")
-    @classmethod
-    def validate_emotions(
-        cls,
-        value: dict[EmotionKind, float],
-    ) -> dict[EmotionKind, float]:
-        if not value:
-            return {EmotionKind.NEUTRAL: 1.0}
-        return {emotion: max(0.0, min(1.0, weight)) for emotion, weight in value.items() if weight > 0.0} or {
-            EmotionKind.NEUTRAL: 1.0,
-        }
-
 
 @dataclass(frozen=True, slots=True)
 class SelectedExpression:

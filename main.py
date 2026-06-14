@@ -15,7 +15,7 @@ from livestudio.services.expressions import (
     ExpressionSelector,
 )
 from livestudio.services.platforms.vtubestudio import (
-    VTubeStudioSemanticAdapter,
+    default_vtube_studio_parameter_specs,
     default_vtube_studio_semantic_profile,
 )
 from livestudio.services.semantic_actions import SemanticActionAdapter
@@ -124,7 +124,10 @@ async def preview_au_system(args: argparse.Namespace) -> None:
     """在不连接 VTS 的情况下预览 AU 选择与默认语义映射"""
 
     profile = default_vtube_studio_semantic_profile()
-    adapter = VTubeStudioSemanticAdapter(profile)
+    adapter = SemanticActionAdapter(
+        profile,
+        parameter_specs=default_vtube_studio_parameter_specs(),
+    )
     selector = ExpressionSelector(BUILTIN_EXPRESSION_UNITS, profile)
     request = _build_emotion_request(args)
     selected = selector.preview(request)

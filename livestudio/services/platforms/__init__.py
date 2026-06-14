@@ -1,8 +1,7 @@
 """平台服务导出项"""
 
 from .base import PlatformService
-from .model import PlatformModelIdentity
-from .model_config import PlatformModelConfig
+from .model import PlatformModelConfig, PlatformModelIdentity
 from .model_config_service import PlatformModelConfigService
 from .vtubestudio import VTubeStudio
 
