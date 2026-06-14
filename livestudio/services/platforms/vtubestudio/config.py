@@ -40,10 +40,8 @@ def default_vtube_studio_parameter_specs() -> list[PlatformParameterSpec]:
     ]
 
 
-def default_vtube_studio_semantic_bindings() -> list[SemanticActionBinding]:
-    """返回常见 VTube Studio 模型的默认动作对应关系"""
-
-    return [
+def default_vtube_studio_semantic_profile() -> SemanticActionProfile:
+    bindings = [
         SemanticActionBinding(
             action=SemanticAction.BROW_HEIGHT.value,
             platform_params=["BrowLeftY", "BrowRightY"],
@@ -85,11 +83,8 @@ def default_vtube_studio_semantic_bindings() -> list[SemanticActionBinding]:
             platform_params=["FaceAngleZ"],
         ),
     ]
-
-
-def default_vtube_studio_semantic_profile() -> SemanticActionProfile:
     return SemanticActionProfile(
-        bindings=list(default_vtube_studio_semantic_bindings()),
+        bindings=bindings,
     )
 
 
