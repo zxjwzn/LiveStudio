@@ -11,7 +11,6 @@ from livestudio.services.platforms.model_config_service import (
 )
 from livestudio.services.semantic_actions import (
     SemanticActionAdapter,
-    SemanticActionState,
 )
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 from livestudio.utils.log import logger
@@ -336,7 +335,7 @@ class VTubeStudio(PlatformService):
             )
         ]
 
-    async def _send_parameter_states(
+    async def send_parameter_states(
         self,
         states: Iterable[ControlledParameterState],
         mode: Literal["set", "add"] = "set",
@@ -356,15 +355,11 @@ class VTubeStudio(PlatformService):
         )
         await self.client.inject_parameter_data(request)
 
-    async def get_semantic_value(self, action: str) -> SemanticActionState | None:
-        """查询 VTube Studio 真实参数并归一化为语义动作值"""
-
-        adapter = self.semantic_adapter
-        if adapter is None:
-            return None
-        parameter_names = adapter.platform_parameters_for(action)
-        if not parameter_names:
-            return None
+    async def get_parameter_values(
+        self,
+        parameter_names: Iterable[str],
+    ) -> dict[str, float]:
+        """查询 VTube Studio 真实参数值"""
 
         platform_values: dict[str, float] = {}
         for parameter_name in parameter_names:
@@ -374,5 +369,4 @@ class VTubeStudio(PlatformService):
                 ),
             )
             platform_values[parameter_name] = response.data.value
-
-        return adapter.normalize_platform_values(action, platform_values)
+        return platform_values

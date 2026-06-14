@@ -73,7 +73,7 @@ class _SemanticPlatform(PlatformService):
     async def stop(self) -> None:
         pass
 
-    async def _send_parameter_states(
+    async def send_parameter_states(
         self,
         states: Iterable[ControlledParameterState],
         mode: Literal["set", "add"] = "set",

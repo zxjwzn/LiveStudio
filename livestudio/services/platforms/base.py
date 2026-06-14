@@ -45,25 +45,32 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
     async def get_semantic_value(self, action: str) -> SemanticActionState | None:
         """查询平台真实参数值并归一化为语义动作值"""
 
-        _ = action
-        return None
+        adapter = self.semantic_adapter
+        if adapter is None:
+            return None
+        parameter_names = adapter.platform_parameters_for(action)
+        if not parameter_names:
+            return None
 
+        platform_values = await self.get_parameter_values(parameter_names)
+        return adapter.normalize_platform_values(action, platform_values)
+
+    async def get_parameter_values(
+        self,
+        parameter_names: Iterable[str],
+    ) -> dict[str, float]:
+        """查询一批底层平台参数当前值"""
+
+        _ = parameter_names
+        return {}
+
+    @abstractmethod
     async def send_parameter_states(
         self,
         states: Iterable[ControlledParameterState],
         mode: Literal["set", "add"] = "set",
     ) -> None:
         """发送一批底层平台参数状态"""
-
-        await self._send_parameter_states(states, mode)
-
-    @abstractmethod
-    async def _send_parameter_states(
-        self,
-        states: Iterable[ControlledParameterState],
-        mode: Literal["set", "add"] = "set",
-    ) -> None:
-        """平台实现的底层参数发送逻辑"""
 
     @abstractmethod
     async def initialize(self) -> None:
