@@ -93,14 +93,23 @@ class ParameterTweenEngine:
         await self.stop()
         self.start()
 
-    async def tween(self, request: TweenRequest) -> None:
+    async def tween(self, request: TweenRequest | list[TweenRequest]) -> None:
         """按请求使用固定采样与绝对时间对齐方式执行缓动"""
 
-        if request.fps <= 0:
-            request.fps = self._default_fps
+        requests = [request] if isinstance(request, TweenRequest) else request
+        if not requests:
+            return
+
+        for tween_request in requests:
+            if tween_request.fps <= 0:
+                tween_request.fps = self._default_fps
+
         # 让 _run_tween 能通过 asyncio.current_task() 获取自身引用。
-        task = asyncio.create_task(self._run_tween(request))
-        await task
+        tasks = [
+            asyncio.create_task(self._run_tween(tween_request))
+            for tween_request in requests
+        ]
+        await asyncio.gather(*tasks)
 
     async def release(self, parameter_name: str) -> None:
         """释放某个参数的控制权，并在需要时取消其缓动任务"""
@@ -329,3 +338,5 @@ class ParameterTweenEngine:
             await self._sender(set_states, "set")
         if add_states:
             await self._sender(add_states, "add")
+
+

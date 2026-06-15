@@ -10,7 +10,6 @@ from livestudio.services.animations.templates import (
     LoadedTemplateInfo,
 )
 from livestudio.services.platforms import PlatformService
-from livestudio.services.semantic_actions.adapter import SemanticActionState
 from livestudio.services.semantic_actions.models import SemanticTweenRequest
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 
@@ -47,7 +46,7 @@ class _SemanticPlatform(PlatformService):
     def __init__(self, name: str = "semantic-test") -> None:
         self._name = name
         self.requests: list[SemanticTweenRequest] = []
-        self.semantic_values: dict[str, SemanticActionState] = {}
+        self.semantic_values: dict[str, float] = {}
         self._tween = ParameterTweenEngine(self.send_parameter_states)
 
     @property
@@ -58,10 +57,10 @@ class _SemanticPlatform(PlatformService):
     def tween(self) -> ParameterTweenEngine:
         return self._tween
 
-    async def tween_semantic(self, request: SemanticTweenRequest) -> None:
-        self.requests.append(request)
+    async def tween_semantic(self, requests: Iterable[SemanticTweenRequest]) -> None:
+        self.requests.extend(requests)
 
-    async def get_semantic_value(self, action: str) -> SemanticActionState | None:
+    async def get_semantic_value(self, action: str) -> float | None:
         return self.semantic_values.get(action)
 
     async def initialize(self) -> None:

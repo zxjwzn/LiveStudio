@@ -5,12 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from livestudio.services.semantic_actions import (
-    SemanticAction,
-    SemanticActionState,
-    SemanticActionTarget,
-    SemanticTweenRequest,
-)
+from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
 from livestudio.services.tween import Easing
 
 from ..base import AnimationController
@@ -62,24 +57,26 @@ class EyeCenteringController(AnimationController[EyeCenteringControllerSettings]
         self._current_y = smoothed_y
 
         await self.runtime.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=(
-                    SemanticActionTarget(
-                        SemanticAction.EYE_GAZE_X.value,
-                        smoothed_x,
-                        start_value=previous_x,
-                    ),
-                    SemanticActionTarget(
-                        SemanticAction.EYE_GAZE_Y.value,
-                        smoothed_y,
-                        start_value=previous_y,
-                    ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.EYE_GAZE_X.value,
+                    end_value=smoothed_x,
+                    start_value=previous_x,
+                    duration=self.config.duration,
+                    easing=Easing.out_sine,
+                    priority=self.config.priority,
+                    keep_alive=True,
                 ),
-                duration=self.config.duration,
-                easing=Easing.out_sine,
-                priority=self.config.priority,
-                keep_alive=True,
-            ),
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.EYE_GAZE_Y.value,
+                    end_value=smoothed_y,
+                    start_value=previous_y,
+                    duration=self.config.duration,
+                    easing=Easing.out_sine,
+                    priority=self.config.priority,
+                    keep_alive=True,
+                ),
+            ],
         )
         await asyncio.sleep(self.config.update_interval)
 
@@ -88,13 +85,13 @@ class EyeCenteringController(AnimationController[EyeCenteringControllerSettings]
 
     def _compute_centering(
         self,
-        yaw: SemanticActionState | None,
-        pitch: SemanticActionState | None,
-        roll: SemanticActionState | None,
+        yaw: float | None,
+        pitch: float | None,
+        roll: float | None,
     ) -> tuple[float, float]:
-        yaw_value = yaw.value if yaw is not None else 0.0
-        pitch_value = pitch.value if pitch is not None else 0.0
-        roll_value = roll.value if roll is not None else 0.0
+        yaw_value = yaw if yaw is not None else 0.0
+        pitch_value = pitch if pitch is not None else 0.0
+        roll_value = roll if roll is not None else 0.0
         return (
             self._clamp_unit(
                 -yaw_value * self.config.yaw_compensation

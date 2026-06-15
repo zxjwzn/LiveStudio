@@ -8,7 +8,6 @@ from typing import Any
 
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms import PlatformService
-from livestudio.services.semantic_actions import SemanticActionState
 from livestudio.utils.log import logger
 
 from .controllers import AnimationController, AnimationType
@@ -62,8 +61,8 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
 
         return dict(self._controllers)
 
-    async def get_semantic_value(self, action: str) -> SemanticActionState | None:
-        """通过 AU/语义层查询当前平台真实参数值"""
+    async def get_semantic_value(self, action: str) -> float | None:
+        """查询语义动作瞬时值"""
 
         return await self._platform.get_semantic_value(action)
 
@@ -199,3 +198,4 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
                 f"控制器不是一次性动画，不能通过 execute_controller 执行: {name}",
             )
         return await controller.start(**kwargs)
+

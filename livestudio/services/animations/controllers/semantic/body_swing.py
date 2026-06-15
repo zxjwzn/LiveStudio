@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import random
 
-from livestudio.services.semantic_actions import (
-    SemanticAction,
-    SemanticActionTarget,
-    SemanticTweenRequest,
-)
+from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
 from livestudio.services.tween import Easing
 from livestudio.utils.log import logger
 
@@ -57,27 +53,24 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
         )
 
         await self.runtime.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=(
-                    SemanticActionTarget(
-                        SemanticAction.HEAD_YAW.value,
-                        target_yaw,
-                        start_value=current_yaw.value
-                        if current_yaw is not None
-                        else None,
-                    ),
-                    SemanticActionTarget(
-                        SemanticAction.HEAD_ROLL.value,
-                        target_roll,
-                        start_value=(
-                            current_roll.value if current_roll is not None else None
-                        ),
-                    ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.HEAD_YAW.value,
+                    end_value=target_yaw,
+                    start_value=current_yaw,
+                    duration=duration,
+                    easing=easing,
+                    priority=10,
                 ),
-                duration=duration,
-                easing=easing,
-                priority=10,
-            ),
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.HEAD_ROLL.value,
+                    end_value=target_roll,
+                    start_value=current_roll,
+                    duration=duration,
+                    easing=easing,
+                    priority=10,
+                ),
+            ],
         )
 
     async def execute(self, **kwargs: object) -> None:

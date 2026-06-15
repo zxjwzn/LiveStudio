@@ -13,7 +13,6 @@ import json5
 
 from livestudio.services.platforms import PlatformService
 from livestudio.services.semantic_actions import (
-    SemanticActionTarget,
     SemanticTweenRequest,
 )
 from livestudio.utils.log import logger
@@ -262,13 +261,9 @@ class AnimationTemplatePlayer:
     ) -> SemanticTweenRequest:
         from_value = None if action.from_value is None else float(self._evaluate_value(action.from_value, context))
         return SemanticTweenRequest(
-            targets=(
-                SemanticActionTarget(
-                    action=action.parameter,
-                    value=float(self._evaluate_value(action.to, context)),
-                    start_value=from_value,
-                ),
-            ),
+            action_parameter_name=action.parameter,
+            end_value=float(self._evaluate_value(action.to, context)),
+            start_value=from_value,
             duration=float(self._evaluate_value(action.duration, context)),
             delay=float(self._evaluate_value(action.delay, context)),
             easing=action.easing,
@@ -316,7 +311,6 @@ class AnimationTemplatePlayer:
         return AnimationTemplate.model_validate(raw_data)
 
     async def _execute_playback(self, playback: TemplatePlayback) -> None:
-        tasks = [self._platform.tween_semantic(action) for action in playback.actions]
-        if not tasks:
-            return
-        await asyncio.gather(*tasks)
+        if playback.actions:
+            await self._platform.tween_semantic(playback.actions)
+

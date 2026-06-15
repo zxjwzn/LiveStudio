@@ -230,6 +230,7 @@ class VTubeStudio(PlatformService):
         self._semantic_adapter = SemanticActionAdapter(
             model_config.semantic_profile,
             parameter_specs=model_config.parameter_specs,
+            engine=self.tween,
         )
         logger.info(
             "已加载 VTube Studio 模型配置: {} ({}) -> {}",
@@ -354,19 +355,3 @@ class VTubeStudio(PlatformService):
             ),
         )
         await self.client.inject_parameter_data(request)
-
-    async def get_parameter_values(
-        self,
-        parameter_names: Iterable[str],
-    ) -> dict[str, float]:
-        """查询 VTube Studio 真实参数值"""
-
-        platform_values: dict[str, float] = {}
-        for parameter_name in parameter_names:
-            response = await self.client.get_parameter_value(
-                ParameterValueRequest(
-                    data=ParameterValueRequestData(name=parameter_name),
-                ),
-            )
-            platform_values[parameter_name] = response.data.value
-        return platform_values

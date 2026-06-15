@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from livestudio.services.semantic_actions import (
-    SemanticAction,
-    SemanticActionTarget,
-    SemanticTweenRequest,
-)
+from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
 from livestudio.services.tween import Easing
 
 from ..base import AnimationController
@@ -30,39 +26,31 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
             SemanticAction.HEAD_PITCH.value,
         )
         await self.runtime.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=(
-                    SemanticActionTarget(
-                        SemanticAction.HEAD_PITCH.value,
-                        self.config.pitch_amplitude,
-                        start_value=(
-                            current_pitch.value if current_pitch is not None else None
-                        ),
-                    ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.HEAD_PITCH.value,
+                    end_value=self.config.pitch_amplitude,
+                    start_value=current_pitch,
+                    duration=self.config.inhale_duration,
+                    easing=Easing.in_out_sine,
+                    priority=10,
                 ),
-                duration=self.config.inhale_duration,
-                easing=Easing.in_out_sine,
-                priority=10,
-            ),
+            ],
         )
         current_pitch = await self.runtime.get_semantic_value(
             SemanticAction.HEAD_PITCH.value,
         )
         await self.runtime.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=(
-                    SemanticActionTarget(
-                        SemanticAction.HEAD_PITCH.value,
-                        -self.config.pitch_amplitude,
-                        start_value=(
-                            current_pitch.value if current_pitch is not None else None
-                        ),
-                    ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.HEAD_PITCH.value,
+                    end_value=-self.config.pitch_amplitude,
+                    start_value=current_pitch,
+                    duration=self.config.exhale_duration,
+                    easing=Easing.in_out_sine,
+                    priority=10,
                 ),
-                duration=self.config.exhale_duration,
-                easing=Easing.in_out_sine,
-                priority=10,
-            ),
+            ],
         )
 
     async def execute(self, **kwargs: object) -> None:

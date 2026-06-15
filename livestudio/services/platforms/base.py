@@ -7,10 +7,7 @@ from collections.abc import Iterable
 from typing import Literal
 
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
-from livestudio.services.semantic_actions.adapter import (
-    SemanticActionAdapter,
-    SemanticActionState,
-)
+from livestudio.services.semantic_actions.adapter import SemanticActionAdapter
 from livestudio.services.semantic_actions.models import SemanticTweenRequest
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 
@@ -34,35 +31,21 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
 
         return None
 
-    async def tween_semantic(self, request: SemanticTweenRequest) -> None:
+    async def tween_semantic(self, requests: Iterable[SemanticTweenRequest]) -> None:
         """将平台无关语义动作缓动解析并发送到底层参数缓动引擎"""
 
         adapter = self.semantic_adapter
         if adapter is None:
             raise NotImplementedError(f"平台 {self.name} 未实现语义动作适配器")
-        await adapter.tween(self.tween, request)
+        await adapter.apply(list(requests))
 
-    async def get_semantic_value(self, action: str) -> SemanticActionState | None:
-        """查询平台真实参数值并归一化为语义动作值"""
+    async def get_semantic_value(self, action: str) -> float | None:
+        """查询当前受控参数并返回语义动作瞬时值"""
 
         adapter = self.semantic_adapter
         if adapter is None:
             return None
-        parameter_names = adapter.platform_parameters_for(action)
-        if not parameter_names:
-            return None
-
-        platform_values = await self.get_parameter_values(parameter_names)
-        return adapter.normalize_platform_values(action, platform_values)
-
-    async def get_parameter_values(
-        self,
-        parameter_names: Iterable[str],
-    ) -> dict[str, float]:
-        """查询一批底层平台参数当前值"""
-
-        _ = parameter_names
-        return {}
+        return adapter.query(action)
 
     @abstractmethod
     async def send_parameter_states(

@@ -5,10 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from livestudio.services.platforms import PlatformService
-from livestudio.services.semantic_actions import (
-    SemanticActionTarget,
-    SemanticTweenRequest,
-)
+from livestudio.services.semantic_actions import SemanticTweenRequest
 
 from .models import EmotionRequest, ExpressionUnit, SelectedExpression
 from .selector import ExpressionSelector
@@ -58,20 +55,24 @@ class ExpressionService:
 
     async def apply_targets(
         self,
-        targets: Iterable[SemanticActionTarget],
+        targets: Iterable[ExpressionTarget],
         *,
         duration_scale: float = 1.0,
         priority: int = 40,
         easing: str = "in_out_sine",
     ) -> None:
         await self.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=tuple(targets),
-                duration=0.35 * duration_scale,
-                easing=easing,
-                priority=priority,
-                keep_alive=True,
-            ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=target.action,
+                    end_value=target.value,
+                    duration=0.35 * duration_scale,
+                    easing=easing,
+                    priority=priority,
+                    keep_alive=True,
+                )
+                for target in targets
+            ],
         )
 
     def _dominant_easing(self, selected: SelectedExpression) -> str:
@@ -79,3 +80,4 @@ class ExpressionService:
             if unit.targets:
                 return unit.easing
         return "in_out_sine"
+

@@ -8,8 +8,6 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from livestudio.services.semantic_actions import SemanticActionTarget
-
 
 class EmotionKind(StrEnum):
     """选表情时支持的情绪类型"""
@@ -118,4 +116,4 @@ class SelectedExpression:
     intent_match: float
     expression_strength: float
     semantic_tags: frozenset[str]
-    targets: tuple[SemanticActionTarget, ...]
+    targets: tuple[ExpressionTarget, ...]

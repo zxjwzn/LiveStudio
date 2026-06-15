@@ -10,11 +10,7 @@ from livestudio.services.audio_stream import (
     AudioChunkSubscription,
     AudioStreamSource,
 )
-from livestudio.services.semantic_actions import (
-    SemanticAction,
-    SemanticActionTarget,
-    SemanticTweenRequest,
-)
+from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
 from livestudio.services.tween import Easing
 from livestudio.utils.log import logger
 
@@ -139,20 +135,19 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
             self.config.attack_duration if is_opening else self.config.release_duration
         )
         await self.runtime.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=(
-                    SemanticActionTarget(
-                        SemanticAction.MOUTH_OPEN.value,
-                        self._clamp01(open_value),
-                    ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.MOUTH_OPEN.value,
+                    end_value=self._clamp01(open_value),
+                    duration=duration,
+                    easing=Easing.linear,
+                    priority=self.config.priority,
+                    keep_alive=True,
                 ),
-                duration=duration,
-                easing=Easing.linear,
-                priority=self.config.priority,
-                keep_alive=True,
-            ),
+            ],
         )
 
     @staticmethod
     def _clamp01(value: float) -> float:
         return max(0.0, min(1.0, value))
+

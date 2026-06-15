@@ -34,9 +34,8 @@ from livestudio.services.platforms.vtubestudio.config import VTubeStudioModelCon
 from livestudio.services.semantic_actions import (
     SemanticAction,
     SemanticActionAdapter,
-    SemanticActionTarget,
 )
-from livestudio.services.semantic_actions.adapter import PlatformParameterSpec
+from livestudio.services.semantic_actions.models import PlatformParameterSpec, SemanticTweenRequest
 from livestudio.services.tween import (
     ControlledParameterState,
     ParameterTweenEngine,
@@ -45,10 +44,11 @@ from livestudio.services.tween import (
 from tests.conftest import _SenderRecorder
 
 
-def _default_vts_adapter(profile) -> SemanticActionAdapter:
+def _default_vts_adapter(profile, tween: ParameterTweenEngine) -> SemanticActionAdapter:
     return SemanticActionAdapter(
         profile,
         parameter_specs=default_vtube_studio_parameter_specs(),
+        engine=tween,
     )
 
 
@@ -812,7 +812,7 @@ async def test_expression_service_applies_semantic_tweens() -> None:
     service = ExpressionService(
         platform=_SemanticVtsPlatform(
             tween=tween,
-            adapter=_default_vts_adapter(profile),
+            adapter=_default_vts_adapter(profile, tween),
         ),
         selector=selector,
     )
@@ -845,28 +845,33 @@ async def test_expression_service_uses_current_controlled_values_as_start_values
     class _CapturingTween(ParameterTweenEngine):
         capture_requests = False
 
-        async def tween(self, request: TweenRequest) -> None:
+        async def tween(self, requests: list[TweenRequest]) -> None:
             if not self.capture_requests:
-                await super().tween(request)
+                await super().tween(requests)
                 return
-            captured_start_values[request.parameter_name] = request.start_value
+            for request in requests:
+                captured_start_values[request.parameter_name] = request.start_value
 
     tween = _CapturingTween(sender)
     await tween.tween(
-        TweenRequest(
+        [
+            TweenRequest(
             parameter_name="EyeOpenLeft",
             end_value=0.42,
             duration=0.0,
             easing="linear",
         ),
+        ],
     )
     await tween.tween(
-        TweenRequest(
+        [
+            TweenRequest(
             parameter_name="EyeOpenRight",
             end_value=0.43,
             duration=0.0,
             easing="linear",
         ),
+        ],
     )
     captured_start_values.clear()
     tween.capture_requests = True
@@ -880,7 +885,7 @@ async def test_expression_service_uses_current_controlled_values_as_start_values
     service = ExpressionService(
         platform=_SemanticVtsPlatform(
             tween=tween,
-            adapter=_default_vts_adapter(profile),
+            adapter=_default_vts_adapter(profile, tween),
         ),
         selector=selector,
     )
@@ -893,8 +898,8 @@ async def test_expression_service_uses_current_controlled_values_as_start_values
         ),
     )
 
-    assert captured_start_values["EyeOpenLeft"] == 0.42
-    assert captured_start_values["EyeOpenRight"] == 0.43
+    assert captured_start_values["EyeOpenLeft"] is None
+    assert captured_start_values["EyeOpenRight"] is None
 
 
 async def test_expression_service_falls_back_to_platform_neutral_start_values() -> None:
@@ -907,8 +912,9 @@ async def test_expression_service_falls_back_to_platform_neutral_start_values() 
         _ = states, mode
 
     class _CapturingTween(ParameterTweenEngine):
-        async def tween(self, request: TweenRequest) -> None:
-            captured_start_values[request.parameter_name] = request.start_value
+        async def tween(self, requests: list[TweenRequest]) -> None:
+            for request in requests:
+                captured_start_values[request.parameter_name] = request.start_value
 
     profile = default_vtube_studio_semantic_profile()
     selector = ExpressionSelector(
@@ -916,10 +922,11 @@ async def test_expression_service_falls_back_to_platform_neutral_start_values() 
         profile,
         rng=random.Random(1),
     )
+    tween = _CapturingTween(sender)
     service = ExpressionService(
         platform=_SemanticVtsPlatform(
-            tween=_CapturingTween(sender),
-            adapter=_default_vts_adapter(profile),
+            tween=tween,
+            adapter=_default_vts_adapter(profile, tween),
         ),
         selector=selector,
     )
@@ -932,8 +939,8 @@ async def test_expression_service_falls_back_to_platform_neutral_start_values() 
         ),
     )
 
-    assert captured_start_values["EyeOpenLeft"] == 0.5
-    assert captured_start_values["EyeOpenRight"] == 0.5
+    assert captured_start_values["EyeOpenLeft"] is None
+    assert captured_start_values["EyeOpenRight"] is None
 
 
 def test_vtube_model_config_contains_semantic_profile_defaults() -> None:
@@ -947,29 +954,38 @@ def test_vtube_model_config_contains_semantic_profile_defaults() -> None:
 
 def test_vtube_semantic_adapter_uses_model_parameter_specs() -> None:
     profile = default_vtube_studio_semantic_profile()
+    specs = default_vtube_studio_parameter_specs()
+    specs_by_name = {spec.name: spec for spec in specs}
+    specs_by_name["EyeOpenLeft"] = PlatformParameterSpec(
+        name="EyeOpenLeft",
+        minimum=10.0,
+        maximum=20.0,
+    )
+    specs_by_name["EyeOpenRight"] = PlatformParameterSpec(
+        name="EyeOpenRight",
+        minimum=30.0,
+        maximum=50.0,
+    )
     adapter = SemanticActionAdapter(
         profile,
-        parameter_specs=[
-            PlatformParameterSpec(
-                name="EyeOpenLeft",
-                minimum=10.0,
-                maximum=20.0,
-            ),
-            PlatformParameterSpec(
-                name="EyeOpenRight",
-                minimum=30.0,
-                maximum=50.0,
+        parameter_specs=list(specs_by_name.values()),
+        engine=ParameterTweenEngine(_SenderRecorder()),
+    )
+
+    resolved = adapter.to_tween_requests(
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.EYE_OPEN.value,
+                end_value=0.75,
+                duration=0.1,
+                easing="linear",
             ),
         ],
     )
 
-    resolved = adapter.resolve(
-        SemanticActionTarget(SemanticAction.EYE_OPEN.value, 0.75),
-    )
-
-    by_name = {state.name: state for state in resolved}
-    assert by_name["EyeOpenLeft"].value == 15.0
-    assert by_name["EyeOpenRight"].value == 40.0
+    by_name = {request.parameter_name: request for request in resolved}
+    assert by_name["EyeOpenLeft"].end_value == 17.5
+    assert by_name["EyeOpenRight"].end_value == 45.0
 
 
 async def test_vtube_platform_queries_real_values_as_semantic_state() -> None:
@@ -980,13 +996,22 @@ async def test_vtube_platform_queries_real_values_as_semantic_state() -> None:
         VTubeStudioClient,
         client,
     )
-    platform._semantic_adapter = _default_vts_adapter(profile)  # noqa: SLF001
+    platform._semantic_adapter = _default_vts_adapter(profile, platform.tween)  # noqa: SLF001
+    platform.tween._controlled_params["EyeOpenLeft"] = ControlledParameterState(  # noqa: SLF001
+        name="EyeOpenLeft",
+        value=0.5,
+        mode="set",
+    )
+    platform.tween._controlled_params["EyeOpenRight"] = ControlledParameterState(  # noqa: SLF001
+        name="EyeOpenRight",
+        value=1.0,
+        mode="set",
+    )
 
-    state = await platform.get_semantic_value(SemanticAction.EYE_OPEN.value)
+    value = await platform.get_semantic_value(SemanticAction.EYE_OPEN.value)
 
-    assert state is not None
-    assert state.value == 0.875
-    assert client.requested == ["EyeOpenLeft", "EyeOpenRight"]
+    assert value == 0.75
+    assert client.requested == []
 
 
 async def test_reload_model_config_creates_default_model_config(

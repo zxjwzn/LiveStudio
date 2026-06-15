@@ -48,9 +48,9 @@ def test_template_render_outputs_semantic_actions(tmp_path: Path) -> None:
 
     assert len(playback.actions) == 1
     request = playback.actions[0]
-    assert request.targets[0].action == SemanticAction.MOUTH_SMILE.value
-    assert request.targets[0].value == 0.6
-    assert request.targets[0].start_value == 0.0
+    assert request.action_parameter_name == SemanticAction.MOUTH_SMILE.value
+    assert request.end_value == 0.6
+    assert request.start_value == 0.0
 
 
 async def test_template_play_uses_platform_semantic_tween(tmp_path: Path) -> None:
@@ -78,7 +78,7 @@ async def test_template_play_uses_platform_semantic_tween(tmp_path: Path) -> Non
     await player.play_template("smile")
 
     assert len(platform.requests) == 1
-    assert platform.requests[0].targets[0].action == SemanticAction.MOUTH_OPEN.value
+    assert platform.requests[0].action_parameter_name == SemanticAction.MOUTH_OPEN.value
 
 
 def test_template_rejects_platform_parameter_names() -> None:

@@ -5,11 +5,7 @@ from __future__ import annotations
 import asyncio
 import random
 
-from livestudio.services.semantic_actions import (
-    SemanticAction,
-    SemanticActionTarget,
-    SemanticTweenRequest,
-)
+from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
 from livestudio.services.tween import Easing
 from livestudio.utils.log import logger
 
@@ -34,22 +30,16 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
             SemanticAction.EYE_OPEN.value,
         )
         await self.runtime.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=(
-                    SemanticActionTarget(
-                        SemanticAction.EYE_OPEN.value,
-                        0.0,
-                        start_value=(
-                            current_eye_open.value
-                            if current_eye_open is not None
-                            else None
-                        ),
-                    ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.EYE_OPEN.value,
+                    end_value=0.0,
+                    start_value=current_eye_open,
+                    duration=self.config.close_duration,
+                    easing=Easing.in_sine,
+                    priority=10,
                 ),
-                duration=self.config.close_duration,
-                easing=Easing.in_sine,
-                priority=10,
-            ),
+            ],
         )
         await asyncio.sleep(self.config.closed_hold)
 
@@ -57,22 +47,16 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
             SemanticAction.EYE_OPEN.value,
         )
         await self.runtime.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=(
-                    SemanticActionTarget(
-                        SemanticAction.EYE_OPEN.value,
-                        1.0,
-                        start_value=(
-                            current_eye_open.value
-                            if current_eye_open is not None
-                            else None
-                        ),
-                    ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.EYE_OPEN.value,
+                    end_value=1.0,
+                    start_value=current_eye_open,
+                    duration=self.config.open_duration,
+                    easing=Easing.out_sine,
+                    priority=10,
                 ),
-                duration=self.config.open_duration,
-                easing=Easing.out_sine,
-                priority=10,
-            ),
+            ],
         )
         wait_time = random.uniform(
             self.config.min_interval,

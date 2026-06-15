@@ -7,6 +7,8 @@ from livestudio.services.semantic_actions import (
     SemanticTweenRequest,
 )
 
+_SEMANTIC_ACTION_NAMES = {spec.id.value for spec in DEFAULT_SEMANTIC_ACTION_SPECS}
+
 TemplatePrimitive: TypeAlias = float | int | bool | str
 TemplateValue: TypeAlias = TemplatePrimitive | dict[str, str | list[float | int]]
 TemplateScalar: TypeAlias = TemplatePrimitive
@@ -44,7 +46,7 @@ class TemplateActionDefinition(BaseModel):
     @field_validator("parameter")
     @classmethod
     def validate_semantic_action(cls, value: str) -> str:
-        if value not in DEFAULT_SEMANTIC_ACTION_SPECS:
+        if value not in _SEMANTIC_ACTION_NAMES:
             raise ValueError(f"未知 AU 动作名: {value}")
         return value
 

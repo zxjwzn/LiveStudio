@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from livestudio.services.semantic_actions import (
     DEFAULT_SEMANTIC_ACTION_SPECS,
     SemanticActionProfile,
-    SemanticActionTarget,
     clamp_semantic_value,
 )
 
@@ -32,6 +31,8 @@ from .models import (
     SelectedExpression,
 )
 from .rules import BUILTIN_COMBINATION_RULES
+
+_SEMANTIC_SPECS_BY_ACTION = {spec.id.value: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS}
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,7 +185,7 @@ class ExpressionSelector:
         if len(required_units) != len(intent.required_units):
             return 0.0
         return self.semantic_profile.support_score(
-            SemanticActionTarget(target.action, 0.0, target.weight) for unit in required_units for target in unit.targets
+            target for unit in required_units for target in unit.targets
         )
 
     def _select_from_intent(
@@ -386,7 +387,7 @@ class ExpressionSelector:
         self,
         units: Iterable[ExpressionUnit],
         request: EmotionRequest | None = None,
-    ) -> tuple[SemanticActionTarget, ...]:
+    ) -> tuple[ExpressionTarget, ...]:
         return self._merge_targets(
             units,
             request
@@ -403,9 +404,7 @@ class ExpressionSelector:
         template_weight: float,
     ) -> ScoredExpressionUnit:
         target_tuple = self._targets_for_unit(unit, None)
-        platform_support = self.semantic_profile.support_score(
-            SemanticActionTarget(target.action, 0.0, target.weight) for target in target_tuple
-        )
+        platform_support = self.semantic_profile.support_score(target_tuple)
         novelty = 0.3 if unit.id in self._recent_unit_ids else 1.0
         score = (
             max(0.0, template_weight) * 0.55
@@ -623,7 +622,7 @@ class ExpressionSelector:
         *,
         emotion_state: EmotionVectorState | None = None,
         target_offsets: Mapping[str, float] | None = None,
-    ) -> tuple[SemanticActionTarget, ...]:
+    ) -> tuple[ExpressionTarget, ...]:
         merged: dict[str, tuple[float, float]] = {}
         range_limits: dict[str, tuple[float, float]] = {}
         order: list[str] = []
@@ -648,7 +647,7 @@ class ExpressionSelector:
                     total_weight + weight,
                 )
 
-        targets: list[SemanticActionTarget] = []
+        targets: list[ExpressionTarget] = []
         for action in order:
             weighted_value, total_weight = merged[action]
             if total_weight <= 0.0:
@@ -658,7 +657,7 @@ class ExpressionSelector:
                 low, high = range_limits[action]
                 value = min(max(value, low), high)
             targets.append(
-                SemanticActionTarget(
+                ExpressionTarget(
                     action=action,
                     value=clamp_semantic_value(action, value),
                 ),
@@ -673,7 +672,7 @@ class ExpressionSelector:
     ) -> float:
         value = self._sample_target_value(target)
         if target.scale_by_intensity:
-            spec = DEFAULT_SEMANTIC_ACTION_SPECS.get(target.action)
+            spec = _SEMANTIC_SPECS_BY_ACTION.get(target.action)
             neutral = spec.neutral if spec is not None else 0.0
             value = neutral + (value - neutral) * emotion_state.effective_intensity
             if target.value_range is not None:
@@ -714,7 +713,7 @@ class ExpressionSelector:
     def _build_signature(
         self,
         units: tuple[ExpressionUnit, ...],
-        targets: tuple[SemanticActionTarget, ...],
+        targets: tuple[ExpressionTarget, ...],
         semantic_tags: frozenset[str],
         request: EmotionRequest,
     ) -> ExpressionSignature:

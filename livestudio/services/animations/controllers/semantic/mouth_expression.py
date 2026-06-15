@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import random
 
-from livestudio.services.semantic_actions import (
-    SemanticAction,
-    SemanticActionTarget,
-    SemanticTweenRequest,
-)
+from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
 from livestudio.services.tween import Easing
 from livestudio.utils.log import logger
 
@@ -45,18 +41,17 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
         current_smile = await self.runtime.get_semantic_value(
             SemanticAction.MOUTH_SMILE.value,
         )
-        target = SemanticActionTarget(
-            SemanticAction.MOUTH_SMILE.value,
-            target_smile,
-            start_value=current_smile.value if current_smile is not None else None,
-        )
         await self.runtime.platform.tween_semantic(
-            SemanticTweenRequest(
-                targets=(target,),
-                duration=duration,
-                easing=easing,
-                priority=10,
-            ),
+            [
+                SemanticTweenRequest(
+                    action_parameter_name=SemanticAction.MOUTH_SMILE.value,
+                    end_value=target_smile,
+                    start_value=current_smile,
+                    duration=duration,
+                    easing=easing,
+                    priority=10,
+                ),
+            ],
         )
 
     async def execute(self, **kwargs: object) -> None:
