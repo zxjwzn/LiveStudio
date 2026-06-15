@@ -12,6 +12,7 @@ from .models import (
     SemanticActionProfile,
     SemanticActionSpec,
     SemanticTweenRequest,
+    clamp_semantic_value,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "SemanticActionProfile",
     "SemanticActionSpec",
     "SemanticTweenRequest",
+    "clamp_semantic_value",
 ]

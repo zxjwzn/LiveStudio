@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Literal
+from typing import Any, Literal
 
 from livestudio.services.animations.templates import (
     AnimationTemplatePlayer,
@@ -57,7 +57,7 @@ class _SemanticPlatform(PlatformService):
     def tween(self) -> ParameterTweenEngine:
         return self._tween
 
-    async def tween_semantic(self, requests: Iterable[SemanticTweenRequest]) -> None:
+    async def tween_semantic(self, requests: Iterable[Any]) -> None:
         self.requests.extend(requests)
 
     async def get_semantic_value(self, action: str) -> float | None:

@@ -65,6 +65,8 @@ async def test_release_cancels_running_tween() -> None:
     await asyncio.sleep(0.05)
 
     await engine.release("B")
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
     assert "B" not in engine.controlled_params
     assert task.done()
@@ -143,6 +145,8 @@ async def test_cancel_stops_tween_but_keeps_controlled_param() -> None:
     await asyncio.sleep(0.05)
 
     await engine.cancel("C")
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
     assert "C" not in engine.active_parameters
     # cancel 不释放控制权，参数值应保留
@@ -167,6 +171,8 @@ async def test_cancel_with_release_flag_also_removes_param() -> None:
     await asyncio.sleep(0.05)
 
     await engine.cancel("D", release=True)
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
     assert "D" not in engine.controlled_params
     assert task.done()
@@ -196,8 +202,9 @@ async def test_cancel_all_stops_all_tweens_but_keeps_params() -> None:
 
     await engine.cancel_all()
 
-    # cancel_all 取消的是内部 _run_tween task，外层 tween() wrapper 需要一轮事件循环完成
-    await asyncio.sleep(0)
+    for t in tasks:
+        with pytest.raises(asyncio.CancelledError):
+            await t
 
     assert engine.active_parameters == ()
     # 控制权保留

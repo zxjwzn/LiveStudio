@@ -22,30 +22,22 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
     async def run_cycle(self) -> None:
         """执行一次呼吸周期"""
 
-        current_pitch = await self.runtime.get_semantic_value(
-            SemanticAction.HEAD_PITCH.value,
-        )
         await self.runtime.platform.tween_semantic(
             [
                 SemanticTweenRequest(
-                    action_parameter_name=SemanticAction.HEAD_PITCH.value,
+                    action_parameter_name=SemanticAction.HEAD_PITCH,
                     end_value=self.config.pitch_amplitude,
-                    start_value=current_pitch,
                     duration=self.config.inhale_duration,
                     easing=Easing.in_out_sine,
                     priority=10,
                 ),
             ],
         )
-        current_pitch = await self.runtime.get_semantic_value(
-            SemanticAction.HEAD_PITCH.value,
-        )
         await self.runtime.platform.tween_semantic(
             [
                 SemanticTweenRequest(
-                    action_parameter_name=SemanticAction.HEAD_PITCH.value,
+                    action_parameter_name=SemanticAction.HEAD_PITCH,
                     end_value=-self.config.pitch_amplitude,
-                    start_value=current_pitch,
                     duration=self.config.exhale_duration,
                     easing=Easing.in_out_sine,
                     priority=10,

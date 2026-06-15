@@ -19,16 +19,10 @@ from livestudio.services.animations import (
     BlinkController,
     BodySwingController,
     BreathingController,
-    EyeCenteringController,
     MouthExpressionController,
     MouthSyncController,
 )
 from livestudio.services.audio_stream import AudioStreamSource
-from livestudio.services.expressions import (
-    BUILTIN_EXPRESSION_UNITS,
-    ExpressionSelector,
-    ExpressionService,
-)
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
@@ -51,17 +45,8 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         self.animation_manager = animation_manager
         self.animation_manager.register_runtime(self.platform)
         self._model_subscription: EventSubscriptionResponse | None = None
-        self._expression_service: ExpressionService | None = None
         self._initialized = False
         self._started = False
-
-    @property
-    def expression_service(self) -> ExpressionService:
-        """返回当前模型的情绪驱动表情服务"""
-
-        if self._expression_service is None:
-            raise RuntimeError("当前模型尚未加载表情服务")
-        return self._expression_service
 
     async def initialize(self) -> None:
         """初始化应用依赖"""
@@ -106,7 +91,6 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         await self.animation_manager.stop()
         await self.platform.stop()
         self._model_subscription = None
-        self._expression_service = None
         self._initialized = False
         self._started = False
 
@@ -189,7 +173,10 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
             return
 
         current_by_file = {expression.file: expression for expression in expressions}
-        config_by_file = {expression_config.file: expression_config for expression_config in config.expressions}
+        config_by_file = {
+            expression_config.file: expression_config
+            for expression_config in config.expressions
+        }
         changed = False
         for expression in expressions:
             if expression.file in config_by_file:
@@ -227,11 +214,6 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
             BlinkController(runtime, "blink", config.controllers.blink),
             BreathingController(runtime, "breathing", config.controllers.breathing),
             BodySwingController(runtime, "body_swing", config.controllers.body_swing),
-            EyeCenteringController(
-                runtime,
-                "eye_centering",
-                config.controllers.eye_centering,
-            ),
             MouthExpressionController(
                 runtime,
                 "mouth_expression",
@@ -245,16 +227,3 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
             ),
         ]
         await runtime.reload_controllers(controllers)
-        await self._apply_expression_semantics(config)
-
-    async def _apply_expression_semantics(self, config: VTubeStudioModelConfig) -> None:
-        """按当前模型配置刷新情绪驱动表情服务"""
-
-        selector = ExpressionSelector(
-            BUILTIN_EXPRESSION_UNITS,
-            config.semantic_profile,
-        )
-        self._expression_service = ExpressionService(
-            platform=self.platform,
-            selector=selector,
-        )

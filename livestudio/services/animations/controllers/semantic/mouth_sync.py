@@ -137,7 +137,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         await self.runtime.platform.tween_semantic(
             [
                 SemanticTweenRequest(
-                    action_parameter_name=SemanticAction.MOUTH_OPEN.value,
+                    action_parameter_name=SemanticAction.MOUTH_OPEN,
                     end_value=self._clamp01(open_value),
                     duration=duration,
                     easing=Easing.linear,
@@ -150,4 +150,3 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
     @staticmethod
     def _clamp01(value: float) -> float:
         return max(0.0, min(1.0, value))
-

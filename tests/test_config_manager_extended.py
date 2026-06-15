@@ -8,7 +8,11 @@ import pytest
 import yaml
 from pydantic import BaseModel
 
-from livestudio.config.errors import ConfigFormatError, ConfigLoadError, ConfigValidationError
+from livestudio.config.errors import (
+    ConfigFormatError,
+    ConfigLoadError,
+    ConfigValidationError,
+)
 from livestudio.config.manager import ConfigManager
 
 
@@ -69,7 +73,12 @@ async def test_reload_picks_up_disk_changes(tmp_path: Path) -> None:
     manager = ConfigManager(_TestConfig, path)
     await manager.load()
 
-    data = {"name": "reloaded", "count": 99, "inner": {"level": 1, "tag": "default"}, "items": ["a", "b"]}
+    data = {
+        "name": "reloaded",
+        "count": 99,
+        "inner": {"level": 1, "tag": "default"},
+        "items": ["a", "b"],
+    }
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
 
     config = await manager.reload()

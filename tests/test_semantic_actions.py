@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Literal
 
 import pytest
@@ -25,7 +26,7 @@ class _TweenRecorder:
 
     async def __call__(
         self,
-        states: list[ControlledParameterState],
+        states: Iterable[ControlledParameterState],
         mode: Literal["set", "add"],
     ) -> None:
         _ = mode
@@ -59,6 +60,25 @@ def test_semantic_adapter_maps_action_to_platform_range() -> None:
     assert len(requests) == 1
     assert requests[0].parameter_name == "FaceAngleZ"
     assert requests[0].end_value == pytest.approx(45.0)
+
+
+def test_semantic_adapter_maps_mouth_open_zero_to_platform_minimum() -> None:
+    adapter = _default_adapter()
+
+    requests = adapter.to_tween_requests(
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.MOUTH_OPEN.value,
+                end_value=0.0,
+                duration=0.1,
+                easing="linear",
+            ),
+        ],
+    )
+
+    assert len(requests) == 1
+    assert requests[0].parameter_name == "MouthOpen"
+    assert requests[0].end_value == pytest.approx(0.0)
 
 
 def test_semantic_adapter_maps_multiple_bound_parameters() -> None:

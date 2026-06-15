@@ -6,6 +6,7 @@ from livestudio.services.tween import (
     ParameterTweenEngine,
     TweenRequest,
 )
+from livestudio.utils.log import logger
 
 from .models import (
     DEFAULT_SEMANTIC_ACTION_SPECS,
@@ -64,6 +65,15 @@ class SemanticActionAdapter:
         if tween_requests:
             await self._engine.tween(tween_requests)
 
+    def to_tween_requests(
+        self, requests: list[SemanticTweenRequest]
+    ) -> list[TweenRequest]:
+        """把一批语义缓动请求转换为平台 TweenRequest (不下发)"""
+        results: list[TweenRequest] = []
+        for req in requests:
+            results.extend(self._resolve_request(req))
+        return results
+
     # ------------------------------------------------------------------
     # 公开接口: 查询当前语义值
     # ------------------------------------------------------------------
@@ -104,7 +114,6 @@ class SemanticActionAdapter:
         if binding is None:
             return []
 
-        controlled = self._engine.controlled_params
         results: list[TweenRequest] = []
 
         for param_name in binding.platform_params:
@@ -116,17 +125,14 @@ class SemanticActionAdapter:
                 req.end_value, spec, req.action_parameter_name
             )
 
-            # 确定起始值: 请求指定 > 引擎当前值 > 平台中点
-            start_value: float
+            # 确定起始值: 请求指定时做映射，否则留 None 让引擎自行决定
+            start_value: float | None
             if req.start_value is not None:
                 start_value = _semantic_to_platform(
                     req.start_value, spec, req.action_parameter_name
                 )
-            elif param_name in controlled:
-                start_value = controlled[param_name].value
             else:
-                start_value = _platform_midpoint(spec)
-
+                start_value = None
             results.append(
                 TweenRequest(
                     parameter_name=param_name,
@@ -156,29 +162,23 @@ def _semantic_to_platform(
 ) -> float:
     """把语义范围内的值线性映射到平台参数范围
 
-    以 SemanticActionSpec 的 neutral 对应平台中点，分别向上/向下做线性比例映射。
+    按 SemanticActionSpec 和平台参数的最小/最大值做线性比例映射。
     结果钳位到平台参数的 [minimum, maximum]。
     """
     semantic_spec = _SPEC_BY_ACTION.get(action)
-    midpoint = _platform_midpoint(spec)
 
     if semantic_spec is None:
         # 没有语义规格时，把值当作 [-1, 1] 范围线性映射
+        midpoint = _platform_midpoint(spec)
         normalized = max(-1.0, min(1.0, semantic_value))
         if normalized >= 0:
             return _clamp(midpoint + normalized * (spec.maximum - midpoint), spec)
         return _clamp(midpoint + normalized * (midpoint - spec.minimum), spec)
 
     clamped = max(semantic_spec.minimum, min(semantic_spec.maximum, semantic_value))
-
-    if clamped >= semantic_spec.neutral:
-        span = semantic_spec.maximum - semantic_spec.neutral
-        ratio = 0.0 if span <= 0.0 else (clamped - semantic_spec.neutral) / span
-        return _clamp(midpoint + ratio * (spec.maximum - midpoint), spec)
-
-    span = semantic_spec.neutral - semantic_spec.minimum
-    ratio = 0.0 if span <= 0.0 else (semantic_spec.neutral - clamped) / span
-    return _clamp(midpoint - ratio * (midpoint - spec.minimum), spec)
+    span = semantic_spec.maximum - semantic_spec.minimum
+    ratio = 0.0 if span <= 0.0 else (clamped - semantic_spec.minimum) / span
+    return _clamp(spec.minimum + ratio * (spec.maximum - spec.minimum), spec)
 
 
 def _platform_to_semantic(
@@ -189,27 +189,20 @@ def _platform_to_semantic(
     """把平台参数值线性反向映射回语义范围内的值"""
     clamped_pv = max(spec.minimum, min(spec.maximum, platform_value))
     semantic_spec = _SPEC_BY_ACTION.get(action)
-    midpoint = _platform_midpoint(spec)
 
     if semantic_spec is None:
         # 没有语义规格时，映射回 [-1, 1]
+        midpoint = _platform_midpoint(spec)
         if clamped_pv >= midpoint:
             span = spec.maximum - midpoint
             return 0.0 if span <= 0.0 else (clamped_pv - midpoint) / span
         span = midpoint - spec.minimum
         return 0.0 if span <= 0.0 else -(midpoint - clamped_pv) / span
 
-    if clamped_pv >= midpoint:
-        span = spec.maximum - midpoint
-        ratio = 0.0 if span <= 0.0 else (clamped_pv - midpoint) / span
-        return semantic_spec.neutral + ratio * (
-            semantic_spec.maximum - semantic_spec.neutral
-        )
-
-    span = midpoint - spec.minimum
-    ratio = 0.0 if span <= 0.0 else (midpoint - clamped_pv) / span
-    return semantic_spec.neutral - ratio * (
-        semantic_spec.neutral - semantic_spec.minimum
+    span = spec.maximum - spec.minimum
+    ratio = 0.0 if span <= 0.0 else (clamped_pv - spec.minimum) / span
+    return semantic_spec.minimum + ratio * (
+        semantic_spec.maximum - semantic_spec.minimum
     )
 
 

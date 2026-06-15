@@ -26,15 +26,11 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
     async def run_cycle(self) -> None:
         """执行一次眨眼周期"""
 
-        current_eye_open = await self.runtime.get_semantic_value(
-            SemanticAction.EYE_OPEN.value,
-        )
         await self.runtime.platform.tween_semantic(
             [
                 SemanticTweenRequest(
-                    action_parameter_name=SemanticAction.EYE_OPEN.value,
+                    action_parameter_name=SemanticAction.EYE_OPEN,
                     end_value=0.0,
-                    start_value=current_eye_open,
                     duration=self.config.close_duration,
                     easing=Easing.in_sine,
                     priority=10,
@@ -43,15 +39,11 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
         )
         await asyncio.sleep(self.config.closed_hold)
 
-        current_eye_open = await self.runtime.get_semantic_value(
-            SemanticAction.EYE_OPEN.value,
-        )
         await self.runtime.platform.tween_semantic(
             [
                 SemanticTweenRequest(
-                    action_parameter_name=SemanticAction.EYE_OPEN.value,
+                    action_parameter_name=SemanticAction.EYE_OPEN,
                     end_value=1.0,
-                    start_value=current_eye_open,
                     duration=self.config.open_duration,
                     easing=Easing.out_sine,
                     priority=10,

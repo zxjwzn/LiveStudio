@@ -10,8 +10,6 @@ from livestudio.services.animations.controllers import (
     BlinkControllerSettings,
     BreathingController,
     BreathingControllerSettings,
-    EyeCenteringController,
-    EyeCenteringControllerSettings,
     MouthExpressionController,
     MouthExpressionControllerSettings,
 )
@@ -49,7 +47,7 @@ async def test_blink_controller_outputs_eye_open_semantic_actions() -> None:
         SemanticAction.EYE_OPEN.value,
     ]
     assert [request.end_value for request in platform.requests[:2]] == [0.0, 1.0]
-    assert platform.requests[0].start_value == 0.75
+    assert platform.requests[0].start_value is None
 
 
 async def test_breathing_controller_uses_normalized_pitch_amplitude() -> None:
@@ -72,7 +70,7 @@ async def test_breathing_controller_uses_normalized_pitch_amplitude() -> None:
         SemanticAction.HEAD_PITCH.value,
     ]
     assert [request.end_value for request in platform.requests] == [0.2, -0.2]
-    assert platform.requests[0].start_value == -0.1
+    assert platform.requests[0].start_value is None
 
 
 def test_controller_settings_reject_legacy_parameter_ranges() -> None:
@@ -100,39 +98,8 @@ async def test_mouth_expression_controller_uses_mouth_smile_semantic_action() ->
 
     await controller.run_cycle()
 
-    assert platform.requests[0].action_parameter_name == SemanticAction.MOUTH_SMILE.value
-    assert platform.requests[0].end_value == 0.0
-    assert platform.requests[0].start_value == 0.4
-
-
-async def test_eye_centering_controller_offsets_gaze_from_head_pose() -> None:
-    platform = _SemanticPlatform()
-    platform.semantic_values[SemanticAction.HEAD_YAW.value] = 0.4
-    platform.semantic_values[SemanticAction.HEAD_PITCH.value] = -0.2
-    platform.semantic_values[SemanticAction.HEAD_ROLL.value] = 0.1
-    controller = EyeCenteringController(
-        _runtime(platform),
-        "eye_centering",
-        EyeCenteringControllerSettings(
-            yaw_compensation=1.0,
-            pitch_compensation=1.0,
-            roll_to_x_compensation=0.5,
-            roll_to_y_compensation=0.25,
-            smoothing=0.0,
-            deadzone=0.0,
-            duration=0.0,
-            update_interval=0.001,
-        ),
+    assert (
+        platform.requests[0].action_parameter_name == SemanticAction.MOUTH_SMILE.value
     )
-
-    await controller.run_cycle()
-
-    request = platform.requests[0]
-    assert [request.action_parameter_name for request in platform.requests[:2]] == [
-        SemanticAction.EYE_GAZE_X.value,
-        SemanticAction.EYE_GAZE_Y.value,
-    ]
-    assert [request.end_value for request in platform.requests[:2]] == [
-        pytest.approx(-0.45),
-        pytest.approx(0.175),
-    ]
+    assert platform.requests[0].end_value == 0.0
+    assert platform.requests[0].start_value is None
