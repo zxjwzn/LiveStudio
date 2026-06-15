@@ -90,19 +90,24 @@ class SemanticActionAdapter:
             return None
 
         controlled = self._engine.controlled_params
-        total = 0.0
-        count = 0
+        values: list[float] = []
         for param_name in binding.platform_params:
             spec = self._parameter_specs.get(param_name)
             state = controlled.get(param_name)
             if spec is None or state is None:
                 continue
-            total += _platform_to_semantic(state.value, spec, action_str)
-            count += 1
+            values.append(_platform_to_semantic(state.value, spec, action_str))
 
-        if count == 0:
+        if not values:
             return None
-        return _clamp_to_semantic(action_str, total / count)
+        first_value = values[0]
+        if any(abs(value - first_value) > 1e-4 for value in values[1:]):
+            logger.warning(
+                "语义动作 {} 绑定参数反查结果不一致: {}",
+                action_str,
+                values,
+            )
+        return _clamp_to_semantic(action_str, first_value)
 
     # ------------------------------------------------------------------
     # 内部: 单条请求转换

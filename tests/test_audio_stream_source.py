@@ -31,6 +31,8 @@ from livestudio.services.audio_stream.sources.microphone.microphone import (
     MicrophoneAudioStreamSource,
 )
 from livestudio.services.audio_stream.sources.microphone.models import InputDeviceInfo
+from livestudio.services.audio_stream.sources.tts.config import TTSAudioStreamConfig
+from livestudio.services.audio_stream.sources.tts.tts import TTSAudioStreamSource
 
 
 class _DummySource(AudioStreamSource):
@@ -109,6 +111,17 @@ def test_subscribe_rejects_invalid_queue_size() -> None:
         source.subscribe(queue_maxsize=0)
 
 
+async def test_tts_audio_source_start_stop_lifecycle() -> None:
+    source = TTSAudioStreamSource(TTSAudioStreamConfig())
+
+    await source.initialize()
+    await source.start()
+    assert source.is_started
+
+    await source.stop()
+    assert not source.is_started
+
+
 async def test_router_switch_source_rolls_back_when_new_source_fails() -> None:
     router = AudioStreamRouter()
     router.config_manager = cast(
@@ -147,6 +160,43 @@ async def test_router_switch_source_rolls_back_when_new_source_fails() -> None:
     assert not tts.is_started
     assert router._source_subscription is not None
     assert router._forward_task is not None
+    await router.stop()
+
+
+async def test_router_forwards_active_source_chunks_to_subscribers() -> None:
+    router = AudioStreamRouter()
+    router.config_manager = cast(
+        ConfigManager[AudioStreamConfigFile],
+        type(
+            "_ConfigManager",
+            (),
+            {
+                "config": AudioStreamConfigFile(),
+                "save_calls": 0,
+                "save": lambda self: _save_config(self),
+            },
+        )(),
+    )
+    microphone = _DummySource()
+    tts = _DummySource()
+    router._microphone_source = cast(MicrophoneAudioStreamSource, microphone)
+    router._tts_source = cast(Any, tts)
+    router._sources = {
+        AudioSourceKind.MICROPHONE: microphone,
+        AudioSourceKind.TTS: tts,
+    }
+    router._active_source_kind = AudioSourceKind.MICROPHONE
+    router._source_subscription = microphone.subscribe(queue_maxsize=4)
+    router._initialized = True
+
+    subscriber = router.subscribe(queue_maxsize=4)
+    await router.start()
+    chunk = _make_chunk(0.4)
+    microphone.emit(chunk)
+
+    received = await asyncio.wait_for(subscriber.queue.get(), timeout=0.5)
+
+    assert received is chunk
     await router.stop()
 
 

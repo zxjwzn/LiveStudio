@@ -147,6 +147,22 @@ def test_semantic_adapter_query_returns_instant_value() -> None:
     assert adapter.query(SemanticAction.HEAD_ROLL.value) == pytest.approx(-0.5)
 
 
+def test_semantic_adapter_query_returns_first_bound_value_when_values_differ() -> None:
+    adapter = _default_adapter()
+    adapter._engine._controlled_params["EyeOpenLeft"] = ControlledParameterState(  # noqa: SLF001
+        name="EyeOpenLeft",
+        value=0.2,
+        mode="set",
+    )
+    adapter._engine._controlled_params["EyeOpenRight"] = ControlledParameterState(  # noqa: SLF001
+        name="EyeOpenRight",
+        value=0.8,
+        mode="set",
+    )
+
+    assert adapter.query(SemanticAction.EYE_OPEN.value) == pytest.approx(0.2)
+
+
 def test_semantic_support_score_uses_profile_bindings() -> None:
     profile = default_vtube_studio_semantic_profile()
 
