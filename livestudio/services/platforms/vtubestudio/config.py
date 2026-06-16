@@ -43,43 +43,59 @@ def default_vtube_studio_parameter_specs() -> list[PlatformParameterSpec]:
 def default_vtube_studio_semantic_profile() -> SemanticActionProfile:
     bindings = [
         SemanticActionBinding(
-            action=SemanticAction.BROW_HEIGHT.value,
-            platform_params=["BrowLeftY", "BrowRightY"],
+            action=SemanticAction.BROW_HEIGHT,
+            platform_params=["Brows"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.EYE_OPEN.value,
+            action=SemanticAction.BROW_HEIGHT_LEFT,
+            platform_params=["BrowLeftY"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.BROW_HEIGHT_RIGHT,
+            platform_params=["BrowRightY"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.EYE_OPEN,
             platform_params=["EyeOpenLeft", "EyeOpenRight"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.EYE_GAZE_X.value,
+            action=SemanticAction.EYE_OPEN_LEFT,
+            platform_params=["EyeOpenLeft"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.EYE_OPEN_RIGHT,
+            platform_params=["EyeOpenRight"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.EYE_GAZE_X,
             platform_params=["EyeLeftX", "EyeRightX"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.EYE_GAZE_Y.value,
+            action=SemanticAction.EYE_GAZE_Y,
             platform_params=["EyeLeftY", "EyeRightY"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.MOUTH_OPEN.value,
+            action=SemanticAction.MOUTH_OPEN,
             platform_params=["MouthOpen"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.MOUTH_SMILE.value,
+            action=SemanticAction.MOUTH_SMILE,
             platform_params=["MouthSmile"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.MOUTH_X.value,
+            action=SemanticAction.MOUTH_X,
             platform_params=["MouthX"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.HEAD_YAW.value,
+            action=SemanticAction.HEAD_YAW,
             platform_params=["FaceAngleX"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.HEAD_PITCH.value,
+            action=SemanticAction.HEAD_PITCH,
             platform_params=["FaceAngleY"],
         ),
         SemanticActionBinding(
-            action=SemanticAction.HEAD_ROLL.value,
+            action=SemanticAction.HEAD_ROLL,
             platform_params=["FaceAngleZ"],
         ),
     ]

@@ -15,6 +15,8 @@ from livestudio.services.platforms.vtubestudio import (
 from livestudio.services.semantic_actions import SemanticActionAdapter
 from livestudio.services.semantic_actions.models import (
     SemanticAction,
+    SemanticActionBinding,
+    SemanticActionProfile,
     SemanticTweenRequest,
 )
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
@@ -81,6 +83,63 @@ def test_semantic_adapter_maps_mouth_open_zero_to_platform_minimum() -> None:
     assert requests[0].end_value == pytest.approx(0.0)
 
 
+def test_semantic_adapter_maps_separate_brow_height_bindings() -> None:
+    adapter = _default_adapter()
+
+    requests = adapter.to_tween_requests(
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.BROW_HEIGHT_LEFT.value,
+                end_value=0.7,
+                duration=0.1,
+                easing="linear",
+            ),
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.BROW_HEIGHT_RIGHT.value,
+                end_value=0.3,
+                duration=0.1,
+                easing="linear",
+            ),
+        ],
+    )
+
+    by_name = {request.parameter_name: request for request in requests}
+    assert set(by_name) == {"BrowLeftY", "BrowRightY"}
+    assert by_name["BrowLeftY"].end_value == pytest.approx(0.7)
+    assert by_name["BrowRightY"].end_value == pytest.approx(0.3)
+
+
+def test_semantic_adapter_can_bind_common_brow_height_to_shared_platform_parameter() -> None:
+    recorder = _TweenRecorder()
+    engine = ParameterTweenEngine(recorder)
+    adapter = SemanticActionAdapter(
+        SemanticActionProfile(
+            bindings=[
+                SemanticActionBinding(
+                    action=SemanticAction.BROW_HEIGHT.value,
+                    platform_params=["Brows"],
+                ),
+            ],
+        ),
+        parameter_specs=default_vtube_studio_parameter_specs(),
+        engine=engine,
+    )
+
+    requests = adapter.to_tween_requests(
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.BROW_HEIGHT.value,
+                end_value=0.8,
+                duration=0.1,
+                easing="linear",
+            ),
+        ],
+    )
+
+    assert requests[0].parameter_name == "Brows"
+    assert requests[0].end_value == pytest.approx(0.8)
+
+
 def test_semantic_adapter_maps_multiple_bound_parameters() -> None:
     adapter = _default_adapter()
 
@@ -97,6 +156,32 @@ def test_semantic_adapter_maps_multiple_bound_parameters() -> None:
 
     assert {request.parameter_name for request in requests} == {"EyeLeftX", "EyeRightX"}
     assert [request.end_value for request in requests] == [pytest.approx(-0.6)] * 2
+
+
+def test_semantic_adapter_maps_separate_eye_open_bindings() -> None:
+    adapter = _default_adapter()
+
+    requests = adapter.to_tween_requests(
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.EYE_OPEN_LEFT.value,
+                end_value=0.25,
+                duration=0.1,
+                easing="linear",
+            ),
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.EYE_OPEN_RIGHT.value,
+                end_value=0.75,
+                duration=0.1,
+                easing="linear",
+            ),
+        ],
+    )
+
+    by_name = {request.parameter_name: request for request in requests}
+    assert set(by_name) == {"EyeOpenLeft", "EyeOpenRight"}
+    assert by_name["EyeOpenLeft"].end_value == pytest.approx(0.25)
+    assert by_name["EyeOpenRight"].end_value == pytest.approx(0.75)
 
 
 def test_semantic_adapter_clamps_semantic_value_before_mapping() -> None:

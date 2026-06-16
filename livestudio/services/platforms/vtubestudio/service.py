@@ -10,6 +10,7 @@ from livestudio.services.platforms.model_config_service import (
     PlatformModelConfigService,
 )
 from livestudio.services.semantic_actions import (
+    PlatformParameterSpec,
     SemanticActionAdapter,
 )
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
@@ -227,6 +228,7 @@ class VTubeStudio(PlatformService):
                 model_config_dir=self.config.model_config_dir,
             )
         model_config = await self._model_config_service.load(identity)
+        await self._refresh_parameter_specs(model_config)
         self._semantic_adapter = SemanticActionAdapter(
             model_config.semantic_profile,
             parameter_specs=model_config.parameter_specs,
@@ -239,6 +241,37 @@ class VTubeStudio(PlatformService):
             self.model_config_manager.path,
         )
         return model_config
+
+    async def _refresh_parameter_specs(
+        self,
+        model_config: VTubeStudioModelConfig,
+    ) -> None:
+        """用 VTube Studio 当前可注入输入参数刷新平台参数范围"""
+
+        try:
+            response = await self.client.get_input_parameters()
+        except Exception as exc:
+            logger.warning(
+                "读取 VTube Studio 参数列表失败，沿用模型配置参数: {}",
+                exc,
+            )
+            return
+
+        specs_by_name: dict[str, PlatformParameterSpec] = {}
+        for parameter in [
+            *response.data.default_parameters,
+            *response.data.custom_parameters,
+        ]:
+            specs_by_name[parameter.name] = PlatformParameterSpec(
+                name=parameter.name,
+                minimum=parameter.min,
+                maximum=parameter.max,
+            )
+        specs = list(specs_by_name.values())
+        if not specs:
+            return
+
+        model_config.parameter_specs = specs
 
     async def connect(self) -> None:
         """连接到 VTube Studio"""

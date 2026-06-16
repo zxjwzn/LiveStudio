@@ -33,7 +33,11 @@ class SemanticAction(StrEnum):
     """这些是各平台都能认的脸和头部动作名字"""
 
     BROW_HEIGHT = "brow.height"
+    BROW_HEIGHT_LEFT = "brow.height.left"
+    BROW_HEIGHT_RIGHT = "brow.height.right"
     EYE_OPEN = "eye.open"
+    EYE_OPEN_LEFT = "eye.open.left"
+    EYE_OPEN_RIGHT = "eye.open.right"
     EYE_GAZE_X = "eye.gaze.x"
     EYE_GAZE_Y = "eye.gaze.y"
     MOUTH_OPEN = "mouth.open"
@@ -60,7 +64,7 @@ class SemanticActionBinding(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    action: str
+    action: SemanticAction
     platform_params: list[str]
     curve: str = "linear"
 
@@ -87,9 +91,7 @@ class SemanticActionProfile(BaseModel):
         total_weight = sum(max(0.0, t.weight) for t in target_tuple)
         if total_weight <= 0.0:
             return 0.0
-        score = sum(
-            max(0.0, t.weight) for t in target_tuple if self.supports(t.action)
-        )
+        score = sum(max(0.0, t.weight) for t in target_tuple if self.supports(t.action))
         return max(0.0, min(1.0, score / total_weight))
 
 
@@ -110,14 +112,42 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         minimum=0.0,
         maximum=1.0,
         region=FacialRegion.BROW,
-        description="眉毛从低到高的程度",
+        description="整体眉毛从低到高的程度",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.BROW_HEIGHT_LEFT,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.BROW,
+        description="左眉毛从低到高的程度",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.BROW_HEIGHT_RIGHT,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.BROW,
+        description="右眉毛从低到高的程度",
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_OPEN,
         minimum=0.0,
         maximum=1.0,
         region=FacialRegion.EYE,
-        description="眼睛从闭上到睁大的程度",
+        description="双眼从闭上到睁大的程度",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.EYE_OPEN_LEFT,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.EYE,
+        description="左眼从闭上到睁大的程度",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.EYE_OPEN_RIGHT,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.EYE,
+        description="右眼从闭上到睁大的程度",
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_GAZE_X,
