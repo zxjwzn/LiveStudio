@@ -14,14 +14,17 @@ class _LifecycleService(AsyncServiceLifecycleMixin):
 
     async def initialize(self) -> None:
         self.calls.append("initialize")
+        self._mark_initialized()
 
     async def start(self) -> None:
         self.calls.append("start")
         if self.fail_start:
             raise RuntimeError("start failed")
+        self._mark_started()
 
     async def stop(self) -> None:
         self.calls.append("stop")
+        self._mark_stopped(reset_initialized=True)
 
 
 async def test_lifecycle_context_runs_full_start_stop_flow() -> None:
@@ -31,6 +34,8 @@ async def test_lifecycle_context_runs_full_start_stop_flow() -> None:
         assert entered is service
 
     assert service.calls == ["initialize", "start", "stop"]
+    assert not service.is_initialized
+    assert not service.is_started
 
 
 async def test_lifecycle_context_stops_after_failed_start() -> None:
@@ -41,3 +46,12 @@ async def test_lifecycle_context_stops_after_failed_start() -> None:
             pass
 
     assert service.calls == ["initialize", "start", "stop"]
+    assert not service.is_initialized
+    assert not service.is_started
+
+
+def test_lifecycle_state_helpers_default_to_false() -> None:
+    service = _LifecycleService()
+
+    assert not service.is_initialized
+    assert not service.is_started

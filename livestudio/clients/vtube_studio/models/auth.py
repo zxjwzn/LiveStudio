@@ -1,7 +1,5 @@
 """认证与通用会话状态的请求/响应模型"""
 
-from __future__ import annotations
-
 from pydantic import Field
 
 from .base import VTSEmptyData, VTSRequestEnvelope, VTSResponseEnvelope

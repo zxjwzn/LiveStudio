@@ -4,8 +4,6 @@
 构成完整的 UI 调色板
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Final
 

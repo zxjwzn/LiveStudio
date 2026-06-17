@@ -1,7 +1,5 @@
 """各平台都能用的眨眼控制器"""
 
-from __future__ import annotations
-
 import asyncio
 import random
 

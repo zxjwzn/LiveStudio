@@ -1,14 +1,14 @@
 """平台服务抽象"""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Literal
 
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
-from livestudio.services.semantic_actions.adapter import SemanticActionAdapter
-from livestudio.services.semantic_actions.models import SemanticTweenRequest
+from livestudio.services.semantic_actions import (
+    SemanticActionAdapter,
+    SemanticTweenRequest,
+)
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 
 
@@ -37,7 +37,7 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
         adapter = self.semantic_adapter
         if adapter is None:
             raise NotImplementedError(f"平台 {self.name} 未实现语义动作适配器")
-        await adapter.apply(list(requests))
+        await adapter.apply(tuple(requests))
 
     async def get_semantic_value(self, action: str) -> float | None:
         """查询当前受控参数并返回语义动作瞬时值"""

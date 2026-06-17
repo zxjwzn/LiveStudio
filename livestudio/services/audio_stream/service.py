@@ -1,7 +1,5 @@
 """统一音频流路由器"""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 
@@ -107,7 +105,7 @@ class AudioStreamRouter(AudioStreamSource):
 
         await self.active_source.start()
         self._forward_task = asyncio.create_task(self._forward_chunks())
-        self.is_started = True
+        self._set_started(True)
 
     async def stop(self) -> None:
         """停止并释放音频流路由器资源"""
@@ -129,7 +127,7 @@ class AudioStreamRouter(AudioStreamSource):
         self._sources = {}
         self._active_source_kind = None
         self._initialized = False
-        self.is_started = False
+        self._set_started(False)
 
     async def switch_source(
         self,
@@ -201,7 +199,7 @@ class AudioStreamRouter(AudioStreamSource):
             raise
         except Exception:
             logger.exception("音频流路由器转发任务异常")
-            self.is_started = False
+            self._set_started(False)
 
     @staticmethod
     def _chunk_analysis(chunk: AudioChunk) -> None:

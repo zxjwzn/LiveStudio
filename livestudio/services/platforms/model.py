@@ -1,7 +1,5 @@
 """平台服务运行时模型"""
 
-from __future__ import annotations
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.services.animations.controllers import AnimationControllerSettingsConfig

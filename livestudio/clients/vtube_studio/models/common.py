@@ -1,7 +1,5 @@
 """多个 VTube Studio API 请求共用的领域模型"""
 
-from __future__ import annotations
-
 from typing import Literal
 
 from pydantic import Field

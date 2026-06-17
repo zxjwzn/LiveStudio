@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -61,7 +59,7 @@ class BodySwingControllerSettings(ControllerSettings):
     max_duration: float = Field(default=8.0, ge=0, description="摇摆最长持续时间")
 
     @model_validator(mode="after")
-    def validate_body_swing_range(self) -> BodySwingControllerSettings:
+    def validate_body_swing_range(self) -> "BodySwingControllerSettings":
         if self.max_duration < self.min_duration:
             raise ValueError("max_duration 不能小于 min_duration")
         return self
@@ -80,7 +78,7 @@ class MouthExpressionControllerSettings(ControllerSettings):
     max_duration: float = Field(default=4.0, ge=0, description="变化最长持续时间")
 
     @model_validator(mode="after")
-    def validate_mouth_expression_range(self) -> MouthExpressionControllerSettings:
+    def validate_mouth_expression_range(self) -> "MouthExpressionControllerSettings":
         if self.max_duration < self.min_duration:
             raise ValueError("max_duration 不能小于 min_duration")
         return self
@@ -109,7 +107,7 @@ class MouthSyncControllerSettings(ControllerSettings):
     priority: int = Field(default=20, description="嘴型参数控制优先级")
 
     @model_validator(mode="after")
-    def validate_mouth_sync_range(self) -> MouthSyncControllerSettings:
+    def validate_mouth_sync_range(self) -> "MouthSyncControllerSettings":
         if self.voice_ceiling <= self.noise_floor:
             raise ValueError("voice_ceiling 必须大于 noise_floor")
         return self

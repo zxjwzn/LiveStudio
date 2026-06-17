@@ -1,7 +1,5 @@
 """图形界面的入口文件。"""
 
-from __future__ import annotations
-
 import flet as ft
 
 from livestudio.gui.components.shell import AppShell

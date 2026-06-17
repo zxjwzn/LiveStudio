@@ -1,7 +1,5 @@
 """麦克风音频源数据模型"""
 
-from __future__ import annotations
-
 from typing import NotRequired, Protocol, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field

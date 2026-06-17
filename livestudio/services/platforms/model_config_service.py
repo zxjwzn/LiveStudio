@@ -1,7 +1,5 @@
 """读取和保存跨平台模型配置的服务"""
 
-from __future__ import annotations
-
 import re
 from typing import Generic, TypeVar
 

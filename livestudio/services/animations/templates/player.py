@@ -1,7 +1,5 @@
 """动画模板加载与求值"""
 
-from __future__ import annotations
-
 import ast
 import asyncio
 import random

@@ -1,8 +1,6 @@
 """把 VTube Studio 应用流程串起来"""
 
-from __future__ import annotations
-
-from typing import Any
+from typing import Any, TypeAlias, cast
 
 from livestudio.clients.vtube_studio.models import (
     EventSubscriptionResponse,
@@ -22,12 +20,24 @@ from livestudio.services.animations import (
     MouthExpressionController,
     MouthSyncController,
 )
+from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
     VTubeStudioExpressionStateConfig,
     VTubeStudioModelConfig,
+)
+
+ControllerClass: TypeAlias = type[AnimationController[Any]]
+
+
+CONTROLLER_REGISTRY: tuple[tuple[str, ControllerClass], ...] = (
+    ("blink", BlinkController),
+    ("breathing", BreathingController),
+    ("body_swing", BodySwingController),
+    ("mouth_expression", MouthExpressionController),
+    ("mouth_sync", MouthSyncController),
 )
 
 
@@ -55,7 +65,7 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
             return
         await self.platform.initialize()
         await self.animation_manager.initialize()
-        self._initialized = True
+        self._mark_initialized()
 
     async def start(self) -> None:
         """启动 VTube Studio 相关应用"""
@@ -71,7 +81,7 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         except Exception:
             await self.stop()
             raise
-        self._started = True
+        self._mark_started()
 
     async def start_platform_for_expression_test(self) -> None:
         """启动平台并加载当前模型，但先不启动待机动画"""
@@ -88,11 +98,12 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
     async def stop(self) -> None:
         """停止应用并释放资源"""
 
+        if not self._initialized:
+            return
         await self.animation_manager.stop()
         await self.platform.stop()
         self._model_subscription = None
-        self._initialized = False
-        self._started = False
+        self._mark_stopped(reset_initialized=True)
 
     async def _subscribe_model_events(self) -> None:
         """监听 VTube Studio 的模型加载事件"""
@@ -210,20 +221,25 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         """把模型配置用到 VTube Studio 动画运行流程里"""
 
         runtime = self.animation_manager.get_runtime(self.platform.name)
-        controllers: list[AnimationController[Any]] = [
-            BlinkController(runtime, "blink", config.controllers.blink),
-            BreathingController(runtime, "breathing", config.controllers.breathing),
-            BodySwingController(runtime, "body_swing", config.controllers.body_swing),
-            MouthExpressionController(
-                runtime,
-                "mouth_expression",
-                config.controllers.mouth_expression,
-            ),
-            MouthSyncController(
-                runtime,
-                "mouth_sync",
-                config.controllers.mouth_sync,
-                self.audio_stream,
-            ),
-        ]
+        current_controllers = runtime.controllers
+        controllers: list[AnimationController[Any]] = []
+        for name, controller_class in CONTROLLER_REGISTRY:
+            controller_config = getattr(config.controllers, name)
+            current = current_controllers.get(name)
+            if current is not None and current.config is controller_config:
+                controllers.append(current)
+                continue
+            if controller_class is MouthSyncController:
+                controllers.append(
+                    MouthSyncController(
+                        runtime,
+                        name,
+                        controller_config,
+                        self.audio_stream,
+                    ),
+                )
+                continue
+            controllers.append(
+                cast(ControllerClass, controller_class)(runtime, name, controller_config),
+            )
         await runtime.reload_controllers(controllers)

@@ -10,7 +10,7 @@ from livestudio.services.animations.templates import (
     LoadedTemplateInfo,
 )
 from livestudio.services.platforms import PlatformService
-from livestudio.services.semantic_actions.models import SemanticTweenRequest
+from livestudio.services.semantic_actions import SemanticTweenRequest
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 
 

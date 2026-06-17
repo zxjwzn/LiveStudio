@@ -1,7 +1,5 @@
 """VTube Studio 平台服务配置模型"""
 
-from __future__ import annotations
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.services.platforms.model import PlatformModelConfig

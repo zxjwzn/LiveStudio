@@ -1,7 +1,5 @@
 """用 WebSocket 异步连接 VTube Studio 公共接口的客户端"""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import inspect
@@ -23,6 +21,7 @@ from .errors import (
     ResponseError,
     VTubeStudioConnectionError,
 )
+from .event_listener import VTSEventListener
 from .models import (
     APIStateRequest,
     APIStateResponse,
@@ -145,21 +144,18 @@ class VTubeStudioClient:
             return
 
         try:
-            self._connection = await asyncio.wait_for(
-                connect(
-                    self.config.websocket_url,
-                    user_agent_header=self.config.user_agent,
-                    open_timeout=self.config.connect_timeout,
-                    close_timeout=self.config.connect_timeout,
-                    max_size=4 * 1024 * 1024,
-                ),
-                timeout=self.config.connect_timeout,
+            self._connection = await connect(
+                self.config.ws_url,
+                user_agent_header=self.config.user_agent,
+                open_timeout=self.config.connect_timeout,
+                close_timeout=self.config.connect_timeout,
+                max_size=4 * 1024 * 1024,
             )
             self._reader_task = asyncio.create_task(self._reader_loop())
         except (OSError, TimeoutError, WebSocketException) as exc:
             self._connection = None
             raise VTubeStudioConnectionError(
-                f"无法连接到 {self.config.websocket_url}",
+                f"无法连接到 {self.config.ws_url}",
             ) from exc
 
     async def disconnect(self) -> None:
@@ -428,6 +424,30 @@ class VTubeStudioClient:
         """返回指定事件当前是否仍有本地处理器"""
 
         return bool(self._event_handlers.get(event_name))
+
+    def create_event_listener(
+        self,
+        event_name: str,
+        *,
+        queue_size: int,
+    ) -> VTSEventListener:
+        """创建队列式事件监听器，并注册到当前客户端。"""
+
+        listener = VTSEventListener(event_name=event_name, queue_size=queue_size)
+
+        async def _queue_handler(event: VTSEventEnvelope) -> None:
+            await listener.push(event)
+
+        listener.handler = _queue_handler
+        self.add_event_handler(event_name, _queue_handler)
+        return listener
+
+    def remove_event_listener(self, listener: VTSEventListener) -> None:
+        """移除队列式事件监听器。"""
+
+        handler = listener.handler
+        if handler is not None:
+            self.remove_event_handler(listener.event_name, handler)
 
     async def request_permission(
         self,

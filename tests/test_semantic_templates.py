@@ -16,8 +16,7 @@ from livestudio.services.platforms.vtubestudio import (
     default_vtube_studio_parameter_specs,
     default_vtube_studio_semantic_profile,
 )
-from livestudio.services.semantic_actions import SemanticActionAdapter
-from livestudio.services.semantic_actions.models import SemanticAction
+from livestudio.services.semantic_actions import SemanticAction, SemanticActionAdapter
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 from tests.conftest import _SemanticPlatform
 

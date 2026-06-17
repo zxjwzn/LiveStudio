@@ -1,7 +1,5 @@
 """单平台动画运行时"""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Iterable
 from typing import Any
@@ -66,23 +64,11 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
 
         return await self._platform.get_semantic_value(action)
 
-    @property
-    def is_initialized(self) -> bool:
-        """运行时是否已初始化"""
-
-        return self._initialized
-
-    @property
-    def is_started(self) -> bool:
-        """运行时是否已启动"""
-
-        return self._started
-
     async def initialize(self) -> None:
         """加载当前平台的动画模板"""
 
         await self._template_player.load()
-        self._initialized = True
+        self._mark_initialized()
         logger.info("平台动画运行时已初始化: {}", self.platform_name)
 
     async def start(self) -> None:
@@ -102,12 +88,12 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
             )
         except Exception:
             await asyncio.gather(
-                *(controller.stop_without_wait() for controller in idle_controllers),
+                *(controller.cancel() for controller in idle_controllers),
                 return_exceptions=True,
             )
-            self._started = False
+            self._mark_stopped()
             raise
-        self._started = True
+        self._mark_started()
         logger.info(
             "平台动画运行时已启动: {}，启动 idle 控制器 {} 个",
             self.platform_name,
@@ -119,9 +105,9 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
 
         controllers = tuple(self._controllers.values())
         await asyncio.gather(
-            *(controller.stop_without_wait() for controller in controllers),
+            *(controller.cancel() for controller in controllers),
         )
-        self._started = False
+        self._mark_stopped()
         logger.info("平台动画运行时已停止: {}", self.platform_name)
 
     async def reload_templates(self) -> None:
@@ -135,10 +121,14 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
     ) -> None:
         """重新加载当前平台控制器"""
 
+        next_controllers = tuple(controllers)
+        if not next_controllers:
+            raise ValueError("重新加载控制器时至少需要提供一个控制器")
+
         was_started = self._started
         await self.stop()
         self._controllers = {}
-        for controller in controllers:
+        for controller in next_controllers:
             self.register_controller(controller)
         if was_started:
             await self.start()
@@ -169,7 +159,7 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
 
         controller = self._controllers.pop(name, None)
         if controller is not None:
-            await controller.stop_without_wait()
+            await controller.cancel()
 
     def get_controller(self, name: str) -> AnimationController[Any]:
         """获取当前平台的控制器"""

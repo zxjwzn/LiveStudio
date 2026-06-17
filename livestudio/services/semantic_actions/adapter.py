@@ -1,6 +1,6 @@
 """把通用动作的平滑变化换成平台能用的参数变化"""
 
-from __future__ import annotations
+from collections.abc import Sequence
 
 from livestudio.services.tween import (
     ParameterTweenEngine,
@@ -9,19 +9,13 @@ from livestudio.services.tween import (
 from livestudio.utils.log import logger
 
 from .models import (
-    DEFAULT_SEMANTIC_ACTION_SPECS,
+    _SPEC_BY_ACTION,
     PlatformParameterSpec,
     SemanticAction,
     SemanticActionBinding,
     SemanticActionProfile,
-    SemanticActionSpec,
     SemanticTweenRequest,
 )
-
-# 把 DEFAULT_SEMANTIC_ACTION_SPECS 列表转成按 action id 查找的字典
-_SPEC_BY_ACTION: dict[str, SemanticActionSpec] = {
-    spec.id: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS
-}
 
 
 class SemanticActionAdapter:
@@ -42,7 +36,7 @@ class SemanticActionAdapter:
         self,
         profile: SemanticActionProfile,
         *,
-        parameter_specs: list[PlatformParameterSpec],
+        parameter_specs: Sequence[PlatformParameterSpec],
         engine: ParameterTweenEngine,
     ) -> None:
         self._profile = profile
@@ -50,14 +44,14 @@ class SemanticActionAdapter:
         self._engine = engine
         # 按 action 名建索引方便查找
         self._bindings: dict[str, SemanticActionBinding] = {
-            binding.action: binding for binding in profile.bindings
+            binding.action.value: binding for binding in profile.bindings
         }
 
     # ------------------------------------------------------------------
     # 公开接口: 下发语义缓动请求
     # ------------------------------------------------------------------
 
-    async def apply(self, requests: list[SemanticTweenRequest]) -> None:
+    async def apply(self, requests: Sequence[SemanticTweenRequest]) -> None:
         """把一批语义缓动请求转换为平台 TweenRequest 并下发给引擎"""
         tween_requests: list[TweenRequest] = []
         for req in requests:
@@ -66,7 +60,7 @@ class SemanticActionAdapter:
             await self._engine.tween(tween_requests)
 
     def to_tween_requests(
-        self, requests: list[SemanticTweenRequest]
+        self, requests: Sequence[SemanticTweenRequest]
     ) -> list[TweenRequest]:
         """把一批语义缓动请求转换为平台 TweenRequest (不下发)"""
         results: list[TweenRequest] = []

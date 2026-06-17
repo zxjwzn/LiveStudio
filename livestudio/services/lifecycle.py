@@ -1,13 +1,34 @@
 """异步服务生命周期辅助工具"""
 
-from __future__ import annotations
-
 from types import TracebackType
 from typing import Self
 
 
 class AsyncServiceLifecycleMixin:
     """为 initialize/start/stop 风格服务提供统一上下文管理。"""
+
+    @property
+    def is_initialized(self) -> bool:
+        """服务是否已初始化。"""
+
+        return bool(getattr(self, "_initialized", False))
+
+    @property
+    def is_started(self) -> bool:
+        """服务是否已启动。"""
+
+        return bool(getattr(self, "_started", False))
+
+    def _mark_initialized(self, value: bool = True) -> None:
+        self._initialized = value
+
+    def _mark_started(self, value: bool = True) -> None:
+        self._started = value
+
+    def _mark_stopped(self, *, reset_initialized: bool = False) -> None:
+        self._started = False
+        if reset_initialized:
+            self._initialized = False
 
     async def initialize(self) -> None:
         """初始化服务资源。"""

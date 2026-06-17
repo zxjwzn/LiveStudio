@@ -1,7 +1,5 @@
 """各平台都能用的口型同步控制器"""
 
-from __future__ import annotations
-
 import asyncio
 
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
@@ -42,7 +40,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
     async def start(self, **kwargs: object) -> bool:
         if not self.enabled or self.is_running:
-            return await super().start(**kwargs)
+            return False
 
         self._audio_subscription = self._audio_stream.subscribe(queue_maxsize=8)
         self._current_open = self._closed_open
@@ -88,10 +86,6 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
     async def stop(self) -> None:
         await super().stop()
-        self._release_subscription()
-
-    async def stop_without_wait(self) -> None:
-        await super().stop_without_wait()
         self._release_subscription()
 
     def _release_subscription(self) -> None:

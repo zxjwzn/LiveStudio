@@ -12,9 +12,9 @@ from livestudio.services.platforms.vtubestudio import (
     default_vtube_studio_parameter_specs,
     default_vtube_studio_semantic_profile,
 )
-from livestudio.services.semantic_actions import SemanticActionAdapter
-from livestudio.services.semantic_actions.models import (
+from livestudio.services.semantic_actions import (
     SemanticAction,
+    SemanticActionAdapter,
     SemanticActionBinding,
     SemanticActionProfile,
     SemanticTweenRequest,
@@ -109,14 +109,16 @@ def test_semantic_adapter_maps_separate_brow_height_bindings() -> None:
     assert by_name["BrowRightY"].end_value == pytest.approx(0.3)
 
 
-def test_semantic_adapter_can_bind_common_brow_height_to_shared_platform_parameter() -> None:
+def test_semantic_adapter_can_bind_common_brow_height_to_shared_platform_parameter() -> (
+    None
+):
     recorder = _TweenRecorder()
     engine = ParameterTweenEngine(recorder)
     adapter = SemanticActionAdapter(
         SemanticActionProfile(
             bindings=[
                 SemanticActionBinding(
-                    action=SemanticAction.BROW_HEIGHT.value,
+                    action=SemanticAction.BROW_HEIGHT,
                     platform_params=["Brows"],
                 ),
             ],
@@ -261,8 +263,6 @@ def test_semantic_support_score_uses_profile_bindings() -> None:
 
 
 def test_semantic_binding_rejects_unknown_fields() -> None:
-    from livestudio.services.semantic_actions.models import SemanticActionBinding
-
     with pytest.raises(ValidationError):
         SemanticActionBinding.model_validate(
             {

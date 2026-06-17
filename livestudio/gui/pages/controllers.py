@@ -1,7 +1,5 @@
 """动画控制器页面。"""
 
-from __future__ import annotations
-
 from livestudio.gui.components.common import placeholder_page
 from livestudio.gui.state import GUIState
 

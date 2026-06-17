@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
-from livestudio.clients.vtube_studio.client import VTubeStudioClient
 from livestudio.clients.vtube_studio.models import InputParameterListResponse
 from livestudio.services.platforms.vtubestudio import VTubeStudio
-from livestudio.services.semantic_actions.models import (
+from livestudio.services.semantic_actions import (
     SemanticAction,
     SemanticTweenRequest,
 )
@@ -65,7 +64,7 @@ async def test_vtube_studio_start_disconnects_when_authentication_fails() -> Non
     platform = VTubeStudio()
     client = _DisconnectRecorder()
     platform._initialized = True  # noqa: SLF001
-    platform._client = cast(VTubeStudioClient, client)  # noqa: SLF001
+    platform._client = cast(Any, client)  # noqa: SLF001
 
     async def connect() -> None:
         pass
@@ -90,7 +89,7 @@ async def test_reload_model_config_refreshes_parameter_specs_from_vtube_studio(
     platform = VTubeStudio()
     platform._initialized = True  # noqa: SLF001
     platform._client = cast(  # noqa: SLF001
-        VTubeStudioClient,
+        Any,
         _InputParameterClient(_input_parameter_response()),
     )
     platform.config.model_config_dir = str(tmp_path)
@@ -118,7 +117,7 @@ async def test_reload_model_config_keeps_defaults_when_vtube_studio_query_fails(
 ) -> None:
     platform = VTubeStudio()
     platform._initialized = True  # noqa: SLF001
-    platform._client = cast(VTubeStudioClient, _InputParameterClient())  # noqa: SLF001
+    platform._client = cast(Any, _InputParameterClient())  # noqa: SLF001
     platform.config.model_config_dir = str(tmp_path)
 
     model_config = await platform.reload_model_config("model-1", "avatar")

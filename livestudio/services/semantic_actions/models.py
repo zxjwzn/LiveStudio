@@ -1,13 +1,11 @@
 """这些是各平台都能用的脸部动作说法"""
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from livestudio.services.tween import EasingFunction
 
@@ -78,10 +76,16 @@ class SemanticActionProfile(BaseModel):
         default_factory=list,
         description="通用动作到平台参数的对应关系",
     )
+    _binding_actions: set[str] = PrivateAttr(default_factory=set)
+
+    @model_validator(mode="after")
+    def _index_bindings(self) -> "SemanticActionProfile":
+        self._binding_actions = {binding.action.value for binding in self.bindings}
+        return self
 
     def supports(self, action: str) -> bool:
         """检查是否有绑定覆盖指定的语义动作"""
-        return any(binding.action == action for binding in self.bindings)
+        return action in self._binding_actions
 
     def support_score(self, targets: Iterable[_HasActionWeight]) -> float:
         """计算一组目标被当前绑定覆盖的加权比例 (0.0 ~ 1.0)"""

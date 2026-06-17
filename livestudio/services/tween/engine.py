@@ -1,7 +1,5 @@
 """参数缓动引擎"""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable, Iterable
@@ -119,8 +117,12 @@ class ParameterTweenEngine:
     async def release_many(self, parameter_names: Iterable[str]) -> None:
         """释放多个参数的控制权"""
 
-        for parameter_name in tuple(parameter_names):
-            await self.release(parameter_name)
+        tasks_to_cancel = await self._release_batch(parameter_names)
+        for task_to_cancel in tasks_to_cancel:
+            task_to_cancel.cancel()
+        for task_to_cancel in tasks_to_cancel:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task_to_cancel
 
     async def cancel(self, parameter_name: str, *, release: bool = False) -> None:
         """取消某个参数的活动缓动，并可选择是否释放控制权"""
@@ -158,8 +160,24 @@ class ParameterTweenEngine:
         async with self._lock:
             parameter_names = tuple(self._controlled_params.keys())
 
-        for parameter_name in parameter_names:
-            await self.release(parameter_name)
+        await self.release_many(parameter_names)
+
+    async def _release_batch(
+        self,
+        parameter_names: Iterable[str],
+    ) -> tuple[asyncio.Task[None], ...]:
+        names = tuple(dict.fromkeys(parameter_names))
+        if not names:
+            return ()
+
+        async with self._lock:
+            tasks_to_cancel: list[asyncio.Task[None]] = []
+            for parameter_name in names:
+                active = self._active_tweens.pop(parameter_name, None)
+                if active is not None:
+                    tasks_to_cancel.append(active.task)
+                self._controlled_params.pop(parameter_name, None)
+        return tuple(tasks_to_cancel)
 
     def _resolve_easing(self, easing: str | EasingFunction) -> EasingFunction:
         if callable(easing):

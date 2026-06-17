@@ -1,7 +1,5 @@
 """用队列监听 VTube Studio 事件的基础组件"""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Awaitable, Callable
 

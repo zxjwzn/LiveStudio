@@ -1,7 +1,5 @@
 """通用信息请求/响应模型"""
 
-from __future__ import annotations
-
 from pydantic import Field
 
 from .base import VTSEmptyData, VTSRequestEnvelope, VTSResponseEnvelope

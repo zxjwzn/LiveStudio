@@ -1,7 +1,5 @@
 """通用音频流配置模型"""
 
-from __future__ import annotations
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import AudioSourceKind

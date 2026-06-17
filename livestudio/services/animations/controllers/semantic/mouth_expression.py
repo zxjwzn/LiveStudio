@@ -1,7 +1,5 @@
 """各平台都能用的嘴部表情控制器"""
 
-from __future__ import annotations
-
 import random
 
 from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest

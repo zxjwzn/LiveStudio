@@ -1,7 +1,5 @@
 """VTube Studio 相关错误类型"""
 
-from __future__ import annotations
-
 from typing import Any
 
 

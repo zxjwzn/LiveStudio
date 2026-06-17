@@ -1,7 +1,5 @@
 """配置相关异常层级定义"""
 
-from __future__ import annotations
-
 
 class ConfigError(Exception):
     """配置管理的基础异常"""

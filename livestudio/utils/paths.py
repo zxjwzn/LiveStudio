@@ -1,7 +1,5 @@
 """这里统一管理 LiveStudio 要用到的文件路径"""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

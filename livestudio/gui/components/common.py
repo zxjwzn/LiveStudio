@@ -1,7 +1,5 @@
 """一些常用的小界面组件。"""
 
-from __future__ import annotations
-
 import flet as ft
 
 from livestudio.gui.theme import Colors, Layout

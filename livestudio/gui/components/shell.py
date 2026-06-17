@@ -1,7 +1,5 @@
 """主界面外壳：左侧菜单、右侧页面、底部状态栏。"""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 
 import flet as ft

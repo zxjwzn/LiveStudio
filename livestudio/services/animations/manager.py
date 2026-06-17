@@ -1,7 +1,5 @@
 """动画运行时管理器"""
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -36,18 +34,6 @@ class AnimationManager(AsyncServiceLifecycleMixin):
         """返回平台动画运行时快照"""
 
         return dict(self._runtimes)
-
-    @property
-    def is_initialized(self) -> bool:
-        """动画管理器是否已初始化"""
-
-        return self._initialized
-
-    @property
-    def is_started(self) -> bool:
-        """动画管理器是否已启动"""
-
-        return self._started
 
     def register_runtime(
         self,
@@ -120,7 +106,7 @@ class AnimationManager(AsyncServiceLifecycleMixin):
         await asyncio.gather(
             *(runtime.initialize() for runtime in self._runtimes.values()),
         )
-        self._initialized = True
+        self._mark_initialized()
         logger.info("动画管理器已初始化，平台运行时 {} 个", len(self._runtimes))
 
     async def start(self) -> None:
@@ -131,14 +117,16 @@ class AnimationManager(AsyncServiceLifecycleMixin):
         if not self._initialized:
             await self.initialize()
         await asyncio.gather(*(runtime.start() for runtime in self._runtimes.values()))
-        self._started = True
+        self._mark_started()
         logger.info("动画管理器已启动")
 
     async def stop(self) -> None:
         """停止全部平台动画运行时"""
 
+        if not self._initialized:
+            return
         await asyncio.gather(*(runtime.stop() for runtime in self._runtimes.values()))
-        self._started = False
+        self._mark_stopped(reset_initialized=True)
         logger.info("动画管理器已停止")
 
     async def reload_templates(self, platform_name: str | None = None) -> None:

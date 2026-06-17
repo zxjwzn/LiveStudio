@@ -1,7 +1,5 @@
 """应用日志封装"""
 
-from __future__ import annotations
-
 import sys
 import weakref
 from dataclasses import dataclass
@@ -17,7 +15,7 @@ _DEFAULT_FORMAT: Final[str] = (
     " - <level>{message}</level>"
 )
 _STATUS_LINE_LOCK: Final[RLock] = RLock()
-_ACTIVE_STATUS_LINES: Final[weakref.WeakSet[StatusLine]] = weakref.WeakSet()
+_ACTIVE_STATUS_LINES: Final[weakref.WeakSet["StatusLine"]] = weakref.WeakSet()
 
 
 def _clear_active_status_lines() -> None:
@@ -32,7 +30,7 @@ def _log_sink(message: str) -> None:
     sys.stderr.flush()
 
 
-def _finish_status_line_unlocked(status_line: StatusLine) -> None:
+def _finish_status_line_unlocked(status_line: "StatusLine") -> None:
     if status_line.line_length <= 0:
         _ACTIVE_STATUS_LINES.discard(status_line)
         return
@@ -42,7 +40,7 @@ def _finish_status_line_unlocked(status_line: StatusLine) -> None:
     _ACTIVE_STATUS_LINES.discard(status_line)
 
 
-def _clear_status_line_unlocked(status_line: StatusLine) -> None:
+def _clear_status_line_unlocked(status_line: "StatusLine") -> None:
     if status_line.line_length <= 0:
         _ACTIVE_STATUS_LINES.discard(status_line)
         return

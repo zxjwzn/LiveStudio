@@ -1,7 +1,5 @@
 """各平台都能用的呼吸控制器"""
 
-from __future__ import annotations
-
 from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
 from livestudio.services.tween import Easing
 

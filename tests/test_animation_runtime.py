@@ -30,7 +30,7 @@ class _Controller(AnimationController[ControllerSettings]):
         super().__init__(runtime, name, config)
         self._animation_type = animation_type
         self.fail_start = fail_start
-        self.stop_without_wait_calls = 0
+        self.cancel_calls = 0
 
     @property
     def animation_type(self) -> AnimationType:
@@ -41,9 +41,9 @@ class _Controller(AnimationController[ControllerSettings]):
             raise RuntimeError("start failed")
         return await super().start(**kwargs)
 
-    async def stop_without_wait(self) -> None:
-        self.stop_without_wait_calls += 1
-        await super().stop_without_wait()
+    async def cancel(self) -> None:
+        self.cancel_calls += 1
+        await super().cancel()
 
     async def run_cycle(self) -> None:
         await self._stop_event.wait()
@@ -134,4 +134,4 @@ async def test_runtime_rolls_back_started_idle_controllers_on_start_failure() ->
 
     assert not runtime.is_started
     assert not started.is_running
-    assert started.stop_without_wait_calls == 1
+    assert started.cancel_calls == 1

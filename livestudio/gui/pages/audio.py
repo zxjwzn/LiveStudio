@@ -1,7 +1,5 @@
 """音频设置页面。"""
 
-from __future__ import annotations
-
 import flet as ft
 
 from livestudio.gui.components.common import card, page_body, page_title

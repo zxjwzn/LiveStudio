@@ -1,10 +1,9 @@
 """用来接收 VTube Studio 广播的 UDP 小工具"""
 
-from __future__ import annotations
-
 import asyncio
+import contextlib
 import socket
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from pydantic import ValidationError
 
@@ -24,15 +23,18 @@ class VTubeStudioDiscovery:
         timeout: float | None = None,
     ) -> VTubeStudioAPIStateBroadcast:
         effective_timeout = timeout or self._config.discovery_timeout
-        async for broadcast in self.listen(timeout=effective_timeout, max_messages=1):
-            return broadcast
+        async with contextlib.aclosing(
+            self.listen(timeout=effective_timeout, max_messages=1),
+        ) as broadcasts:
+            async for broadcast in broadcasts:
+                return broadcast
         raise DiscoveryError("在超时时间内未收到 VTube Studio UDP 广播")
 
     async def listen(
         self,
         timeout: float | None = None,
         max_messages: int | None = None,
-    ) -> AsyncIterator[VTubeStudioAPIStateBroadcast]:
+    ) -> AsyncGenerator[VTubeStudioAPIStateBroadcast, None]:
         loop = asyncio.get_running_loop()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setblocking(False)

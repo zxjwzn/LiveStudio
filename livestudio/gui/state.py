@@ -1,7 +1,5 @@
 """保存界面当前状态的地方。"""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any

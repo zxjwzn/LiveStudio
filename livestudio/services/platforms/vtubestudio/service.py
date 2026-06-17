@@ -1,7 +1,6 @@
 """VTube Studio 服务"""
 
-from __future__ import annotations
-
+import contextlib
 from collections.abc import Iterable
 from typing import Literal
 
@@ -17,11 +16,11 @@ from livestudio.services.tween import ControlledParameterState, ParameterTweenEn
 from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path
 
+from ....clients.vtube_studio.client import EventHandler as ListenerHandler
 from ....clients.vtube_studio.client import VTubeStudioClient
 from ....clients.vtube_studio.config import VTubeStudioConfig
 from ....clients.vtube_studio.discovery import VTubeStudioDiscovery
 from ....clients.vtube_studio.errors import APIError, AuthenticationError
-from ....clients.vtube_studio.event_manager import ListenerHandler, VTSEventManager
 from ....clients.vtube_studio.models import (
     EventName,
     EventSubscriptionConfig,
@@ -53,7 +52,6 @@ class VTubeStudio(PlatformService):
             config_path("vtube_studio.yaml"),
         )
         self._client: VTubeStudioClient | None = None
-        self._events: VTSEventManager | None = None
         self._discovery: VTubeStudioDiscovery | None = None
         self._model_config_service: (
             PlatformModelConfigService[VTubeStudioModelConfig] | None
@@ -122,30 +120,11 @@ class VTubeStudio(PlatformService):
         return self._model_config_service.identity
 
     @property
-    def is_initialized(self) -> bool:
-        """服务是否已初始化"""
-
-        return self._initialized
-
-    @property
-    def is_started(self) -> bool:
-        """服务是否已启动"""
-
-        return self._started
-
-    @property
     def client(self) -> VTubeStudioClient:
         """返回已初始化的底层客户端"""
         if self._client is None:
             raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
         return self._client
-
-    @property
-    def events(self) -> VTSEventManager:
-        """返回已初始化的事件管理器"""
-        if self._events is None:
-            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
-        return self._events
 
     @property
     def discovery(self) -> VTubeStudioDiscovery:
@@ -164,13 +143,12 @@ class VTubeStudio(PlatformService):
             config=self.config,
             plugin_info=self.config.plugin,
         )
-        self._events = VTSEventManager(self._client, self.config.event_queue_size)
         self._discovery = VTubeStudioDiscovery(self.config)
         self._model_config_service = PlatformModelConfigService(
             config_model=VTubeStudioModelConfig,
             model_config_dir=self.config.model_config_dir,
         )
-        self._initialized = True
+        self._mark_initialized()
 
     async def stop(self) -> None:
         """停止服务并按需保存配置"""
@@ -184,12 +162,10 @@ class VTubeStudio(PlatformService):
         if self._model_config_service is not None:
             await self._model_config_service.save()
         self._client = None
-        self._events = None
         self._discovery = None
         self._model_config_service = None
         self._semantic_adapter = None
-        self._initialized = False
-        self._started = False
+        self._mark_stopped(reset_initialized=True)
 
     async def start(self) -> None:
         """启动连接与认证流程"""
@@ -202,7 +178,7 @@ class VTubeStudio(PlatformService):
             await self.connect()
             await self.authenticate()
             self.tween.start()
-            self._started = True
+            self._mark_started()
         except Exception:
             await self.tween.stop()
             if self._client is not None:
@@ -321,7 +297,7 @@ class VTubeStudio(PlatformService):
         config: EventSubscriptionConfig | None = None,
     ) -> EventSubscriptionResponse:
         if handler is not None:
-            self.events.add_handler(event_name, handler)
+            self.client.add_event_handler(event_name, handler)
 
         request = EventSubscriptionRequest(
             data=EventSubscriptionRequestData(
@@ -332,10 +308,10 @@ class VTubeStudio(PlatformService):
         )
 
         try:
-            return await self.events.subscribe(request)
+            return await self.client.subscribe_event(request)
         except Exception:
             if handler is not None:
-                self.events.remove_handler(event_name, handler)
+                self.client.remove_event_handler(event_name, handler)
             raise
 
     async def unsubscribe(
@@ -344,16 +320,16 @@ class VTubeStudio(PlatformService):
         handler: ListenerHandler | None = None,
     ) -> EventSubscriptionResponse | None:
         if handler is not None:
-            self.events.remove_handler(event_name, handler)
+            self.client.remove_event_handler(event_name, handler)
 
-        if handler is not None and self.events.has_handlers(event_name):
+        if handler is not None and self.client.has_event_handlers(event_name):
             return None
 
         try:
-            return await self.events.unsubscribe(event_name)
+            return await self.client.unsubscribe_event(event_name)
         except Exception:
             if handler is not None:
-                self.events.add_handler(event_name, handler)
+                self.client.add_event_handler(event_name, handler)
             raise
 
     async def listen_for_api(
@@ -361,13 +337,13 @@ class VTubeStudio(PlatformService):
         timeout: float | None = None,
         max_messages: int | None = None,
     ) -> list[VTubeStudioAPIStateBroadcast]:
-        return [
-            broadcast
-            async for broadcast in self.discovery.listen(
+        async with contextlib.aclosing(
+            self.discovery.listen(
                 timeout=timeout,
                 max_messages=max_messages,
             )
-        ]
+        ) as broadcasts:
+            return [broadcast async for broadcast in broadcasts]
 
     async def send_parameter_states(
         self,

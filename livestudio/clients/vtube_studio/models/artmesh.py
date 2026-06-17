@@ -1,7 +1,5 @@
 """与 ArtMesh 和场景颜色相关的请求/响应模型"""
 
-from __future__ import annotations
-
 from pydantic import Field
 
 from .base import VTSEmptyData, VTSRequestEnvelope, VTSResponseEnvelope

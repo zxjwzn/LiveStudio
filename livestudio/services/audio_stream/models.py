@@ -1,7 +1,5 @@
 """通用音频流共享模型"""
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum

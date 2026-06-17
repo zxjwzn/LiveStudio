@@ -1,7 +1,5 @@
 """VTube Studio 的事件订阅与事件载荷模型"""
 
-from __future__ import annotations
-
 from typing import Literal
 
 from pydantic import Field

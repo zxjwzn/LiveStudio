@@ -1,7 +1,5 @@
 """用于缓动插值的辅助函数"""
 
-from __future__ import annotations
-
 import math
 from collections.abc import Callable
 

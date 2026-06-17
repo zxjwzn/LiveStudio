@@ -1,7 +1,5 @@
 """用 sounddevice 获取实时麦克风声音"""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from collections.abc import Sequence
@@ -85,7 +83,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
                 await asyncio.to_thread(stream.close)
             raise
         self._stream = stream
-        self.is_started = True
+        self._set_started(True)
         logger.info("麦克风音频流已启动")
 
     async def stop(self) -> None:
@@ -106,7 +104,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             self._loop = None
             self._device_info = None
             self._clear_subscriptions()
-            self.is_started = False
+            self._set_started(False)
             logger.info("麦克风音频流已停止")
 
     async def list_input_devices(self) -> list[InputDeviceInfo]:

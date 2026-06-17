@@ -14,7 +14,7 @@ from livestudio.services.animations.controllers import (
     MouthExpressionControllerSettings,
 )
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
-from livestudio.services.semantic_actions.models import SemanticAction
+from livestudio.services.semantic_actions import SemanticAction
 from tests.conftest import _SemanticPlatform, _TemplatePlayer
 
 

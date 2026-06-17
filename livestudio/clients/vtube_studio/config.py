@@ -1,7 +1,5 @@
 """VTube Studio 客户端配置"""
 
-from __future__ import annotations
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -113,8 +111,3 @@ class VTubeStudioConfig(BaseModel):
             raise ValueError("ws_url 必须以 ws:// 或 wss:// 开头")
         return value
 
-    @property
-    def websocket_url(self) -> str:
-        """返回 WebSocket 地址"""
-
-        return self.ws_url

@@ -1,7 +1,5 @@
 """VTube Studio API 共用的 Pydantic 基础模型"""
 
-from __future__ import annotations
-
 from typing import Any, Generic, TypeVar
 from uuid import uuid4
 

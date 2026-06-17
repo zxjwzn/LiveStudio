@@ -1,7 +1,5 @@
 """动画控制器抽象"""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from abc import ABC, abstractmethod
@@ -23,7 +21,7 @@ class AnimationController(ABC, Generic[ConfigT]):
 
     def __init__(
         self,
-        runtime: PlatformAnimationRuntime,
+        runtime: "PlatformAnimationRuntime",
         name: str,
         config: ConfigT,
     ) -> None:
@@ -35,7 +33,7 @@ class AnimationController(ABC, Generic[ConfigT]):
         self._lifecycle_lock = asyncio.Lock()
 
     @property
-    def runtime(self) -> PlatformAnimationRuntime:
+    def runtime(self) -> "PlatformAnimationRuntime":
         return self._runtime
 
     @property
@@ -80,7 +78,9 @@ class AnimationController(ABC, Generic[ConfigT]):
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-    async def stop_without_wait(self) -> None:
+    async def cancel(self) -> None:
+        """取消控制器任务，不等待控制器自行结束。"""
+
         async with self._lifecycle_lock:
             task = self._task
             self._stop_event.set()
@@ -108,10 +108,13 @@ class AnimationController(ABC, Generic[ConfigT]):
             except Exception:
                 logger.exception("动画控制器 {} 循环周期运行失败", self.name)
 
-    @abstractmethod
     async def run_cycle(self) -> None:
         """执行一个循环周期，仅循环控制器需要实现"""
 
-    @abstractmethod
+        raise NotImplementedError(f"控制器 {self.name} 未实现循环周期")
+
     async def execute(self, **kwargs: object) -> None:
         """执行一次动画，仅一次性控制器需要实现"""
+
+        _ = kwargs
+        raise NotImplementedError(f"控制器 {self.name} 未实现一次性动画")

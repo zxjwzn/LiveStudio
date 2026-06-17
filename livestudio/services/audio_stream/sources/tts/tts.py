@@ -1,7 +1,5 @@
 """TTS 音频流源占位实现"""
 
-from __future__ import annotations
-
 from ...base import AudioStreamSource
 from .config import TTSAudioStreamConfig
 
@@ -19,9 +17,9 @@ class TTSAudioStreamSource(AudioStreamSource):
     async def start(self) -> None:
         """启动 TTS 音频流占位资源"""
 
-        self.is_started = True
+        self._set_started(True)
 
     async def stop(self) -> None:
         """停止 TTS 音频流占位资源"""
 
-        self.is_started = False
+        self._set_started(False)

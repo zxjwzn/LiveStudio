@@ -1,7 +1,5 @@
 """动画运行时的数据模型"""
 
-from __future__ import annotations
-
 from enum import StrEnum
 
 

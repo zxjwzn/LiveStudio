@@ -1,5 +1,6 @@
 """用来异步连接 VTube Studio 的客户端"""
 
+from .client import EventHandler as ListenerHandler
 from .config import VTubeStudioConfig, VTubeStudioPluginInfo
 from .discovery import VTubeStudioDiscovery
 from .errors import (
@@ -13,7 +14,6 @@ from .errors import (
     VTubeStudioError,
 )
 from .event_listener import VTSEventListener
-from .event_manager import ListenerHandler, VTSEventManager
 
 __all__ = [
     "APIError",
@@ -24,7 +24,6 @@ __all__ = [
     "PermissionDeniedError",
     "ResponseError",
     "VTSEventListener",
-    "VTSEventManager",
     "VTubeStudioConfig",
     "VTubeStudioConnectionError",
     "VTubeStudioDiscovery",
