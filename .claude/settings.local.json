@@ -37,7 +37,9 @@
       "Bash(python -m pytest -q)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_vtube_studio_platform_lifecycle.py tests/test_platform_base.py tests/test_platform_model_config.py -q)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_refactor_lifecycle.py -v)",
-      "Bash(python -m pytest tests/test_refactor_lifecycle.py -q)"
+      "Bash(python -m pytest tests/test_refactor_lifecycle.py -q)",
+      "Bash(python -m pytest tests/test_vtube_studio_platform_lifecycle.py -v)",
+      "Bash(python *)"
     ]
   }
 }

@@ -1,5 +1,6 @@
 """VTube Studio 服务"""
 
+import asyncio
 import contextlib
 from collections.abc import Iterable
 from typing import Literal
@@ -8,7 +9,11 @@ from livestudio.clients.vtube_studio.client import EventHandler as ListenerHandl
 from livestudio.clients.vtube_studio.client import VTubeStudioClient
 from livestudio.clients.vtube_studio.config import VTubeStudioConfig
 from livestudio.clients.vtube_studio.discovery import VTubeStudioDiscovery
-from livestudio.clients.vtube_studio.errors import APIError, AuthenticationError
+from livestudio.clients.vtube_studio.errors import (
+    APIError,
+    AuthenticationError,
+    VTubeStudioConnectionError,
+)
 from livestudio.clients.vtube_studio.models import (
     EventName,
     EventSubscriptionConfig,
@@ -164,23 +169,37 @@ class VTubeStudio(PlatformService):
         self._mark_stopped(reset_initialized=True)
 
     async def start(self) -> None:
-        """启动连接与认证流程"""
+        """启动连接与认证流程，连接失败时自动重连直到成功"""
 
         if self._started:
             return
         if not self._initialized:
             await self.initialize()
-        try:
-            await self.connect()
-            await self.authenticate()
-            self.tween.start()
-            self._mark_started()
-        except Exception:
-            await self.tween.stop()
-            if self._client is not None:
-                await self._client.disconnect()
-            self._started = False
-            raise
+
+        retry_delay = 3.0
+        max_delay = 30.0
+        backoff_factor = 1.5
+
+        while True:
+            try:
+                await self.connect()
+                await self.authenticate()
+                self.tween.start()
+                self._mark_started()
+                logger.success("VTube Studio 已连接并完成认证")
+            except VTubeStudioConnectionError as exc:
+                logger.warning(
+                    f"连接 VTube Studio 失败: {exc}，{retry_delay:.1f}秒后重试..."
+                )
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * backoff_factor, max_delay)
+            except Exception:
+                await self.tween.stop()
+                if self._client is not None:
+                    await self._client.disconnect()
+                raise
+            else:
+                return
 
     async def reload_model_config(
         self,

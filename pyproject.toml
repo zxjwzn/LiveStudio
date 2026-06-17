@@ -95,3 +95,4 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401"]
 "tests/test_vtube_studio_client_extended.py" = ["SLF001"]
+"tests/test_vtubestudio_reconnect.py" = ["SIM117"]
