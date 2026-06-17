@@ -17,9 +17,9 @@ class TTSAudioStreamSource(AudioStreamSource):
     async def start(self) -> None:
         """启动 TTS 音频流占位资源"""
 
-        self._set_started(True)
+        self._mark_started()
 
     async def stop(self) -> None:
         """停止 TTS 音频流占位资源"""
 
-        self._set_started(False)
+        self._mark_stopped()

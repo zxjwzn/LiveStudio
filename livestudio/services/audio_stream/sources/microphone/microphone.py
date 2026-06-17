@@ -83,7 +83,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
                 await asyncio.to_thread(stream.close)
             raise
         self._stream = stream
-        self._set_started(True)
+        self._mark_started()
         logger.info("麦克风音频流已启动")
 
     async def stop(self) -> None:
@@ -104,7 +104,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             self._loop = None
             self._device_info = None
             self._clear_subscriptions()
-            self._set_started(False)
+            self._mark_stopped()
             logger.info("麦克风音频流已停止")
 
     async def list_input_devices(self) -> list[InputDeviceInfo]:

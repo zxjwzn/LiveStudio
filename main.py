@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import asyncio
 import contextlib
 from contextlib import AsyncExitStack
@@ -65,12 +64,7 @@ async def main() -> None:
         await asyncio.Event().wait()
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    return argparse.ArgumentParser(description="LiveStudio")
-
-
 if __name__ == "__main__":
-    cli_args = _build_parser().parse_args()
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

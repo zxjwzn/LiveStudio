@@ -4,7 +4,25 @@ import contextlib
 from collections.abc import Iterable
 from typing import Literal
 
+from livestudio.clients.vtube_studio.client import EventHandler as ListenerHandler
+from livestudio.clients.vtube_studio.client import VTubeStudioClient
+from livestudio.clients.vtube_studio.config import VTubeStudioConfig
+from livestudio.clients.vtube_studio.discovery import VTubeStudioDiscovery
+from livestudio.clients.vtube_studio.errors import APIError, AuthenticationError
+from livestudio.clients.vtube_studio.models import (
+    EventName,
+    EventSubscriptionConfig,
+    EventSubscriptionRequest,
+    EventSubscriptionRequestData,
+    EventSubscriptionResponse,
+    InjectParameterDataRequest,
+    InjectParameterDataRequestData,
+    InjectParameterValue,
+    VTubeStudioAPIStateBroadcast,
+)
 from livestudio.config import ConfigManager
+from livestudio.services.platforms.base import PlatformService
+from livestudio.services.platforms.model import PlatformModelIdentity
 from livestudio.services.platforms.model_config_service import (
     PlatformModelConfigService,
 )
@@ -16,26 +34,6 @@ from livestudio.services.tween import ControlledParameterState, ParameterTweenEn
 from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path
 
-from ....clients.vtube_studio.client import EventHandler as ListenerHandler
-from ....clients.vtube_studio.client import VTubeStudioClient
-from ....clients.vtube_studio.config import VTubeStudioConfig
-from ....clients.vtube_studio.discovery import VTubeStudioDiscovery
-from ....clients.vtube_studio.errors import APIError, AuthenticationError
-from ....clients.vtube_studio.models import (
-    EventName,
-    EventSubscriptionConfig,
-    EventSubscriptionRequest,
-    EventSubscriptionRequestData,
-    EventSubscriptionResponse,
-    InjectParameterDataRequest,
-    InjectParameterDataRequestData,
-    InjectParameterValue,
-    ParameterValueRequest,
-    ParameterValueRequestData,
-    VTubeStudioAPIStateBroadcast,
-)
-from ..base import PlatformService
-from ..model import PlatformModelIdentity
 from .config import VTubeStudioModelConfig
 
 
@@ -60,8 +58,6 @@ class VTubeStudio(PlatformService):
         self._tween = ParameterTweenEngine(
             self.send_parameter_states,
         )
-        self._initialized = False
-        self._started = False
 
     @property
     def name(self) -> str:

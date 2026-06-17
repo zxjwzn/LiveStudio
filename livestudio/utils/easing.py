@@ -5,6 +5,8 @@ from collections.abc import Callable
 
 EasingFunction = Callable[[float], float]
 
+_HALF_PI = math.pi / 2
+
 
 class Easing:
     @staticmethod
@@ -15,17 +17,17 @@ class Easing:
     @staticmethod
     def in_sine(t: float) -> float:
         """正弦缓入函数，缓慢开始加速"""
-        return math.sin(1.5707963 * t)
+        return math.sin(_HALF_PI * t)
 
     @staticmethod
     def out_sine(t: float) -> float:
         """正弦缓出函数，逐渐减速至停止"""
-        return 1 + math.sin(1.5707963 * (t - 1))
+        return 1 + math.sin(_HALF_PI * (t - 1))
 
     @staticmethod
     def in_out_sine(t: float) -> float:
         """正弦缓入缓出函数，先加速后减速"""
-        return 0.5 * (1 + math.sin(3.1415926 * (t - 0.5)))
+        return 0.5 * (1 + math.sin(math.pi * (t - 0.5)))
 
     @staticmethod
     def in_quad(t: float) -> float:

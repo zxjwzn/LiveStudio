@@ -24,8 +24,6 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
         self._platform = platform
         self._template_player = template_player
         self._controllers: dict[str, AnimationController[Any]] = {}
-        self._initialized = False
-        self._started = False
 
         if template_player.platform is not platform:
             raise ValueError(

@@ -26,8 +26,6 @@ class AnimationManager(AsyncServiceLifecycleMixin):
     ) -> None:
         self.template_root = template_root or resource_path("animations")
         self._runtimes: dict[str, PlatformAnimationRuntime] = {}
-        self._initialized = False
-        self._started = False
 
     @property
     def runtimes(self) -> dict[str, PlatformAnimationRuntime]:
@@ -103,6 +101,8 @@ class AnimationManager(AsyncServiceLifecycleMixin):
     async def initialize(self) -> None:
         """初始化全部平台动画运行时"""
 
+        if self._initialized:
+            return
         await asyncio.gather(
             *(runtime.initialize() for runtime in self._runtimes.values()),
         )

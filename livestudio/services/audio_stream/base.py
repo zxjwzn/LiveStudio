@@ -14,17 +14,7 @@ class AudioStreamSource(AsyncServiceLifecycleMixin, ABC):
     """统一音频流来源抽象"""
 
     def __init__(self) -> None:
-        self._is_started = False
         self._subscriptions: dict[str, AudioChunkSubscription] = {}
-
-    @property
-    def is_started(self) -> bool:
-        """音频源是否已启动"""
-
-        return self._is_started
-
-    def _set_started(self, is_started: bool) -> None:
-        self._is_started = is_started
 
     @abstractmethod
     async def initialize(self) -> None:

@@ -51,11 +51,11 @@ class _DummySource(AudioStreamSource):
         self.start_calls += 1
         if self.fail_start:
             raise RuntimeError("source start failed")
-        self._set_started(True)
+        self._mark_started()
 
     async def stop(self) -> None:
         self.stop_calls += 1
-        self._set_started(False)
+        self._mark_stopped()
         self._clear_subscriptions()
 
     def emit(self, chunk: AudioChunk) -> None:
@@ -147,7 +147,7 @@ async def test_router_switch_source_rolls_back_when_new_source_fails() -> None:
     router._active_source_kind = AudioSourceKind.MICROPHONE
     router._source_subscription = microphone.subscribe(queue_maxsize=4)
     router._initialized = True
-    router._set_started(True)
+    router._mark_started()
     await microphone.start()
     router._forward_task = asyncio.create_task(router._forward_chunks())
 
@@ -232,7 +232,7 @@ async def test_microphone_stop_clears_state_when_stream_stop_fails() -> None:
         hostapi=0,
     )
     source._stream = cast(Any, _FakeInputStream(fail_stop=True))
-    source._set_started(True)
+    source._mark_started()
     subscription = source.subscribe(queue_maxsize=4)
 
     with pytest.raises(RuntimeError, match="stream stop failed"):

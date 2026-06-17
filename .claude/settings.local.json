@@ -29,7 +29,15 @@
       "PowerShell(New-Item *)",
       "Bash(python -m pytest tests/test_semantic_actions.py tests/test_expression_system.py -x -q)",
       "Bash(uv run *)",
-      "PowerShell(uv run *)"
+      "PowerShell(uv run *)",
+      "PowerShell(if \\(-not \\(Test-Path \"D:\\\\Codes\\\\Python\\\\LiveStudio\\\\docs\"\\)\\) { New-Item -ItemType Directory -Path \"D:\\\\Codes\\\\Python\\\\LiveStudio\\\\docs\" })",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(.venv/Scripts/ruff.exe check *)",
+      "Bash(python -m pytest tests/test_audio_stream_source.py tests/test_lifecycle.py -q)",
+      "Bash(python -m pytest -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_vtube_studio_platform_lifecycle.py tests/test_platform_base.py tests/test_platform_model_config.py -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_refactor_lifecycle.py -v)",
+      "Bash(python -m pytest tests/test_refactor_lifecycle.py -q)"
     ]
   }
 }
