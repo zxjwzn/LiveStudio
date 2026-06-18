@@ -3,6 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.services.animations.controllers import AnimationControllerSettingsConfig
+from livestudio.services.expression import ExpressionProfileConfig
 from livestudio.services.semantic_actions import (
     PlatformParameterSpec,
     SemanticActionProfile,
@@ -43,6 +44,10 @@ class PlatformModelConfig(BaseModel):
     parameter_specs: list[PlatformParameterSpec] = Field(
         default_factory=list,
         description="通用动作转换时会用到的模型参数范围",
+    )
+    expression_profile: ExpressionProfileConfig = Field(
+        default_factory=ExpressionProfileConfig,
+        description="情绪驱动的表情解算配置（AU、规则、运行时参数）",
     )
 
     def init_defaults(self) -> None:

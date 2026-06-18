@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Literal
 
+from livestudio.services.expression.models import NativeExpressionTrigger
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.semantic_actions import (
     SemanticActionAdapter,
@@ -46,6 +47,18 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
         if adapter is None:
             return None
         return adapter.query(action)
+
+    async def apply_native_expressions(
+        self,
+        triggers: Iterable[NativeExpressionTrigger],
+    ) -> None:
+        """应用平台原生表情触发（如 VTS .exp3.json）
+
+        默认无操作；支持原生表情的平台覆盖此方法。表情解算层只产出
+        平台无关的 NativeExpressionTrigger，由各平台自行翻译为原生调用。
+        """
+
+        _ = triggers
 
     @abstractmethod
     async def send_parameter_states(

@@ -5,6 +5,7 @@ from .config import (
     BodySwingControllerSettings,
     BreathingControllerSettings,
     ControllerSettings,
+    ExpressionControllerSettings,
     MouthExpressionControllerSettings,
     MouthSyncControllerSettings,
 )
@@ -13,6 +14,7 @@ from .semantic import (
     BlinkController,
     BodySwingController,
     BreathingController,
+    ExpressionController,
     MouthExpressionController,
     MouthSyncController,
 )
@@ -28,6 +30,8 @@ __all__ = [
     "BreathingController",
     "BreathingControllerSettings",
     "ControllerSettings",
+    "ExpressionController",
+    "ExpressionControllerSettings",
     "MouthExpressionController",
     "MouthExpressionControllerSettings",
     "MouthSyncController",

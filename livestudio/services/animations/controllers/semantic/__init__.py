@@ -3,6 +3,7 @@
 from .blink import BlinkController
 from .body_swing import BodySwingController
 from .breathing import BreathingController
+from .expression import ExpressionController
 from .mouth_expression import MouthExpressionController
 from .mouth_sync import MouthSyncController
 
@@ -10,6 +11,7 @@ __all__ = [
     "BlinkController",
     "BodySwingController",
     "BreathingController",
+    "ExpressionController",
     "MouthExpressionController",
     "MouthSyncController",
 ]

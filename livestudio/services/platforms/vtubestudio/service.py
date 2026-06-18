@@ -26,6 +26,7 @@ from livestudio.clients.vtube_studio.models import (
     VTubeStudioAPIStateBroadcast,
 )
 from livestudio.config import ConfigManager
+from livestudio.services.expression.models import NativeExpressionTrigger
 from livestudio.services.platforms.base import PlatformService
 from livestudio.services.platforms.model import PlatformModelIdentity
 from livestudio.services.platforms.model_config_service import (
@@ -40,6 +41,7 @@ from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path
 
 from .config import VTubeStudioModelConfig
+from .expression_adapter import VTSExpressionAdapter
 
 
 class VTubeStudio(PlatformService):
@@ -60,6 +62,7 @@ class VTubeStudio(PlatformService):
             PlatformModelConfigService[VTubeStudioModelConfig] | None
         ) = None
         self._semantic_adapter: SemanticActionAdapter | None = None
+        self._expression_adapter: VTSExpressionAdapter | None = None
         self._tween = ParameterTweenEngine(
             self.send_parameter_states,
         )
@@ -166,6 +169,7 @@ class VTubeStudio(PlatformService):
         self._discovery = None
         self._model_config_service = None
         self._semantic_adapter = None
+        self._expression_adapter = None
         self._mark_stopped(reset_initialized=True)
 
     async def start(self) -> None:
@@ -224,6 +228,12 @@ class VTubeStudio(PlatformService):
             model_config.semantic_profile,
             parameter_specs=model_config.parameter_specs,
             engine=self.tween,
+        )
+        self._expression_adapter = VTSExpressionAdapter(
+            name_to_file={
+                expression.name: expression.file
+                for expression in model_config.expressions
+            },
         )
         logger.info(
             "已加载 VTube Studio 模型配置: {} ({}) -> {}",
@@ -379,3 +389,13 @@ class VTubeStudio(PlatformService):
             ),
         )
         await self.client.inject_parameter_data(request)
+
+    async def apply_native_expressions(
+        self,
+        triggers: Iterable[NativeExpressionTrigger],
+    ) -> None:
+        """把表情解算层产出的原生触发翻译为 VTube Studio 表情激活/停用"""
+
+        if self._expression_adapter is None:
+            return
+        await self._expression_adapter.apply(list(triggers), self.client)

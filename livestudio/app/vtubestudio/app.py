@@ -19,6 +19,7 @@ from livestudio.services.animations import (
     BlinkController,
     BodySwingController,
     BreathingController,
+    ExpressionController,
     MouthExpressionController,
     MouthSyncController,
 )
@@ -255,5 +256,15 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
                     self.audio_stream,
                 )
             )
+
+        # 表情解算控制器（一次性，需要额外的 expression_profile）
+        controllers.append(
+            ExpressionController(
+                runtime,
+                "expression",
+                config.controllers.expression,
+                config.expression_profile,
+            )
+        )
 
         await runtime.reload_controllers(controllers)

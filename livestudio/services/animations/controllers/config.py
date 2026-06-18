@@ -113,6 +113,16 @@ class MouthSyncControllerSettings(ControllerSettings):
         return self
 
 
+class ExpressionControllerSettings(ControllerSettings):
+    """表情解算控制器配置"""
+
+    transition_duration: float = Field(
+        default=0.4,
+        ge=0.0,
+        description="表情切换过渡时长基准，最终时长会乘以 profile 的 duration_scale",
+    )
+
+
 class AnimationControllerSettingsConfig(BaseModel):
     """随模型切换的全平台通用动画控制器配置"""
 
@@ -137,4 +147,8 @@ class AnimationControllerSettingsConfig(BaseModel):
     mouth_sync: MouthSyncControllerSettings = Field(
         default_factory=MouthSyncControllerSettings,
         description="基于响度的嘴部开合同步控制器配置",
+    )
+    expression: ExpressionControllerSettings = Field(
+        default_factory=ExpressionControllerSettings,
+        description="表情解算控制器配置",
     )
