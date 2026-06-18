@@ -6,7 +6,16 @@
 
 from __future__ import annotations
 
+from .audio_meter import AudioMeter
+from .controller_card import ControllerCard
+from .expression_button import ExpressionButton
 from .placeholder import Placeholder
 from .section import Section
 
-__all__ = ["Placeholder", "Section"]
+__all__ = [
+    "AudioMeter",
+    "ControllerCard",
+    "ExpressionButton",
+    "Placeholder",
+    "Section",
+]

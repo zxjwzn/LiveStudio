@@ -153,7 +153,11 @@ class VTubeStudioAdapter(PlatformAdapter):
 
     # —— 动画控制器代理 ——
     async def set_controller_enabled(self, key: str, enabled: bool) -> None:
-        """启停指定控制器任务（不改模型配置的 enabled 持久值）。"""
+        """启停指定控制器任务（不改模型配置的 enabled 持久值）。
+
+        停止走 cancel()（立即取消当前周期），而非 stop()（会等当前动画跑完），
+        以便暂停按钮即时生效、图标不延迟。
+        """
 
         runtime = self._runtime()
         if runtime is None:
@@ -162,7 +166,7 @@ class VTubeStudioAdapter(PlatformAdapter):
             if enabled:
                 await runtime.start_controller(key)
             else:
-                await runtime.stop_controller(key)
+                await runtime.get_controller(key).cancel()
         except KeyError:
             logger.warning("未知动画控制器: {}", key)
             return

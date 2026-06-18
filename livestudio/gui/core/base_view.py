@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Awaitable, Callable
 
 import flet as ft
 
@@ -49,6 +49,22 @@ class BaseView(ft.Container):
 
         if self.page is not None:
             self.update()
+
+    def run_intent(self, coro_factory: Callable[[], Awaitable[object]]) -> None:
+        """在事件循环内调度一个异步意图（供 Flet 同步事件处理器转发到 bridge）。
+
+        coro_factory 是无参可调用，返回协程；仅在已挂载（self.page 可用）时调度。
+        page.run_task 断言传入的是协程函数（asyncio.iscoroutinefunction），普通
+        lambda 不满足，故用 async 包装器把 coro_factory 适配为协程函数。
+        """
+
+        if self.page is None:
+            return
+
+        async def _runner() -> None:
+            await coro_factory()
+
+        self.page.run_task(_runner)
 
     # —— Flet 生命周期钩子 ——
     def did_mount(self) -> None:

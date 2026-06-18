@@ -53,10 +53,15 @@ class _FakeController:
     def __init__(self, *, enabled: bool = True, running: bool = False) -> None:
         self.enabled = enabled
         self._running = running
+        self.cancelled = 0
 
     @property
     def is_running(self) -> bool:
         return self._running
+
+    async def cancel(self) -> None:
+        self._running = False
+        self.cancelled += 1
 
 
 class _FakeRuntime:
@@ -68,7 +73,6 @@ class _FakeRuntime:
             "expression": _FakeController(running=False),
         }
         self.started: list[str] = []
-        self.stopped: list[str] = []
         self.executed: list[tuple[str, dict]] = []
 
     async def start_controller(self, name: str, **kwargs) -> bool:
@@ -78,11 +82,10 @@ class _FakeRuntime:
         self.started.append(name)
         return True
 
-    async def stop_controller(self, name: str) -> None:
+    def get_controller(self, name: str) -> _FakeController:
         if name not in self.controllers:
             raise KeyError(name)
-        self.controllers[name]._running = False
-        self.stopped.append(name)
+        return self.controllers[name]
 
     async def execute_controller(self, name: str, **kwargs) -> bool:
         if name not in self.controllers:
@@ -334,8 +337,8 @@ async def test_adapter_connect_failure_flows_to_error() -> None:
     await adapter.stop()
 
 
-async def test_adapter_set_controller_enabled_starts_and_stops() -> None:
-    """启停控制器代理到运行时并刷新状态"""
+async def test_adapter_set_controller_enabled_starts_and_cancels() -> None:
+    """启用走 start_controller；停止走 controller.cancel()（立即取消，不等动画跑完）"""
     state = AppState()
     runtime = _FakeRuntime()
     app = _FakeApp()
@@ -349,7 +352,8 @@ async def test_adapter_set_controller_enabled_starts_and_stops() -> None:
     assert expr.state == ControllerState.RUNNING
 
     await adapter.set_controller_enabled("blink", False)
-    assert "blink" in runtime.stopped
+    assert runtime.controllers["blink"].cancelled == 1
+    assert runtime.controllers["blink"].is_running is False
     await adapter.stop()
 
 
