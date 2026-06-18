@@ -49,11 +49,7 @@ class ExpressionSolver:
     def solve(self, request: ExpressionRequest) -> SelectedExpression:
         """执行完整选择算法并更新历史"""
         result = self._run(request)
-        self._history.record(
-            ExpressionSignature(
-                unit_ids=frozenset(u.id for u in result.units), emotion=request.emotion
-            )
-        )
+        self._history.record(ExpressionSignature(unit_ids=frozenset(u.id for u in result.units), emotion=request.emotion))
         return result
 
     def preview(self, request: ExpressionRequest) -> SelectedExpression:
@@ -72,9 +68,7 @@ class ExpressionSolver:
         combo = self._build_combo(ranked, request)
         return self._make_result(combo, request)
 
-    def _score_units(
-        self, request: ExpressionRequest, recent_ids: frozenset[str]
-    ) -> list[ScoredExpressionUnit]:
+    def _score_units(self, request: ExpressionRequest, recent_ids: frozenset[str]) -> list[ScoredExpressionUnit]:
         result: list[ScoredExpressionUnit] = []
         for unit in self._units:
             correlation = unit.emotions.get(request.emotion, 0.0)
@@ -84,39 +78,25 @@ class ExpressionSolver:
             score = correlation * 0.80 + novelty * 0.20
             if score < request.min_au_score:
                 continue
-            result.append(
-                ScoredExpressionUnit(unit=unit, score=score, correlation=correlation)
-            )
+            result.append(ScoredExpressionUnit(unit=unit, score=score, correlation=correlation))
         result.sort(key=lambda s: s.score, reverse=True)
         return result[: self._top_candidates]
 
     def _rank(self, scored: ScoredExpressionUnit, request: ExpressionRequest) -> float:
         if request.randomness <= 0.0:
             return scored.score
-        return (
-            scored.score
-            + random.uniform(-1.0, 1.0) * request.randomness * request.diversity * 0.30
-        )
+        return scored.score + random.uniform(-1.0, 1.0) * request.randomness * request.diversity * 0.30
 
-    def _should_select(
-        self, scored: ScoredExpressionUnit, request: ExpressionRequest
-    ) -> bool:
-        if (
-            scored.score >= request.core_score
-            or scored.correlation >= 0.80
-            or request.randomness <= 0.0
-        ):
+    def _should_select(self, scored: ScoredExpressionUnit, request: ExpressionRequest) -> bool:
+        if scored.score >= request.core_score or scored.correlation >= 0.80 or request.randomness <= 0.0:
             return True
         p = min(
             1.0,
-            max(0.05, scored.score) * (0.55 + request.diversity * 0.55)
-            + scored.correlation * 0.20,
+            max(0.05, scored.score) * (0.55 + request.diversity * 0.55) + scored.correlation * 0.20,
         )
         return random.random() <= p
 
-    def _build_combo(
-        self, ranked: list[ScoredExpressionUnit], request: ExpressionRequest
-    ) -> list[ScoredExpressionUnit]:
+    def _build_combo(self, ranked: list[ScoredExpressionUnit], request: ExpressionRequest) -> list[ScoredExpressionUnit]:
         combo: list[ScoredExpressionUnit] = []
         occupied_actions: set[str] = set()
 
@@ -127,9 +107,7 @@ class ExpressionSolver:
                 continue
 
             # 互斥冲突检查（显式规则 + 隐式 action 冲突）
-            conflict = self._find_conflict(
-                candidate, combo, occupied_actions, request.emotion
-            )
+            conflict = self._find_conflict(candidate, combo, occupied_actions, request.emotion)
             if conflict == "discard":
                 continue
             if isinstance(conflict, ScoredExpressionUnit):
@@ -180,9 +158,7 @@ class ExpressionSolver:
 
         return None
 
-    def _resolve_conflict(
-        self, candidate: ScoredExpressionUnit, existing: ScoredExpressionUnit
-    ) -> ScoredExpressionUnit | str:
+    def _resolve_conflict(self, candidate: ScoredExpressionUnit, existing: ScoredExpressionUnit) -> ScoredExpressionUnit | str:
         if candidate.score > existing.score + 0.03:
             return existing  # 替换 existing
         return "discard"
@@ -200,9 +176,7 @@ class ExpressionSolver:
                 return False
         return True
 
-    def _combo_score(
-        self, combo: list[ScoredExpressionUnit], request: ExpressionRequest
-    ) -> float:
+    def _combo_score(self, combo: list[ScoredExpressionUnit], request: ExpressionRequest) -> float:
         combo_ids = {s.unit.id for s in combo}
         covered: set[FacialRegion] = set()
         for s in combo:
@@ -233,9 +207,7 @@ class ExpressionSolver:
                     score -= rule.penalty
         return score
 
-    def _make_result(
-        self, combo: list[ScoredExpressionUnit], request: ExpressionRequest
-    ) -> SelectedExpression:
+    def _make_result(self, combo: list[ScoredExpressionUnit], request: ExpressionRequest) -> SelectedExpression:
         semantic_targets: list[ResolvedSemanticTarget] = []
         native_triggers: list[NativeExpressionTrigger] = []
         units_by_region: dict[FacialRegion, list[ExpressionUnit]] = {}
@@ -251,17 +223,9 @@ class ExpressionSolver:
                 for target in unit.targets:
                     value = random.uniform(target.min_value, target.max_value)
                     value = clamp_semantic_value(target.action, value)
-                    semantic_targets.append(
-                        ResolvedSemanticTarget(
-                            action=target.action, value=value, easing=unit.easing
-                        )
-                    )
+                    semantic_targets.append(ResolvedSemanticTarget(action=target.action, value=value, easing=unit.easing))
             else:
-                native_triggers.append(
-                    NativeExpressionTrigger(
-                        platform=unit.platform, native_ref=unit.native_ref
-                    )
-                )
+                native_triggers.append(NativeExpressionTrigger(platform=unit.platform, native_ref=unit.native_ref))
 
         total_score = self._combo_score(combo, request)
         return SelectedExpression(

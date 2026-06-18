@@ -180,10 +180,7 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
             return
 
         current_by_file = {expression.file: expression for expression in expressions}
-        config_by_file = {
-            expression_config.file: expression_config
-            for expression_config in config.expressions
-        }
+        config_by_file = {expression_config.file: expression_config for expression_config in config.expressions}
         changed = False
         for expression in expressions:
             if expression.file in config_by_file:
@@ -239,7 +236,9 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
             controllers.append(BodySwingController(runtime, "body_swing", config.controllers.body_swing))
 
         # 嘴部表情控制器
-        if (current := current_controllers.get("mouth_expression")) is not None and current.config is config.controllers.mouth_expression:
+        if (
+            current := current_controllers.get("mouth_expression")
+        ) is not None and current.config is config.controllers.mouth_expression:
             controllers.append(current)
         else:
             controllers.append(MouthExpressionController(runtime, "mouth_expression", config.controllers.mouth_expression))

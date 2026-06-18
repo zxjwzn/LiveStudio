@@ -96,3 +96,5 @@ select = [
 "**/__init__.py" = ["F401"]
 "tests/test_vtube_studio_client_extended.py" = ["SLF001"]
 "tests/test_vtubestudio_reconnect.py" = ["SIM117"]
+"tests/test_gui_framework.py" = ["SLF001"]
+"tests/test_gui_bridge.py" = ["SLF001", "ARG002"]

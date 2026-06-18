@@ -311,4 +311,3 @@ class AnimationTemplatePlayer:
     async def _execute_playback(self, playback: TemplatePlayback) -> None:
         if playback.actions:
             await self._platform.tween_semantic(playback.actions)
-

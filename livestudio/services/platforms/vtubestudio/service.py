@@ -58,9 +58,7 @@ class VTubeStudio(PlatformService):
         )
         self._client: VTubeStudioClient | None = None
         self._discovery: VTubeStudioDiscovery | None = None
-        self._model_config_service: (
-            PlatformModelConfigService[VTubeStudioModelConfig] | None
-        ) = None
+        self._model_config_service: PlatformModelConfigService[VTubeStudioModelConfig] | None = None
         self._semantic_adapter: SemanticActionAdapter | None = None
         self._expression_adapter: VTSExpressionAdapter | None = None
         self._tween = ParameterTweenEngine(
@@ -95,10 +93,7 @@ class VTubeStudio(PlatformService):
     def model_config(self) -> VTubeStudioModelConfig:
         """返回当前模型配置快照"""
 
-        if (
-            self._model_config_service is None
-            or self._model_config_service.config is None
-        ):
+        if self._model_config_service is None or self._model_config_service.config is None:
             raise RuntimeError("当前没有已加载的模型配置")
         return self._model_config_service.config
 
@@ -106,20 +101,14 @@ class VTubeStudio(PlatformService):
     def model_config_manager(self) -> ConfigManager[VTubeStudioModelConfig]:
         """返回当前模型配置管理器实例"""
 
-        if (
-            self._model_config_service is None
-            or self._model_config_service.manager is None
-        ):
+        if self._model_config_service is None or self._model_config_service.manager is None:
             raise RuntimeError("当前没有已加载的模型配置")
         return self._model_config_service.manager
 
     @property
     def current_model(self) -> PlatformModelIdentity:
         """返回当前平台已加载模型身份"""
-        if (
-            self._model_config_service is None
-            or self._model_config_service.identity is None
-        ):
+        if self._model_config_service is None or self._model_config_service.identity is None:
             raise RuntimeError("当前没有已加载的模型")
         return self._model_config_service.identity
 
@@ -192,9 +181,7 @@ class VTubeStudio(PlatformService):
                 self._mark_started()
                 logger.success("VTube Studio 已连接并完成认证")
             except VTubeStudioConnectionError as exc:
-                logger.warning(
-                    f"连接 VTube Studio 失败: {exc}，{retry_delay:.1f}秒后重试..."
-                )
+                logger.warning(f"连接 VTube Studio 失败: {exc}，{retry_delay:.1f}秒后重试...")
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * backoff_factor, max_delay)
             except Exception:
@@ -230,10 +217,7 @@ class VTubeStudio(PlatformService):
             engine=self.tween,
         )
         self._expression_adapter = VTSExpressionAdapter(
-            name_to_file={
-                expression.name: expression.file
-                for expression in model_config.expressions
-            },
+            name_to_file={expression.name: expression.file for expression in model_config.expressions},
         )
         logger.info(
             "已加载 VTube Studio 模型配置: {} ({}) -> {}",
@@ -382,10 +366,7 @@ class VTubeStudio(PlatformService):
         request = InjectParameterDataRequest(
             data=InjectParameterDataRequestData(
                 mode=mode,
-                parameterValues=[
-                    InjectParameterValue(id=state.name, value=state.value)
-                    for state in parameter_states
-                ],
+                parameterValues=[InjectParameterValue(id=state.name, value=state.value) for state in parameter_states],
             ),
         )
         await self.client.inject_parameter_data(request)

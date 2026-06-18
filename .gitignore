@@ -17,3 +17,6 @@ config/**/*.yml
 
 # Documentation
 docs/
+
+# GUI generated assets (中文字体从系统字体目录自动拷贝，不入库)
+livestudio/gui/assets/fonts/

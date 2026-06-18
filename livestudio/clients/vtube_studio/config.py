@@ -110,4 +110,3 @@ class VTubeStudioConfig(BaseModel):
         if not value.startswith(("ws://", "wss://")):
             raise ValueError("ws_url 必须以 ws:// 或 wss:// 开头")
         return value
-

@@ -98,8 +98,6 @@ async def test_mouth_expression_controller_uses_mouth_smile_semantic_action() ->
 
     await controller.run_cycle()
 
-    assert (
-        platform.requests[0].action_parameter_name == SemanticAction.MOUTH_SMILE.value
-    )
+    assert platform.requests[0].action_parameter_name == SemanticAction.MOUTH_SMILE.value
     assert platform.requests[0].end_value == 0.0
     assert platform.requests[0].start_value is None

@@ -109,9 +109,7 @@ def test_semantic_adapter_maps_separate_brow_height_bindings() -> None:
     assert by_name["BrowRightY"].end_value == pytest.approx(0.3)
 
 
-def test_semantic_adapter_can_bind_common_brow_height_to_shared_platform_parameter() -> (
-    None
-):
+def test_semantic_adapter_can_bind_common_brow_height_to_shared_platform_parameter() -> None:
     recorder = _TweenRecorder()
     engine = ParameterTweenEngine(recorder)
     adapter = SemanticActionAdapter(

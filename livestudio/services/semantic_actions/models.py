@@ -236,9 +236,7 @@ class SemanticTweenRequest:
 
 
 # 按 action id 查找的字典
-_SPEC_BY_ACTION: dict[str, SemanticActionSpec] = {
-    spec.id: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS
-}
+_SPEC_BY_ACTION: dict[str, SemanticActionSpec] = {spec.id: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS}
 
 
 def clamp_semantic_value(action: str, value: float) -> float:

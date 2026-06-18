@@ -186,4 +186,3 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
                 f"控制器不是一次性动画，不能通过 execute_controller 执行: {name}",
             )
         return await controller.start(**kwargs)
-

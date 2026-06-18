@@ -16,9 +16,7 @@ from livestudio.services.tween import ControlledParameterState, ParameterTweenEn
 
 class _SenderRecorder:
     def __init__(self) -> None:
-        self.calls: list[
-            tuple[Literal["set", "add"], list[ControlledParameterState]]
-        ] = []
+        self.calls: list[tuple[Literal["set", "add"], list[ControlledParameterState]]] = []
 
     async def __call__(
         self,

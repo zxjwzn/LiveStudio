@@ -43,9 +43,7 @@ class SemanticActionAdapter:
         self._parameter_specs = {spec.name: spec for spec in parameter_specs}
         self._engine = engine
         # 按 action 名建索引方便查找
-        self._bindings: dict[str, SemanticActionBinding] = {
-            binding.action.value: binding for binding in profile.bindings
-        }
+        self._bindings: dict[str, SemanticActionBinding] = {binding.action.value: binding for binding in profile.bindings}
 
     # ------------------------------------------------------------------
     # 公开接口: 下发语义缓动请求
@@ -59,9 +57,7 @@ class SemanticActionAdapter:
         if tween_requests:
             await self._engine.tween(tween_requests)
 
-    def to_tween_requests(
-        self, requests: Sequence[SemanticTweenRequest]
-    ) -> list[TweenRequest]:
+    def to_tween_requests(self, requests: Sequence[SemanticTweenRequest]) -> list[TweenRequest]:
         """把一批语义缓动请求转换为平台 TweenRequest (不下发)"""
         results: list[TweenRequest] = []
         for req in requests:
@@ -120,16 +116,12 @@ class SemanticActionAdapter:
             if spec is None:
                 continue
 
-            end_value = _semantic_to_platform(
-                req.end_value, spec, req.action_parameter_name
-            )
+            end_value = _semantic_to_platform(req.end_value, spec, req.action_parameter_name)
 
             # 确定起始值: 请求指定时做映射，否则留 None 让引擎自行决定
             start_value: float | None
             if req.start_value is not None:
-                start_value = _semantic_to_platform(
-                    req.start_value, spec, req.action_parameter_name
-                )
+                start_value = _semantic_to_platform(req.start_value, spec, req.action_parameter_name)
             else:
                 start_value = None
             results.append(
@@ -200,9 +192,7 @@ def _platform_to_semantic(
 
     span = spec.maximum - spec.minimum
     ratio = 0.0 if span <= 0.0 else (clamped_pv - spec.minimum) / span
-    return semantic_spec.minimum + ratio * (
-        semantic_spec.maximum - semantic_spec.minimum
-    )
+    return semantic_spec.minimum + ratio * (semantic_spec.maximum - semantic_spec.minimum)
 
 
 # ======================================================================

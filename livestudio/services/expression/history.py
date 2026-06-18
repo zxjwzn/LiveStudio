@@ -16,9 +16,7 @@ class ExpressionHistory:
         """返回所有历史签名，最新的在前"""
         return list(self._queue)
 
-    def penalty(
-        self, candidate: ExpressionSignature, history_avoidance: float
-    ) -> float:
+    def penalty(self, candidate: ExpressionSignature, history_avoidance: float) -> float:
         """计算候选组合与历史记录的相似度惩罚分"""
         if not self._queue or history_avoidance <= 0.0:
             return 0.0

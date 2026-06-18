@@ -96,9 +96,7 @@ async def test_reload_model_config_refreshes_parameter_specs_from_vtube_studio(
 
     model_config = await platform.reload_model_config("model-1", "avatar")
 
-    assert model_config.parameter_specs == [
-        spec for spec in model_config.parameter_specs if spec.name == "MouthOpen"
-    ]
+    assert model_config.parameter_specs == [spec for spec in model_config.parameter_specs if spec.name == "MouthOpen"]
     request = platform.semantic_adapter.to_tween_requests(  # type: ignore[union-attr]
         [
             SemanticTweenRequest(

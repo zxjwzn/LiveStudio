@@ -29,9 +29,7 @@ class _ExpressionPlatform(_SemanticPlatform):
         super().__init__(name)
         self.native_calls: list[list[NativeExpressionTrigger]] = []
 
-    async def apply_native_expressions(
-        self, triggers: Iterable[NativeExpressionTrigger]
-    ) -> None:
+    async def apply_native_expressions(self, triggers: Iterable[NativeExpressionTrigger]) -> None:
         self.native_calls.append(list(triggers))
 
 
@@ -41,9 +39,7 @@ class _FakeExpressionClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, bool]] = []
 
-    async def set_expression_active(
-        self, request: ExpressionActivationRequest
-    ) -> object:
+    async def set_expression_active(self, request: ExpressionActivationRequest) -> object:
         self.calls.append((request.data.expression_file, request.data.active))
         return object()
 
@@ -227,9 +223,7 @@ async def test_controller_uses_unit_easing() -> None:
             "runtime": {"randomness": 0.0, "default_easing": "in_out_sine"},
             "semantic_units": {
                 "嘴角上扬": {
-                    "targets": [
-                        {"action": "mouth.smile", "min_value": 0.6, "max_value": 0.6}
-                    ],
+                    "targets": [{"action": "mouth.smile", "min_value": 0.6, "max_value": 0.6}],
                     "emotions": {"joy": 0.95},
                 }
             },
@@ -252,6 +246,4 @@ async def test_controller_uses_unit_easing() -> None:
 async def test_base_apply_native_expressions_is_noop() -> None:
     platform = _SemanticPlatform()
     # 基类默认无操作，不应抛异常
-    await platform.apply_native_expressions(
-        [NativeExpressionTrigger(platform="vtubestudio", native_ref="X")]
-    )
+    await platform.apply_native_expressions([NativeExpressionTrigger(platform="vtubestudio", native_ref="X")])

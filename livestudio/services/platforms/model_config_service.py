@@ -31,9 +31,7 @@ class PlatformModelConfigService(Generic[ModelConfigT]):
 
         safe_name = self.sanitize_path_part(identity.model_name)
         safe_id = self.sanitize_path_part(identity.model_id)[:5]
-        config_path = (
-            resolve_config_path(self.model_config_dir) / f"{safe_name}_{safe_id}.yaml"
-        )
+        config_path = resolve_config_path(self.model_config_dir) / f"{safe_name}_{safe_id}.yaml"
         default_config = self.config_model()
         default_config.model = identity
         default_config.init_defaults()

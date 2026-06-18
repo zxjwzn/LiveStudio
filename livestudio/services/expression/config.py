@@ -46,9 +46,7 @@ class SemanticUnitConfig(BaseModel):
     easing: str | None = None  # 为空时回退到 runtime.default_easing
     activation_threshold: float = 0.05
 
-    def to_unit(
-        self, unit_id: str, default_easing: str = "out_cubic"
-    ) -> SemanticExpressionUnit | None:
+    def to_unit(self, unit_id: str, default_easing: str = "out_cubic") -> SemanticExpressionUnit | None:
         if not self.enabled:
             return None
         return SemanticExpressionUnit(
@@ -206,9 +204,7 @@ class ExpressionProfileConfig(BaseModel):
     def to_rules(self) -> list[ExpressionRule]:
         return [r.to_rule() for r in self.rules]
 
-    def build_request(
-        self, emotion: EmotionKind, **overrides: object
-    ) -> ExpressionRequest:
+    def build_request(self, emotion: EmotionKind, **overrides: object) -> ExpressionRequest:
         """用 runtime 默认值填充未传入的字段"""
         rt = self.runtime
         defaults: dict[str, object] = {

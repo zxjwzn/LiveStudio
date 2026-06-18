@@ -71,9 +71,7 @@ async def test_start_stops_tween_and_disconnects_on_non_connection_error() -> No
     with patch.object(platform, "connect", AsyncMock()):
         with patch.object(platform, "authenticate", side_effect=_failing_authenticate):
             with patch.object(platform.tween, "stop", AsyncMock()) as mock_stop:
-                with patch.object(
-                    platform.client, "disconnect", AsyncMock()
-                ) as mock_disconnect:
+                with patch.object(platform.client, "disconnect", AsyncMock()) as mock_disconnect:
                     with patch("asyncio.sleep", AsyncMock()):
                         with pytest.raises(RuntimeError, match="unexpected error"):
                             await platform.start()

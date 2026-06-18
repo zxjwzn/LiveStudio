@@ -18,9 +18,7 @@ PLATFORM_NAME = "vtubestudio"
 class _ExpressionClient(Protocol):
     """适配器只依赖客户端的表情激活能力"""
 
-    async def set_expression_active(
-        self, request: ExpressionActivationRequest
-    ) -> object: ...
+    async def set_expression_active(self, request: ExpressionActivationRequest) -> object: ...
 
 
 class VTSExpressionAdapter:
@@ -89,9 +87,7 @@ class VTSExpressionAdapter:
 
         self._active_files = wanted_files
 
-    async def _set_active(
-        self, client: _ExpressionClient, expression_file: str, *, active: bool
-    ) -> None:
+    async def _set_active(self, client: _ExpressionClient, expression_file: str, *, active: bool) -> None:
         await client.set_expression_active(
             ExpressionActivationRequest(
                 data=ExpressionActivationRequestData(
