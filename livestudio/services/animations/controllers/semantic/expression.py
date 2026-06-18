@@ -53,6 +53,11 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
     async def execute(self, **kwargs: object) -> None:
         """根据传入的单个情绪解算并应用表情
 
+        分两段下发语义缓动，都用 config.au_priority：
+        1. 过渡段：transition_duration 内从当前值缓动到目标值；
+        2. 保持段：hold_duration 内停在目标值，期间高优先级占用，
+           低优先级缓动（呼吸/摇摆等）无法接管这些参数。
+
         kwargs:
             emotion: EmotionKind | str，本次要表达的情绪
         """
@@ -64,21 +69,37 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
 
         request = self._profile.build_request(emotion)
         selected = self._solver.solve(request)
+        priority = self.config.au_priority
 
-        duration = self.config.transition_duration * request.duration_scale
-        tween_requests = [
-            SemanticTweenRequest(
-                action_parameter_name=target.action,
-                end_value=target.value,
-                duration=duration,
-                easing=target.easing,
-            )
-            for target in selected.semantic_targets
-        ]
-        if tween_requests:
-            await self.runtime.platform.tween_semantic(tween_requests)
-
+        # 原生表情先触发
         await self.runtime.platform.apply_native_expressions(selected.native_triggers)
+
+        if selected.semantic_targets:
+            transition = [
+                SemanticTweenRequest(
+                    action_parameter_name=target.action,
+                    end_value=target.value,
+                    duration=request.transition_duration,
+                    easing=target.easing,
+                    priority=priority,
+                )
+                for target in selected.semantic_targets
+            ]
+            await self.runtime.platform.tween_semantic(transition)
+
+            # 保持段：停在目标值，期间持续占用参数
+            if request.hold_duration > 0:
+                hold = [
+                    SemanticTweenRequest(
+                        action_parameter_name=target.action,
+                        end_value=target.value,
+                        duration=request.hold_duration,
+                        easing="linear",
+                        priority=priority,
+                    )
+                    for target in selected.semantic_targets
+                ]
+                await self.runtime.platform.tween_semantic(hold)
 
         logger.debug(
             "表情解算: 情绪={}, AU={}, 语义目标={}, 原生触发={}",

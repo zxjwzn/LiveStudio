@@ -79,7 +79,8 @@
       "PowerShell($procId = \\(Get-NetTCPConnection -State Listen -LocalPort 8554 -ErrorAction SilentlyContinue\\).OwningProcess | Select-Object -Unique; if \\($procId\\) { Stop-Process -Id $procId -Force }; Start-Sleep -Milliseconds 500; \"listeners on 8554: \" + \\(Get-NetTCPConnection -State Listen -LocalPort 8554 -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
       "PowerShell($procId = \\(Get-NetTCPConnection -State Listen -LocalPort 8555 -ErrorAction SilentlyContinue\\).OwningProcess | Select-Object -Unique; if \\($procId\\) { Stop-Process -Id $procId -Force }; Start-Sleep -Milliseconds 500; \"listeners on 8555: \" + \\(Get-NetTCPConnection -State Listen -LocalPort 8555 -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
       "PowerShell($procId = \\(Get-NetTCPConnection -State Listen -LocalPort 8556 -ErrorAction SilentlyContinue\\).OwningProcess | Select-Object -Unique; if \\($procId\\) { Stop-Process -Id $procId -Force }; \"stopped\")",
-      "PowerShell($procId = \\(Get-NetTCPConnection -State Listen -LocalPort 8557 -ErrorAction SilentlyContinue\\).OwningProcess | Select-Object -Unique; if \\($procId\\) { Stop-Process -Id $procId -Force }; \"stopped\")"
+      "PowerShell($procId = \\(Get-NetTCPConnection -State Listen -LocalPort 8557 -ErrorAction SilentlyContinue\\).OwningProcess | Select-Object -Unique; if \\($procId\\) { Stop-Process -Id $procId -Force }; \"stopped\")",
+      "PowerShell($procId = \\(Get-NetTCPConnection -State Listen -LocalPort 8558 -ErrorAction SilentlyContinue\\).OwningProcess | Select-Object -Unique; if \\($procId\\) { Stop-Process -Id $procId -Force }; \"stopped\")"
     ]
   }
 }

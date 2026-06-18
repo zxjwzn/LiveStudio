@@ -1,14 +1,10 @@
 from livestudio.services.expression.config import (
-    BindingRuleConfig,
-    BonusRuleConfig,
     ExpressionProfileConfig,
-    ExpressionRuleConfig,
     ExpressionRuntimeConfig,
-    ExpressionTargetConfig,
-    MutualExclusionRuleConfig,
-    NativeUnitConfig,
-    PenaltyRuleConfig,
-    SemanticUnitConfig,
+)
+from livestudio.services.expression.defaults import (
+    default_rules,
+    default_semantic_units,
 )
 from livestudio.services.expression.history import ExpressionHistory
 from livestudio.services.expression.models import (
@@ -33,31 +29,25 @@ from livestudio.services.expression.solver import ExpressionSolver
 
 __all__ = [
     "BindingRule",
-    "BindingRuleConfig",
     "BonusRule",
-    "BonusRuleConfig",
     "EmotionKind",
     "ExpressionHistory",
     "ExpressionProfileConfig",
     "ExpressionRequest",
     "ExpressionRule",
-    "ExpressionRuleConfig",
     "ExpressionRuntimeConfig",
     "ExpressionSignature",
     "ExpressionSolver",
     "ExpressionTarget",
-    "ExpressionTargetConfig",
     "ExpressionUnit",
     "MutualExclusionRule",
-    "MutualExclusionRuleConfig",
     "NativeExpressionTrigger",
     "NativeExpressionUnit",
-    "NativeUnitConfig",
     "PenaltyRule",
-    "PenaltyRuleConfig",
     "ResolvedSemanticTarget",
     "ScoredExpressionUnit",
     "SelectedExpression",
     "SemanticExpressionUnit",
-    "SemanticUnitConfig",
+    "default_rules",
+    "default_semantic_units",
 ]

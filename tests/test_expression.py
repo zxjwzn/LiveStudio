@@ -4,15 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from livestudio.services.expression.config import (
-    BindingRuleConfig,
-    BonusRuleConfig,
     ExpressionProfileConfig,
     ExpressionRuntimeConfig,
-    ExpressionTargetConfig,
-    MutualExclusionRuleConfig,
-    NativeUnitConfig,
-    PenaltyRuleConfig,
-    SemanticUnitConfig,
 )
 from livestudio.services.expression.history import ExpressionHistory
 from livestudio.services.expression.models import (
@@ -304,39 +297,64 @@ def test_solver_units_by_region() -> None:
 
 def test_profile_to_units_disabled_excluded() -> None:
     profile = ExpressionProfileConfig(
-        semantic_units={
-            "笑容": SemanticUnitConfig(
+        semantic_units=[
+            SemanticExpressionUnit(
+                id="笑容",
                 enabled=False,
-                targets=[ExpressionTargetConfig(action="mouth.smile", min_value=0.5, max_value=0.9)],
-                emotions={"joy": 0.9},
+                targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.5, max_value=0.9)],
+                emotions={EmotionKind.JOY: 0.9},
             )
-        }
+        ]
     )
     assert profile.to_units() == []
 
 
 def test_profile_to_units_enabled_included() -> None:
     profile = ExpressionProfileConfig(
-        semantic_units={
-            "笑容": SemanticUnitConfig(
-                enabled=True,
-                targets=[ExpressionTargetConfig(action="mouth.smile", min_value=0.5, max_value=0.9)],
-                emotions={"joy": 0.9},
+        semantic_units=[
+            SemanticExpressionUnit(
+                id="笑容",
+                targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.5, max_value=0.9)],
+                emotions={EmotionKind.JOY: 0.9},
             )
-        }
+        ]
     )
     units = profile.to_units()
     assert len(units) == 1
     assert units[0].id == "笑容"
 
 
+def test_profile_to_units_rejects_missing_id() -> None:
+    profile = ExpressionProfileConfig(
+        semantic_units=[
+            SemanticExpressionUnit(
+                targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.5, max_value=0.9)],
+                emotions={EmotionKind.JOY: 0.9},
+            )
+        ]
+    )
+    with pytest.raises(ValueError):
+        profile.to_units()
+
+
+def test_profile_to_units_rejects_duplicate_id() -> None:
+    unit = SemanticExpressionUnit(
+        id="重复",
+        targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.5, max_value=0.9)],
+        emotions={EmotionKind.JOY: 0.9},
+    )
+    profile = ExpressionProfileConfig(semantic_units=[unit, unit])
+    with pytest.raises(ValueError):
+        profile.to_units()
+
+
 def test_profile_to_rules() -> None:
     profile = ExpressionProfileConfig(
         rules=[
-            MutualExclusionRuleConfig(kind="mutual_exclusion", id="互斥测试", unit_ids=["a", "b"]),
-            BonusRuleConfig(kind="bonus", id="加分测试", unit_ids=["c", "d"], value=0.3),
-            PenaltyRuleConfig(kind="penalty", id="扣分测试", unit_ids=["e"], value=0.2),
-            BindingRuleConfig(kind="binding", id="绑定测试", unit_ids=["f", "g"]),
+            MutualExclusionRule(id="互斥测试", unit_ids=frozenset(["a", "b"])),
+            BonusRule(id="加分测试", unit_ids=frozenset(["c", "d"]), value=0.3),
+            PenaltyRule(id="扣分测试", unit_ids=frozenset(["e"]), value=0.2),
+            BindingRule(id="绑定测试", unit_ids=frozenset(["f", "g"])),
         ]
     )
     rules = profile.to_rules()
@@ -345,6 +363,21 @@ def test_profile_to_rules() -> None:
     assert isinstance(rules[1], BonusRule)
     assert isinstance(rules[2], PenaltyRule)
     assert isinstance(rules[3], BindingRule)
+
+
+def test_profile_rules_discriminated_from_dict() -> None:
+    """规则可凭 kind 判别从原始 dict 反序列化"""
+    profile = ExpressionProfileConfig.model_validate(
+        {
+            "rules": [
+                {"kind": "mutual_exclusion", "id": "m", "unit_ids": ["a", "b"]},
+                {"kind": "bonus", "id": "b", "unit_ids": ["c"], "value": 0.3},
+            ]
+        }
+    )
+    rules = profile.to_rules()
+    assert isinstance(rules[0], MutualExclusionRule)
+    assert isinstance(rules[1], BonusRule)
 
 
 def test_profile_build_request_uses_runtime_defaults() -> None:
@@ -363,19 +396,21 @@ def test_profile_build_request_overrides() -> None:
 
 def test_profile_native_unit_regions() -> None:
     profile = ExpressionProfileConfig(
-        native_units={
-            "生气特效": NativeUnitConfig(
+        native_units=[
+            NativeExpressionUnit(
+                id="生气特效",
                 platform="vtubestudio",
                 native_ref="2生气",
-                regions=["brow", "eye"],
-                emotions={"anger": 0.85},
+                regions=frozenset([FacialRegion.BROW, FacialRegion.EYE]),
+                emotions={EmotionKind.ANGER: 0.85},
             )
-        }
+        ]
     )
     units = profile.to_units()
     assert len(units) == 1
     unit = units[0]
     assert isinstance(unit, NativeExpressionUnit)
+    assert unit.id == "生气特效"
     assert FacialRegion.BROW in unit.regions
     assert FacialRegion.EYE in unit.regions
 
@@ -383,3 +418,13 @@ def test_profile_native_unit_regions() -> None:
 def test_profile_extra_fields_forbidden() -> None:
     with pytest.raises(ValidationError):
         ExpressionProfileConfig.model_validate({"unknown_field": 123})
+
+
+def test_unit_extra_fields_forbidden() -> None:
+    with pytest.raises(ValidationError):
+        SemanticExpressionUnit.model_validate(
+            {
+                "targets": [{"action": "mouth.smile", "min_value": 0.5, "max_value": 0.9}],
+                "bogus": 1,
+            }
+        )

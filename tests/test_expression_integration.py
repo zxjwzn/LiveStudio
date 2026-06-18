@@ -55,8 +55,9 @@ def _joy_profile() -> ExpressionProfileConfig:
     return ExpressionProfileConfig.model_validate(
         {
             "runtime": {"randomness": 0.0},
-            "semantic_units": {
-                "嘴角上扬": {
+            "semantic_units": [
+                {
+                    "id": "嘴角上扬",
                     "targets": [
                         {
                             "action": "mouth.smile",
@@ -66,15 +67,16 @@ def _joy_profile() -> ExpressionProfileConfig:
                     ],
                     "emotions": {"joy": 0.95},
                 }
-            },
-            "native_units": {
-                "脸红": {
+            ],
+            "native_units": [
+                {
+                    "id": "脸红",
                     "platform": "vtubestudio",
                     "native_ref": "2脸红",
                     "regions": ["eye"],
                     "emotions": {"joy": 0.9},
                 }
-            },
+            ],
         }
     )
 
@@ -191,6 +193,65 @@ async def test_controller_emits_semantic_and_native() -> None:
     assert "2脸红" in refs
 
 
+async def test_controller_emits_transition_then_hold() -> None:
+    """每个语义动作应有两段：过渡(transition_duration) + 保持(hold_duration)"""
+    platform = _ExpressionPlatform()
+    profile = ExpressionProfileConfig.model_validate(
+        {
+            "runtime": {"randomness": 0.0, "transition_duration": 0.5, "hold_duration": 1.5},
+            "semantic_units": [
+                {
+                    "id": "嘴角上扬",
+                    "targets": [{"action": "mouth.smile", "min_value": 0.6, "max_value": 0.6}],
+                    "emotions": {"joy": 0.95},
+                }
+            ],
+        }
+    )
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(au_priority=99),
+        profile,
+    )
+    await controller.execute(emotion=EmotionKind.JOY)
+
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert len(smile) == 2
+    transition, hold = smile
+    assert transition.duration == 0.5
+    assert hold.duration == 1.5
+    # 两段同一目标值，且都用配置的高优先级锁定
+    assert transition.end_value == hold.end_value
+    assert transition.priority == 99
+    assert hold.priority == 99
+
+
+async def test_controller_skips_hold_when_zero() -> None:
+    platform = _ExpressionPlatform()
+    profile = ExpressionProfileConfig.model_validate(
+        {
+            "runtime": {"randomness": 0.0, "hold_duration": 0.0},
+            "semantic_units": [
+                {
+                    "id": "嘴角上扬",
+                    "targets": [{"action": "mouth.smile", "min_value": 0.6, "max_value": 0.6}],
+                    "emotions": {"joy": 0.95},
+                }
+            ],
+        }
+    )
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(),
+        profile,
+    )
+    await controller.execute(emotion=EmotionKind.JOY)
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert len(smile) == 1  # 只有过渡段
+
+
 async def test_controller_accepts_string_emotion() -> None:
     platform = _ExpressionPlatform()
     controller = ExpressionController(
@@ -220,13 +281,15 @@ async def test_controller_uses_unit_easing() -> None:
     platform = _ExpressionPlatform()
     profile = ExpressionProfileConfig.model_validate(
         {
-            "runtime": {"randomness": 0.0, "default_easing": "in_out_sine"},
-            "semantic_units": {
-                "嘴角上扬": {
+            "runtime": {"randomness": 0.0, "hold_duration": 0.0},
+            "semantic_units": [
+                {
+                    "id": "嘴角上扬",
                     "targets": [{"action": "mouth.smile", "min_value": 0.6, "max_value": 0.6}],
                     "emotions": {"joy": 0.95},
+                    "easing": "in_out_sine",
                 }
-            },
+            ],
         }
     )
     controller = ExpressionController(

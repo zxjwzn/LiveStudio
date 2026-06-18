@@ -123,5 +123,6 @@ class VTubeStudioModelConfig(PlatformModelConfig):
     )
 
     def init_defaults(self) -> None:
+        super().init_defaults()
         self.semantic_profile = default_vtube_studio_semantic_profile()
         self.parameter_specs = default_vtube_studio_parameter_specs()

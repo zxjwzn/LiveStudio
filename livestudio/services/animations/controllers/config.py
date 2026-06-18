@@ -116,10 +116,9 @@ class MouthSyncControllerSettings(ControllerSettings):
 class ExpressionControllerSettings(ControllerSettings):
     """表情解算控制器配置"""
 
-    transition_duration: float = Field(
-        default=0.4,
-        ge=0.0,
-        description="表情切换过渡时长基准，最终时长会乘以 profile 的 duration_scale",
+    au_priority: int = Field(
+        default=99,
+        description="表情语义缓动的优先级，保持期间高于此值的控制器才能接管参数",
     )
 
 

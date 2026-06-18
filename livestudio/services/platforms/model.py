@@ -51,4 +51,11 @@ class PlatformModelConfig(BaseModel):
     )
 
     def init_defaults(self) -> None:
-        """初始化该平台模型配置的默认内容。"""
+        """初始化该平台模型配置的默认内容。
+
+        仅在配置文件首次生成时调用。这里写入平台无关的内置表情 AU 与规则，
+        作为用户后续微调的起点；配置文件存在后加载完全以文件为准。
+        子类覆盖时应调用 super().init_defaults() 以保留默认表情。
+        """
+
+        self.expression_profile = ExpressionProfileConfig.with_default_units()

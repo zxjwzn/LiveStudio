@@ -14,8 +14,14 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import cast
+
+import flet as ft
+
 from livestudio.gui.core.app_state import AppState
 from livestudio.gui.core.async_bridge import AsyncBridge
+from livestudio.gui.core.base_view import BaseView
 from livestudio.gui.core.fonts import APP_FONT_ASSET_PATH, ASSETS_DIR, ensure_app_font
 from livestudio.gui.core.observable import Observable, ObservableList
 from livestudio.gui.core.registry import PlatformRegistry
@@ -37,7 +43,17 @@ from livestudio.gui.core.view_models import (
     PlatformDescriptor,
     PlatformStatusVM,
 )
+from livestudio.gui.views.logs import LogsView
 from livestudio.gui.views.shell import NAV_ITEMS, AppShell
+
+
+def _mounted_view(view: ft.Control) -> BaseView:
+    return cast(BaseView, view)
+
+
+def _required_text(value: str | None) -> str:
+    assert value is not None
+    return value
 
 
 def test_observable_notify_dedup_and_unsubscribe() -> None:
@@ -87,7 +103,7 @@ def test_view_mount_lifecycle_subscribes_and_cleans_up() -> None:
         ctx.navigate(item.route)
 
     for item in NAV_ITEMS:
-        view = shell._views[item.route]
+        view = _mounted_view(shell._views[item.route])
         view.did_mount()
         state.platforms.replace(
             [PlatformStatusVM("vtube_studio", "VTube Studio", ConnectionState.CONNECTED, model_name="Hiyori")]
@@ -108,8 +124,8 @@ def test_shell_topbar_reflects_platform_and_audio_state() -> None:
 
     state.platforms.replace([PlatformStatusVM("vtube_studio", "VTube Studio", ConnectionState.CONNECTED, model_name="Hiyori")])
     state.active_platform_id.set("vtube_studio")
-    assert "VTube Studio" in shell._status_text.value
-    assert "Hiyori" in shell._status_text.value
+    assert "VTube Studio" in _required_text(shell._status_text.value)
+    assert "Hiyori" in _required_text(shell._status_text.value)
 
     state.audio_level.set(AudioLevelVM(active=True, source=AudioSourceKind.MICROPHONE))
     assert shell._audio_text.value == "麦克风"
@@ -178,11 +194,15 @@ def test_app_state_platform_lookup() -> None:
             PlatformStatusVM("other", "Other"),
         ]
     )
-    assert state.platform_status("other").display_name == "Other"
+    other = state.platform_status("other")
+    assert other is not None
+    assert other.display_name == "Other"
     assert state.platform_status("missing") is None
     assert state.active_platform_status() is None  # 尚未指定激活平台
     state.active_platform_id.set("vtube_studio")
-    assert state.active_platform_status().platform_id == "vtube_studio"
+    active = state.active_platform_status()
+    assert active is not None
+    assert active.platform_id == "vtube_studio"
 
 
 # —— theme 着色函数 ——————————————————————————————————————————
@@ -235,7 +255,9 @@ def test_platform_registry_register_get_and_order() -> None:
     desc2 = PlatformDescriptor("vtube_studio", "VTS v2", "hub", _dummy_factory, _dummy_factory)
     registry.register(desc2)
     assert len(registry) == 1
-    assert registry.get("vtube_studio").display_name == "VTS v2"
+    registered = registry.get("vtube_studio")
+    assert registered is not None
+    assert registered.display_name == "VTS v2"
 
 
 # —— async_bridge 跨线程调度 ——————————————————————————————————
@@ -264,7 +286,7 @@ def test_async_bridge_posts_through_loop() -> None:
     """post 经 call_soon_threadsafe 调度；post_update 触发 page.update；bind_loop 可替换循环"""
     page = _FakePage()
     loop = _FakeLoop()
-    bridge = AsyncBridge(page, loop=loop)
+    bridge = AsyncBridge(cast(ft.Page, page), loop=cast(asyncio.AbstractEventLoop, loop))
 
     flag: list[str] = []
     bridge.post(lambda: flag.append("x"))
@@ -275,7 +297,7 @@ def test_async_bridge_posts_through_loop() -> None:
     assert page.updated == 1
 
     loop2 = _FakeLoop()
-    bridge.bind_loop(loop2)
+    bridge.bind_loop(cast(asyncio.AbstractEventLoop, loop2))
     bridge.post(lambda: None)
     assert len(loop2.scheduled) == 1
 
@@ -344,7 +366,7 @@ def test_logs_view_renders_entries_into_listview() -> None:
     ctx = ViewContext(state=state)
     shell = AppShell(ctx)
     shell.navigate("logs")
-    logs_view = shell._views["logs"]
+    logs_view = cast(LogsView, shell._views["logs"])
     logs_view.did_mount()  # 建立订阅（空列表 -> 显示占位）
 
     state.logs.append(LogEntryVM(ts="12:00:00.000", level="INFO", message="hello", color=PALETTE.text))

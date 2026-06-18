@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+from typing import cast
 
 import numpy as np
 
@@ -146,7 +147,9 @@ class _FakeApp:
         self.stopped = True
 
 
-def _make_adapter(app: _FakeApp, runtime: _FakeRuntime, state: AppState) -> VTubeStudioAdapter:
+def _make_adapter(
+    app: _FakeApp, runtime: _FakeRuntime, state: AppState
+) -> VTubeStudioAdapter:
     ctx = PlatformContext(
         state=state,
         async_bridge=_SyncBridge(),  # type: ignore[arg-type]
@@ -274,7 +277,9 @@ async def test_audio_controller_consume_emits_level() -> None:
     controller = AudioController(state, router)  # type: ignore[arg-type]
     await controller.start()
 
-    chunk = AudioChunk(frames=1, samplerate=16000, channels=1, data=np.zeros(1, dtype=np.float32))
+    chunk = AudioChunk(
+        frames=1, samplerate=16000, channels=1, data=np.zeros(1, dtype=np.float32)
+    )
     chunk.analysis.rms = 0.4
     chunk.analysis.peak = 0.9
     await router.subscription.queue.put(chunk)
@@ -307,7 +312,7 @@ async def test_adapter_connect_success_flows_to_connected() -> None:
 
     await adapter.start()
     assert adapter._connect_task is not None
-    await adapter._connect_task  # 等后台连接完成
+    await cast(asyncio.Task[None], adapter._connect_task)  # 等后台连接完成
 
     status = state.platform_status("vtube_studio")
     assert status is not None
@@ -329,7 +334,7 @@ async def test_adapter_connect_failure_flows_to_error() -> None:
 
     await adapter.start()
     assert adapter._connect_task is not None
-    await adapter._connect_task
+    await cast(asyncio.Task[None], adapter._connect_task)
 
     status = state.platform_status("vtube_studio")
     assert status is not None
@@ -344,7 +349,8 @@ async def test_adapter_set_controller_enabled_starts_and_cancels() -> None:
     app = _FakeApp()
     adapter = _make_adapter(app, runtime, state)
     await adapter.start()
-    await adapter._connect_task
+    assert adapter._connect_task is not None
+    await cast(asyncio.Task[None], adapter._connect_task)
 
     await adapter.set_controller_enabled("expression", True)
     assert "expression" in runtime.started
@@ -364,7 +370,8 @@ async def test_adapter_trigger_expression_executes_controller() -> None:
     app = _FakeApp()
     adapter = _make_adapter(app, runtime, state)
     await adapter.start()
-    await adapter._connect_task
+    assert adapter._connect_task is not None
+    await cast(asyncio.Task[None], adapter._connect_task)
 
     await adapter.trigger_expression("joy")
     assert runtime.executed == [("expression", {"emotion": "joy"})]
@@ -378,7 +385,8 @@ async def test_adapter_connect_handles_unloaded_model() -> None:
     app = _FakeApp(model_loaded=False)
     adapter = _make_adapter(app, runtime, state)
     await adapter.start()
-    await adapter._connect_task
+    assert adapter._connect_task is not None
+    await cast(asyncio.Task[None], adapter._connect_task)
 
     status = state.platform_status("vtube_studio")
     assert status is not None
