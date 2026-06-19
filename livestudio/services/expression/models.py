@@ -20,7 +20,9 @@ from livestudio.services.semantic_actions.models import (
     SemanticActionSpec,
 )
 
-_SPEC_BY_ACTION: dict[str, SemanticActionSpec] = {spec.id: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS}
+_SPEC_BY_ACTION: dict[str, SemanticActionSpec] = {
+    spec.id: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS
+}
 
 
 class EmotionKind(StrEnum):
@@ -57,13 +59,19 @@ class SemanticExpressionUnit(_FrozenModel):
     id: str = ""
     enabled: bool = True
     targets: list[ExpressionTarget]
-    emotions: dict[EmotionKind, float] = Field(default_factory=dict)  # 正数 (0,1]；缺失或 <=0 视为无关
-    easing: str = "out_cubic"
+    emotions: dict[EmotionKind, float] = Field(
+        default_factory=dict
+    )  # 正数 (0,1]；缺失或 <=0 视为无关
+    easing: str = "linear"
     activation_threshold: float = 0.05
 
     @property
     def regions(self) -> frozenset[FacialRegion]:
-        return frozenset(_SPEC_BY_ACTION[t.action].region for t in self.targets if t.action in _SPEC_BY_ACTION)
+        return frozenset(
+            _SPEC_BY_ACTION[t.action].region
+            for t in self.targets
+            if t.action in _SPEC_BY_ACTION
+        )
 
 
 class NativeExpressionUnit(_FrozenModel):

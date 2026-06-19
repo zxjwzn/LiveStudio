@@ -63,30 +63,30 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
         tree = ast.parse(expression, mode="eval")
         return self.visit(tree.body)
 
-    def visit_Constant(self, node: ast.Constant) -> TemplateScalar:  # noqa: N802
+    def visit_Constant(self, node: ast.Constant) -> TemplateScalar:
         value = node.value
         if isinstance(value, (int, float, bool, str)):
             return value
         raise TemplateEvaluationError(f"不支持的常量类型: {type(value)!r}")
 
-    def visit_Name(self, node: ast.Name) -> TemplateScalar:  # noqa: N802
+    def visit_Name(self, node: ast.Name) -> TemplateScalar:
         if node.id not in self._context:
             raise TemplateEvaluationError(f"表达式引用了未定义变量: {node.id}")
         return self._context[node.id]
 
-    def visit_BinOp(self, node: ast.BinOp) -> TemplateScalar:  # noqa: N802
+    def visit_BinOp(self, node: ast.BinOp) -> TemplateScalar:
         operator = self._binary_operators.get(type(node.op))
         if operator is None:
             raise TemplateEvaluationError(f"不支持的二元运算: {type(node.op).__name__}")
         return operator(self.visit(node.left), self.visit(node.right))
 
-    def visit_UnaryOp(self, node: ast.UnaryOp) -> TemplateScalar:  # noqa: N802
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> TemplateScalar:
         operator = self._unary_operators.get(type(node.op))
         if operator is None:
             raise TemplateEvaluationError(f"不支持的一元运算: {type(node.op).__name__}")
         return operator(self.visit(node.operand))
 
-    def visit_Call(self, node: ast.Call) -> TemplateScalar:  # noqa: N802
+    def visit_Call(self, node: ast.Call) -> TemplateScalar:
         if not isinstance(node.func, ast.Name):
             raise TemplateEvaluationError("仅支持调用白名单函数")
         function = self._allowed_functions.get(node.func.id)
@@ -96,11 +96,11 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
             raise TemplateEvaluationError("表达式暂不支持关键字参数")
         return function(*(self.visit(argument) for argument in node.args))
 
-    def visit_List(self, node: ast.List) -> TemplateScalar:  # noqa: N802
+    def visit_List(self, node: ast.List) -> TemplateScalar:
         _ = node
         raise TemplateEvaluationError("表达式中不支持列表字面量")
 
-    def visit_Tuple(self, node: ast.Tuple) -> TemplateScalar:  # noqa: N802
+    def visit_Tuple(self, node: ast.Tuple) -> TemplateScalar:
         _ = node
         raise TemplateEvaluationError("表达式中不支持元组字面量")
 
@@ -257,7 +257,11 @@ class AnimationTemplatePlayer:
         *,
         context: Mapping[str, TemplateScalar],
     ) -> SemanticTweenRequest:
-        from_value = None if action.from_value is None else float(self._evaluate_value(action.from_value, context))
+        from_value = (
+            None
+            if action.from_value is None
+            else float(self._evaluate_value(action.from_value, context))
+        )
         return SemanticTweenRequest(
             action_parameter_name=action.parameter,
             end_value=float(self._evaluate_value(action.to, context)),

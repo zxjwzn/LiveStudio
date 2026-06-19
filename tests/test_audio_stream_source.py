@@ -268,3 +268,80 @@ class _FakeInputStream:
 
     def close(self) -> None:
         self.closed = True
+
+
+class _ReinitSource(AudioStreamSource):
+    """模拟麦克风式生命周期：stop 清空状态，start 前必须 (重新) initialize。
+
+    复现 GUI 来回切换音频源时的回归：source 切走后被 stop 清空，再切回若
+    不重新 initialize 就 start 会失败。
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._ready = False
+        self.start_calls = 0
+        self.initialize_calls = 0
+
+    async def initialize(self) -> None:
+        self._ready = True
+        self.initialize_calls += 1
+
+    async def start(self) -> None:
+        if not self._ready:
+            raise RuntimeError("源尚未初始化，请先调用 initialize()")
+        self.start_calls += 1
+        self._mark_started()
+
+    async def stop(self) -> None:
+        self._ready = False  # 模拟麦克风 stop 清空 _loop/_device_info
+        self._mark_stopped()
+        self._clear_subscriptions()
+
+
+async def test_router_switch_source_round_trip_reinitializes_source() -> None:
+    """来回切换（mic->tts->mic）应成功：切回的源会被重新 initialize 再 start。
+
+    回归测试：修复前切回 mic 会因状态被 stop 清空而 RuntimeError。
+    """
+
+    router = AudioStreamRouter()
+    router.config_manager = cast(
+        ConfigManager[AudioStreamConfigFile],
+        type(
+            "_ConfigManager",
+            (),
+            {
+                "config": AudioStreamConfigFile(),
+                "save_calls": 0,
+                "save": lambda self: _save_config(self),
+            },
+        )(),
+    )
+    microphone = _ReinitSource()
+    tts = _ReinitSource()
+    router._microphone_source = cast(MicrophoneAudioStreamSource, microphone)
+    router._tts_source = cast(Any, tts)
+    router._sources = {
+        AudioSourceKind.MICROPHONE: microphone,
+        AudioSourceKind.TTS: tts,
+    }
+    router._active_source_kind = AudioSourceKind.MICROPHONE
+    router._source_subscription = microphone.subscribe(queue_maxsize=4)
+    router._initialized = True
+    router._mark_started()
+    await microphone.initialize()
+    await microphone.start()
+    router._forward_task = asyncio.create_task(router._forward_chunks())
+
+    # mic -> tts
+    await router.switch_source(AudioSourceKind.TTS)
+    assert router.active_source_kind is AudioSourceKind.TTS
+    assert tts.is_started
+
+    # tts -> mic：切回应重新 initialize 并成功 start（修复前此处 RuntimeError）
+    await router.switch_source(AudioSourceKind.MICROPHONE)
+    assert router.active_source_kind is AudioSourceKind.MICROPHONE
+    assert microphone.is_started
+    assert microphone.initialize_calls >= 2  # 初次 + 切回各一次
+    await router.stop()

@@ -29,7 +29,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         config: ExpressionControllerSettings,
         profile: ExpressionProfileConfig,
     ) -> None:
-        super().__init__(runtime, name, config)  # type: ignore[arg-type]
+        super().__init__(runtime, name, config)
         self._profile = profile
         self._solver = ExpressionSolver(
             units=profile.to_units(),

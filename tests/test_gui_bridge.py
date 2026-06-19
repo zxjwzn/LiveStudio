@@ -147,9 +147,7 @@ class _FakeApp:
         self.stopped = True
 
 
-def _make_adapter(
-    app: _FakeApp, runtime: _FakeRuntime, state: AppState
-) -> VTubeStudioAdapter:
+def _make_adapter(app: _FakeApp, runtime: _FakeRuntime, state: AppState) -> VTubeStudioAdapter:
     ctx = PlatformContext(
         state=state,
         async_bridge=_SyncBridge(),  # type: ignore[arg-type]
@@ -277,9 +275,7 @@ async def test_audio_controller_consume_emits_level() -> None:
     controller = AudioController(state, router)  # type: ignore[arg-type]
     await controller.start()
 
-    chunk = AudioChunk(
-        frames=1, samplerate=16000, channels=1, data=np.zeros(1, dtype=np.float32)
-    )
+    chunk = AudioChunk(frames=1, samplerate=16000, channels=1, data=np.zeros(1, dtype=np.float32))
     chunk.analysis.rms = 0.4
     chunk.analysis.peak = 0.9
     await router.subscription.queue.put(chunk)

@@ -89,9 +89,7 @@ class _FakeBridge:
 def test_audio_meter_updates_level_and_source() -> None:
     """AudioMeter 刷新 rms/peak 与音源文案，未激活时回退提示"""
     meter = AudioMeter()
-    meter.update_level(
-        AudioLevelVM(rms=0.4, peak=0.9, source=AudioSourceKind.MICROPHONE, active=True)
-    )
+    meter.update_level(AudioLevelVM(rms=0.4, peak=0.9, source=AudioSourceKind.MICROPHONE, active=True))
     assert meter._rms_bar.value == 0.4
     assert meter._peak_bar.value == 0.9
     assert meter._source_text.value == "源: 麦克风"
@@ -111,9 +109,7 @@ def test_audio_meter_clamps_out_of_range() -> None:
 def test_controller_card_idle_running_shows_pause() -> None:
     """idle 运行态控制器显示停止（pause）按钮，点击请求停止"""
     captured: list = []
-    vm = ControllerVM(
-        key="blink", display_name="眨眼", type="idle", state=ControllerState.RUNNING
-    )
+    vm = ControllerVM(key="blink", display_name="眨眼", type="idle", state=ControllerState.RUNNING)
     card = ControllerCard(
         vm,
         on_toggle=lambda v, enabled: captured.append((v.key, enabled)),
@@ -128,9 +124,7 @@ def test_controller_card_idle_running_shows_pause() -> None:
 def test_controller_card_idle_stopped_shows_play() -> None:
     """idle 停止态控制器显示启动（play）按钮，点击请求启动"""
     captured: list = []
-    vm = ControllerVM(
-        key="breathing", display_name="呼吸", type="idle", state=ControllerState.STOPPED
-    )
+    vm = ControllerVM(key="breathing", display_name="呼吸", type="idle", state=ControllerState.STOPPED)
     card = ControllerCard(
         vm,
         on_toggle=lambda v, enabled: captured.append((v.key, enabled)),
@@ -192,9 +186,7 @@ def _find_icon_button(control: ft.Control) -> ft.IconButton:
 # —— DashboardView ————————————————————————————————————————————
 
 
-def _mounted_dashboard(
-    state: AppState, bridge: object | None = None
-) -> tuple[DashboardView, _FakePage]:
+def _mounted_dashboard(state: AppState, bridge: object | None = None) -> tuple[DashboardView, _FakePage]:
     """构造并模拟挂载仪表盘，返回 (view, fake_page)。"""
 
     ctx = ViewContext(state=state, bridge=bridge)
@@ -233,9 +225,7 @@ def test_dashboard_audio_meter_follows_state() -> None:
     """音频电平卡随 audio_level 刷新"""
     state = AppState()
     view, _page = _mounted_dashboard(state)
-    state.audio_level.set(
-        AudioLevelVM(rms=0.3, peak=0.6, source=AudioSourceKind.TTS, active=True)
-    )
+    state.audio_level.set(AudioLevelVM(rms=0.3, peak=0.6, source=AudioSourceKind.TTS, active=True))
     assert view._audio_meter._rms_bar.value == 0.3
     assert view._audio_meter._source_text.value == "源: TTS"
     view.will_unmount()
@@ -279,9 +269,7 @@ def test_dashboard_controllers_and_expressions_render() -> None:
             ExpressionVM(key="anger", display_name="愤怒", emoji="😠"),
         ]
     )
-    assert (
-        len(view._controllers_wrap.controls) == 2
-    )  # 仅 blink + breathing，expression 被过滤
+    assert len(view._controllers_wrap.controls) == 2  # 仅 blink + breathing，expression 被过滤
     assert len(view._expressions_wrap.controls) == 2
     view.will_unmount()
 
@@ -338,9 +326,7 @@ async def test_dashboard_trigger_expression_dispatches_intent() -> None:
     adapter = _FakeAdapter()
     view, page = _mounted_dashboard(state, bridge=_FakeBridge(adapter))
     state.active_platform_id.set("vtube_studio")
-    state.expressions.replace(
-        [ExpressionVM(key="joy", display_name="喜悦", emoji="😊")]
-    )
+    state.expressions.replace([ExpressionVM(key="joy", display_name="喜悦", emoji="😊")])
 
     button = view._expressions_wrap.controls[0]
     _click(button)
@@ -355,9 +341,7 @@ def test_dashboard_intent_without_bridge_is_noop() -> None:
     """无 bridge 时点击不抛异常、不调度任务"""
     state = AppState()
     view, page = _mounted_dashboard(state, bridge=None)
-    state.expressions.replace(
-        [ExpressionVM(key="joy", display_name="喜悦", emoji="😊")]
-    )
+    state.expressions.replace([ExpressionVM(key="joy", display_name="喜悦", emoji="😊")])
     _click(view._expressions_wrap.controls[0])
     assert page.tasks == []
     view.will_unmount()

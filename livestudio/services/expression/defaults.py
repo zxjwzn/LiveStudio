@@ -29,100 +29,172 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         # —— 喜悦 ——
         SemanticExpressionUnit(
             id="嘴角上扬",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.55, max_value=0.90)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.MOUTH_SMILE, min_value=0.55, max_value=0.90
+                )
+            ],
             emotions={EmotionKind.JOY: 0.95, EmotionKind.SURPRISE: 0.30},
         ),
         SemanticExpressionUnit(
             id="咧嘴笑",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.80, max_value=1.00)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.MOUTH_SMILE, min_value=0.80, max_value=1.00
+                )
+            ],
             emotions={EmotionKind.JOY: 0.80},
             activation_threshold=0.30,
         ),
         SemanticExpressionUnit(
             id="眯眼笑",
-            targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.35, max_value=0.55)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.EYE_OPEN, min_value=0.35, max_value=0.55
+                )
+            ],
             emotions={EmotionKind.JOY: 0.70},
         ),
         # —— 悲伤 ——
         SemanticExpressionUnit(
             id="垂眉",
-            targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.00, max_value=0.20)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.BROW_HEIGHT, min_value=0.00, max_value=0.20
+                )
+            ],
             emotions={EmotionKind.SADNESS: 0.85, EmotionKind.ANGER: 0.40},
         ),
         SemanticExpressionUnit(
             id="抿嘴",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.00, max_value=0.15)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.MOUTH_SMILE, min_value=0.00, max_value=0.15
+                )
+            ],
             emotions={EmotionKind.SADNESS: 0.70, EmotionKind.ANGER: 0.35},
         ),
         SemanticExpressionUnit(
             id="低头",
-            targets=[ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=-0.45, max_value=-0.20)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.HEAD_PITCH, min_value=-0.45, max_value=-0.20
+                )
+            ],
             emotions={EmotionKind.SADNESS: 0.75},
         ),
         SemanticExpressionUnit(
             id="半垂眼",
-            targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.30, max_value=0.50)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.EYE_OPEN, min_value=0.30, max_value=0.50
+                )
+            ],
             emotions={EmotionKind.SADNESS: 0.55},
         ),
         # —— 愤怒 ——
         SemanticExpressionUnit(
             id="皱眉",
-            targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.00, max_value=0.15)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.BROW_HEIGHT, min_value=0.00, max_value=0.15
+                )
+            ],
             emotions={EmotionKind.ANGER: 0.90, EmotionKind.SADNESS: 0.45},
             activation_threshold=0.10,
         ),
         SemanticExpressionUnit(
             id="瞪眼",
-            targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.85, max_value=1.00)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.EYE_OPEN, min_value=0.85, max_value=1.00
+                )
+            ],
             emotions={EmotionKind.ANGER: 0.80, EmotionKind.SURPRISE: 0.60},
         ),
         SemanticExpressionUnit(
             id="抿紧嘴",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_OPEN, min_value=0.00, max_value=0.05)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.MOUTH_OPEN, min_value=0.00, max_value=0.05
+                )
+            ],
             emotions={EmotionKind.ANGER: 0.55},
         ),
         # —— 惊讶 ——
         SemanticExpressionUnit(
             id="挑眉",
-            targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.60, max_value=0.85)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.BROW_HEIGHT, min_value=0.60, max_value=0.85
+                )
+            ],
             emotions={EmotionKind.SURPRISE: 0.85, EmotionKind.JOY: 0.45},
         ),
         SemanticExpressionUnit(
             id="瞪大眼",
-            targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.90, max_value=1.00)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.EYE_OPEN, min_value=0.90, max_value=1.00
+                )
+            ],
             emotions={EmotionKind.SURPRISE: 0.95, EmotionKind.FEAR: 0.55},
         ),
         SemanticExpressionUnit(
             id="张嘴",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_OPEN, min_value=0.40, max_value=0.70)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.MOUTH_OPEN, min_value=0.40, max_value=0.70
+                )
+            ],
             emotions={EmotionKind.SURPRISE: 0.80, EmotionKind.FEAR: 0.40},
         ),
         # —— 恐惧 ——
         SemanticExpressionUnit(
             id="缩头",
-            targets=[ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=-0.40, max_value=-0.15)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.HEAD_PITCH, min_value=-0.40, max_value=-0.15
+                )
+            ],
             emotions={EmotionKind.FEAR: 0.70, EmotionKind.SADNESS: 0.30},
         ),
         # —— 厌恶 ——
         SemanticExpressionUnit(
             id="歪嘴",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_X, min_value=0.30, max_value=0.60)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.MOUTH_X, min_value=0.30, max_value=0.60
+                )
+            ],
             emotions={EmotionKind.DISGUST: 0.85},
         ),
         SemanticExpressionUnit(
             id="蹙眉",
-            targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.05, max_value=0.25)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.BROW_HEIGHT, min_value=0.05, max_value=0.25
+                )
+            ],
             emotions={EmotionKind.DISGUST: 0.70, EmotionKind.ANGER: 0.35},
         ),
         # —— 中性 ——
         SemanticExpressionUnit(
             id="平视",
-            targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.70, max_value=0.85)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.EYE_OPEN, min_value=0.70, max_value=0.85
+                )
+            ],
             emotions={EmotionKind.NEUTRAL: 0.80},
         ),
         SemanticExpressionUnit(
             id="自然眉",
-            targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.40, max_value=0.55)],
+            targets=[
+                ExpressionTarget(
+                    action=SemanticAction.BROW_HEIGHT, min_value=0.40, max_value=0.55
+                )
+            ],
             emotions={EmotionKind.NEUTRAL: 0.70},
         ),
     ]

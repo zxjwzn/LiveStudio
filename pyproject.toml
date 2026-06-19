@@ -99,3 +99,4 @@ select = [
 "tests/test_gui_framework.py" = ["SLF001"]
 "tests/test_gui_bridge.py" = ["SLF001", "ARG002"]
 "tests/test_gui_dashboard.py" = ["SLF001", "ARG002", "ARG005"]
+"tests/test_gui_audio_logs.py" = ["SLF001", "ARG002"]

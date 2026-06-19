@@ -142,9 +142,13 @@ class AudioStreamRouter(AudioStreamSource):
 
         if was_started:
             try:
+                # 源在上一次切走时已 stop（麦克风会清空 _loop/_device_info），
+                # 重新 start 前必须先 initialize 以重建其运行所需状态。
+                await self.active_source.initialize()
                 await self.active_source.start()
             except Exception:
                 self._rebind_active_source(previous_source_kind)
+                await self.active_source.initialize()
                 await self.active_source.start()
                 self._forward_task = asyncio.create_task(self._forward_chunks())
                 await self.config_manager.save()
