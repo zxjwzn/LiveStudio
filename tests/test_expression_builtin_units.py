@@ -11,6 +11,7 @@ from livestudio.services.expression import (
     EmotionKind,
     ExpressionHistory,
     ExpressionProfileConfig,
+    ExpressionRequest,
     ExpressionSolver,
 )
 from livestudio.services.platforms.vtubestudio import VTubeStudioModelConfig
@@ -34,8 +35,7 @@ def _solver(profile: ExpressionProfileConfig) -> ExpressionSolver:
     return ExpressionSolver(
         units=profile.to_units(),
         rules=profile.to_rules(),
-        history=ExpressionHistory(capacity=profile.runtime.history_capacity),
-        top_candidates=profile.runtime.top_candidates,
+        history=ExpressionHistory(capacity=20),
     )
 
 
@@ -72,7 +72,7 @@ def test_each_emotion_produces_expression(emotion: EmotionKind) -> None:
     """每个情绪都应解算出至少一个 AU"""
     profile = _load_profile()
     solver = _solver(profile)
-    request = profile.build_request(emotion, randomness=0.0)
+    request = ExpressionRequest(emotion=emotion, randomness=0.0)
     result = solver.solve(request)
     assert len(result.units) > 0, f"情绪 {emotion} 未解算出任何 AU"
     assert result.emotion == emotion
@@ -82,7 +82,7 @@ def test_joy_drives_smile() -> None:
     """喜悦应当驱动嘴角上扬语义动作"""
     profile = _load_profile()
     solver = _solver(profile)
-    result = solver.solve(profile.build_request(EmotionKind.JOY, randomness=0.0))
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
     actions = {t.action for t in result.semantic_targets}
     assert "mouth.smile" in actions
 
@@ -91,7 +91,7 @@ def test_anger_triggers_native_when_strong() -> None:
     """愤怒相关性高，应触发生气原生特效"""
     profile = _load_profile()
     solver = _solver(profile)
-    result = solver.solve(profile.build_request(EmotionKind.ANGER, randomness=0.0))
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.ANGER, randomness=0.0))
     refs = {t.native_ref for t in result.native_triggers}
     assert "2生气" in refs
 
@@ -102,7 +102,7 @@ def test_brow_mutual_exclusion_holds() -> None:
     solver = _solver(profile)
     brow_units = {"挑眉", "皱眉", "垂眉", "自然眉"}
     for emotion in EmotionKind:
-        result = solver.solve(profile.build_request(emotion, randomness=0.0))
+        result = solver.solve(ExpressionRequest(emotion=emotion, randomness=0.0))
         selected_brows = brow_units & {u.id for u in result.units}
         assert len(selected_brows) <= 1, f"{emotion} 选中多个眉毛 AU: {selected_brows}"
 
@@ -112,7 +112,7 @@ def test_no_action_conflict_in_result() -> None:
     profile = _load_profile()
     solver = _solver(profile)
     for emotion in EmotionKind:
-        result = solver.solve(profile.build_request(emotion, randomness=0.0))
+        result = solver.solve(ExpressionRequest(emotion=emotion, randomness=0.0))
         seen: set[str] = set()
         for target in result.semantic_targets:
             assert target.action not in seen, f"{emotion} 动作冲突: {target.action}"
@@ -125,6 +125,6 @@ def test_diversity_across_repeated_solves() -> None:
     solver = _solver(profile)
     combos = set()
     for _ in range(20):
-        result = solver.solve(profile.build_request(EmotionKind.JOY))
+        result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY))
         combos.add(frozenset(u.id for u in result.units))
     assert len(combos) > 1

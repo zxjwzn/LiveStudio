@@ -51,14 +51,19 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
     async def apply_native_expressions(
         self,
         triggers: Iterable[NativeExpressionTrigger],
+        *,
+        fade_time: float | None = None,
     ) -> None:
         """应用平台原生表情触发（如 VTS .exp3.json）
 
         默认无操作；支持原生表情的平台覆盖此方法。表情解算层只产出
         平台无关的 NativeExpressionTrigger，由各平台自行翻译为原生调用。
+
+        fade_time：原生表情淡入/淡出时长，None 时由平台决定默认值。
+        表情控制器会传入与语义过渡一致的 transition_duration。
         """
 
-        _ = triggers
+        _ = triggers, fade_time
 
     @abstractmethod
     async def send_parameter_states(

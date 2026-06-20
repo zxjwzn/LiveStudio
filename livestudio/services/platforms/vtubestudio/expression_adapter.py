@@ -18,7 +18,9 @@ PLATFORM_NAME = "vtubestudio"
 class _ExpressionClient(Protocol):
     """适配器只依赖客户端的表情激活能力"""
 
-    async def set_expression_active(self, request: ExpressionActivationRequest) -> object: ...
+    async def set_expression_active(
+        self, request: ExpressionActivationRequest
+    ) -> object: ...
 
 
 class VTSExpressionAdapter:
@@ -30,14 +32,8 @@ class VTSExpressionAdapter:
        只对变化的表情发送 set_expression_active。
     """
 
-    def __init__(
-        self,
-        name_to_file: Mapping[str, str] | None = None,
-        *,
-        fade_time: float | None = None,
-    ) -> None:
+    def __init__(self, name_to_file: Mapping[str, str] | None = None) -> None:
         self._name_to_file: dict[str, str] = dict(name_to_file or {})
-        self._fade_time = fade_time
         self._active_files: set[str] = set()
 
     @property
@@ -64,8 +60,14 @@ class VTSExpressionAdapter:
         self,
         triggers: Iterable[NativeExpressionTrigger],
         client: _ExpressionClient,
+        *,
+        fade_time: float | None = None,
     ) -> None:
-        """diff 目标表情集合与当前激活集合，只对变化项调用 VTS API"""
+        """diff 目标表情集合与当前激活集合，只对变化项调用 VTS API
+
+        fade_time 为本次调用的淡入/淡出时长，传 None 时由 VTS 用其默认值。
+        VTS 接受范围 [0, 2]，会自动钳位。
+        """
 
         wanted_files: set[str] = set()
         for trigger in triggers:
@@ -81,18 +83,30 @@ class VTSExpressionAdapter:
         to_activate = wanted_files - self._active_files
 
         for expression_file in sorted(to_deactivate):
-            await self._set_active(client, expression_file, active=False)
+            await self._set_active(
+                client, expression_file, active=False, fade_time=fade_time
+            )
         for expression_file in sorted(to_activate):
-            await self._set_active(client, expression_file, active=True)
+            await self._set_active(
+                client, expression_file, active=True, fade_time=fade_time
+            )
 
         self._active_files = wanted_files
 
-    async def _set_active(self, client: _ExpressionClient, expression_file: str, *, active: bool) -> None:
+    async def _set_active(
+        self,
+        client: _ExpressionClient,
+        expression_file: str,
+        *,
+        active: bool,
+        fade_time: float | None,
+    ) -> None:
+        clamped = None if fade_time is None else max(0.0, min(2.0, fade_time))
         await client.set_expression_active(
             ExpressionActivationRequest(
                 data=ExpressionActivationRequestData(
                     expressionFile=expression_file,
-                    fadeTime=self._fade_time,
+                    fadeTime=clamped,
                     active=active,
                 ),
             ),

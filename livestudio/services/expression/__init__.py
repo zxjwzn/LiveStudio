@@ -1,7 +1,4 @@
-from livestudio.services.expression.config import (
-    ExpressionProfileConfig,
-    ExpressionRuntimeConfig,
-)
+from livestudio.services.expression.config import ExpressionProfileConfig
 from livestudio.services.expression.defaults import (
     default_rules,
     default_semantic_units,
@@ -35,7 +32,6 @@ __all__ = [
     "ExpressionProfileConfig",
     "ExpressionRequest",
     "ExpressionRule",
-    "ExpressionRuntimeConfig",
     "ExpressionSignature",
     "ExpressionSolver",
     "ExpressionTarget",

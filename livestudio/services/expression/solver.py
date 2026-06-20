@@ -13,6 +13,7 @@ from .history import ExpressionHistory
 from .models import (
     BindingRule,
     BonusRule,
+    EmotionKind,
     ExpressionRequest,
     ExpressionRule,
     ExpressionSignature,
@@ -238,10 +239,10 @@ class ExpressionSolver:
         )
 
 
-def _empty(emotion: object) -> SelectedExpression:
+def _empty(emotion: EmotionKind) -> SelectedExpression:
     return SelectedExpression(
         units=[],
-        emotion=emotion,  # type: ignore[arg-type]
+        emotion=emotion,
         score=0.0,
         semantic_targets=[],
         native_triggers=[],

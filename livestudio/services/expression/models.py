@@ -149,12 +149,12 @@ class ScoredExpressionUnit:
 
 @dataclass(frozen=True, slots=True)
 class ExpressionRequest:
+    """solver 的解算输入；时序参数（过渡/保持时长）属于控制器，不在此处"""
+
     emotion: EmotionKind
     randomness: float = 0.5
     diversity: float = 0.6
     history_avoidance: float = 0.7
-    transition_duration: float = 0.5  # 解算后切换到目标表情的过渡时长
-    hold_duration: float = 1.5  # 到达后保持时长，期间锁定参数不被低优先级接管
     max_units: int = 5
     min_au_score: float = 0.08
     core_score: float = 0.65

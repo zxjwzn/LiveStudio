@@ -3,10 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from livestudio.services.expression.config import (
-    ExpressionProfileConfig,
-    ExpressionRuntimeConfig,
-)
+from livestudio.services.expression.config import ExpressionProfileConfig
 from livestudio.services.expression.history import ExpressionHistory
 from livestudio.services.expression.models import (
     BindingRule,
@@ -380,18 +377,18 @@ def test_profile_rules_discriminated_from_dict() -> None:
     assert isinstance(rules[1], BonusRule)
 
 
-def test_profile_build_request_uses_runtime_defaults() -> None:
-    profile = ExpressionProfileConfig(runtime=ExpressionRuntimeConfig(randomness=0.1, max_units=3))
-    req = profile.build_request(EmotionKind.JOY)
-    assert req.randomness == 0.1
-    assert req.max_units == 3
+def test_request_defaults() -> None:
+    """ExpressionRequest 自带合理默认值，无需中间层填充"""
+    req = ExpressionRequest(emotion=EmotionKind.JOY)
     assert req.emotion == EmotionKind.JOY
+    assert req.randomness == 0.5
+    assert req.max_units == 5
 
 
-def test_profile_build_request_overrides() -> None:
-    profile = ExpressionProfileConfig(runtime=ExpressionRuntimeConfig(randomness=0.5))
-    req = profile.build_request(EmotionKind.ANGER, randomness=0.0)
+def test_request_overrides() -> None:
+    req = ExpressionRequest(emotion=EmotionKind.ANGER, randomness=0.0, max_units=3)
     assert req.randomness == 0.0
+    assert req.max_units == 3
 
 
 def test_profile_native_unit_regions() -> None:

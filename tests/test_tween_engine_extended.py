@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -449,6 +450,50 @@ async def test_high_priority_preempts_running_low_priority() -> None:
     low_task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await low_task
+
+
+async def test_equal_priority_new_preempts_running() -> None:
+    """同优先级时，新请求接管参数，旧请求空转至结束"""
+    sender = _SenderRecorder()
+    engine = ParameterTweenEngine(sender)
+
+    # 启动一个长缓动
+    old_task = asyncio.create_task(
+        engine.tween(
+            TweenRequest(
+                parameter_name="Same",
+                end_value=0.5,
+                duration=5.0,
+                easing=Easing.linear,
+                priority=50,
+            ),
+        ),
+    )
+    await asyncio.sleep(0.05)
+
+    # 同优先级的即时设置应该接管
+    await engine.tween(
+        TweenRequest(
+            parameter_name="Same",
+            end_value=1.0,
+            duration=0.0,
+            easing=Easing.linear,
+            priority=50,
+        ),
+    )
+
+    # 新请求的值被发送，且接管后由它持有控制权
+    found_new = any(
+        state.name == "Same" and state.value == pytest.approx(1.0)
+        for _, states in sender.calls
+        for state in states
+    )
+    assert found_new, "同优先级新请求的值应被发送"
+    assert engine.controlled_params["Same"].value == pytest.approx(1.0)
+
+    old_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await old_task
 
 
 # ── 并发不同参数 ─────────────────────────────────────────────────────

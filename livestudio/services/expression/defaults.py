@@ -6,7 +6,7 @@
 只放纯语义 AU（基于平台无关的 SemanticAction），不含任何平台特定的原生表情；
 原生表情绑定具体模型的 .exp3.json，应由各模型自行配置。
 
-id 由 ExpressionProfileConfig.semantic_units 的字典键注入，这里直接构造时省略。
+每个 AU 自带 id，以列表返回，可直接序列化进配置文件。
 """
 
 from __future__ import annotations

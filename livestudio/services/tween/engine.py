@@ -195,14 +195,15 @@ class ParameterTweenEngine:
     ) -> bool:
         """在持有 _lock 的前提下，尝试获取参数的缓动控制权
 
-        如果当前已有更高或相同优先级的缓动占用该参数，则拒绝并返回 False。
-        否则注册新的 ActiveTween 并返回 True。
+        仅当已有更高优先级的缓动占用该参数时才拒绝并返回 False。
+        相同优先级时新请求接管（旧任务检测到归属变更后自动停止写值），
+        体现「后到者覆盖先到者」。否则注册新的 ActiveTween 并返回 True。
         """
 
         existing = self._active_tweens.get(request.parameter_name)
-        if existing is not None and request.priority <= existing.priority:
+        if existing is not None and request.priority < existing.priority:
             logger.debug(
-                "参数 {} 的{}被拒绝，当前优先级 {} >= 新优先级 {}",
+                "参数 {} 的{}被拒绝，当前优先级 {} > 新优先级 {}",
                 request.parameter_name,
                 context,
                 existing.priority,

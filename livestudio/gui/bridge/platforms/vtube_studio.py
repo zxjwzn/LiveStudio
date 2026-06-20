@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from livestudio.utils.log import logger
 
@@ -30,7 +30,7 @@ from ...core.view_models import (
 from .base import PlatformAdapter, PlatformContext
 
 # 后端控制器 key -> 中文展示名 / 类型
-_CONTROLLER_LABELS: dict[str, tuple[str, str]] = {
+_CONTROLLER_LABELS: dict[str, tuple[str, Literal["idle", "oneshot"]]] = {
     "blink": ("眨眼", "idle"),
     "breathing": ("呼吸", "idle"),
     "body_swing": ("身体摇摆", "idle"),
@@ -249,7 +249,7 @@ class VTubeStudioAdapter(PlatformAdapter):
                 ControllerVM(
                     key=name,
                     display_name=label,
-                    type=ctype,  # type: ignore[arg-type]
+                    type=ctype,
                     state=state,
                     enabled=controller.enabled,
                 )
@@ -286,10 +286,29 @@ class VTubeStudioAdapter(PlatformAdapter):
             await task
 
     # —— 状态写入（统一经 async_bridge） ——
-    def _set_status(self, **changes: object) -> None:
-        """更新 PlatformStatusVM 并发布到 AppState.platforms。"""
+    def _set_status(
+        self,
+        *,
+        connection: ConnectionState | None = None,
+        endpoint: str | None = None,
+        model_name: str | None = None,
+        model_id: str | None = None,
+        detail: str | None = None,
+    ) -> None:
+        """更新 PlatformStatusVM 并发布到 AppState.platforms。
 
-        self._status = replace(self._status, **changes)  # type: ignore[arg-type]
+        每个字段传 None 表示「保持当前值」；传具体值（含空串）才覆盖。
+        """
+
+        current = self._status
+        self._status = replace(
+            current,
+            connection=current.connection if connection is None else connection,
+            endpoint=current.endpoint if endpoint is None else endpoint,
+            model_name=current.model_name if model_name is None else model_name,
+            model_id=current.model_id if model_id is None else model_id,
+            detail=current.detail if detail is None else detail,
+        )
         status = self._status
         self.bridge.post(lambda: self._publish_status(status))
 

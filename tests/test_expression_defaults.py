@@ -11,6 +11,7 @@ from livestudio.services.expression import (
     EmotionKind,
     ExpressionHistory,
     ExpressionProfileConfig,
+    ExpressionRequest,
     ExpressionSolver,
     default_rules,
     default_semantic_units,
@@ -22,8 +23,7 @@ def _solver(profile: ExpressionProfileConfig) -> ExpressionSolver:
     return ExpressionSolver(
         units=profile.to_units(),
         rules=profile.to_rules(),
-        history=ExpressionHistory(capacity=profile.runtime.history_capacity),
-        top_candidates=profile.runtime.top_candidates,
+        history=ExpressionHistory(),
     )
 
 
@@ -53,7 +53,7 @@ def test_with_default_units_builds_solvable_profile() -> None:
     assert profile.rules
     solver = _solver(profile)
     for emotion in EmotionKind:
-        result = solver.solve(profile.build_request(emotion, randomness=0.0))
+        result = solver.solve(ExpressionRequest(emotion=emotion, randomness=0.0))
         assert len(result.units) > 0, f"{emotion} 未解算出 AU"
 
 
@@ -145,6 +145,6 @@ def test_default_brow_mutual_exclusion() -> None:
     solver = _solver(profile)
     brow_units = {"挑眉", "皱眉", "垂眉", "蹙眉", "自然眉"}
     for emotion in EmotionKind:
-        result = solver.solve(profile.build_request(emotion, randomness=0.0))
+        result = solver.solve(ExpressionRequest(emotion=emotion, randomness=0.0))
         selected = brow_units & {u.id for u in result.units}
         assert len(selected) <= 1
