@@ -15,6 +15,7 @@ from .models import (
     SemanticActionBinding,
     SemanticActionProfile,
     SemanticTweenRequest,
+    clamp_semantic_value,
 )
 
 
@@ -97,7 +98,7 @@ class SemanticActionAdapter:
                 action_str,
                 values,
             )
-        return _clamp_to_semantic(action_str, first_value)
+        return clamp_semantic_value(action_str, first_value)
 
     # ------------------------------------------------------------------
     # 内部: 单条请求转换
@@ -193,19 +194,6 @@ def _platform_to_semantic(
     span = spec.maximum - spec.minimum
     ratio = 0.0 if span <= 0.0 else (clamped_pv - spec.minimum) / span
     return semantic_spec.minimum + ratio * (semantic_spec.maximum - semantic_spec.minimum)
-
-
-# ======================================================================
-# 语义值钳位
-# ======================================================================
-
-
-def _clamp_to_semantic(action: str, value: float) -> float:
-    """把值钳位到语义动作的合法范围"""
-    semantic_spec = _SPEC_BY_ACTION.get(action)
-    if semantic_spec is None:
-        return max(-1.0, min(1.0, value))
-    return max(semantic_spec.minimum, min(semantic_spec.maximum, value))
 
 
 # ======================================================================

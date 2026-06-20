@@ -128,7 +128,10 @@ class ConfigManager(Generic[ConfigT]):
         try:
             return self._model_type.model_validate(data)
         except ValidationError as exc:
-            raise ConfigValidationError(f"配置校验失败: {self._path}") from exc
+            details = "; ".join(
+                f"{'.'.join(str(loc) for loc in error['loc']) or '<root>'}: {error['msg']}" for error in exc.errors()
+            )
+            raise ConfigValidationError(f"配置校验失败: {self._path} ({details})") from exc
 
     def _persist_snapshot(self, config: ConfigT) -> None:
         self._save_dict(

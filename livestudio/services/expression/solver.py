@@ -35,11 +35,15 @@ class ExpressionSolver:
         rules: list[ExpressionRule],
         history: ExpressionHistory,
         top_candidates: int = 14,
+        *,
+        rng: random.Random | None = None,
     ) -> None:
         self._units = units
         self._rules = rules
         self._history = history
         self._top_candidates = top_candidates
+        # 注入随机源，便于测试用固定种子获得确定性结果；默认用独立实例不污染全局 random
+        self._rng = rng or random.Random()
 
     @property
     def history(self) -> ExpressionHistory:
@@ -86,7 +90,7 @@ class ExpressionSolver:
     def _rank(self, scored: ScoredExpressionUnit, request: ExpressionRequest) -> float:
         if request.randomness <= 0.0:
             return scored.score
-        return scored.score + random.uniform(-1.0, 1.0) * request.randomness * request.diversity * 0.30
+        return scored.score + self._rng.uniform(-1.0, 1.0) * request.randomness * request.diversity * 0.30
 
     def _should_select(self, scored: ScoredExpressionUnit, request: ExpressionRequest) -> bool:
         if scored.score >= request.core_score or scored.correlation >= 0.80 or request.randomness <= 0.0:
@@ -95,7 +99,7 @@ class ExpressionSolver:
             1.0,
             max(0.05, scored.score) * (0.55 + request.diversity * 0.55) + scored.correlation * 0.20,
         )
-        return random.random() <= p
+        return self._rng.random() <= p
 
     def _build_combo(self, ranked: list[ScoredExpressionUnit], request: ExpressionRequest) -> list[ScoredExpressionUnit]:
         combo: list[ScoredExpressionUnit] = []
@@ -132,7 +136,7 @@ class ExpressionSolver:
         candidate: ScoredExpressionUnit,
         combo: list[ScoredExpressionUnit],
         occupied_actions: set[str],
-        emotion: object,
+        emotion: EmotionKind,
     ) -> ScoredExpressionUnit | str | None:
         """返回 None（无冲突）、被替换的 ScoredExpressionUnit、或 'discard'"""
         # 1. 显式互斥规则
@@ -164,7 +168,7 @@ class ExpressionSolver:
             return existing  # 替换 existing
         return "discard"
 
-    def _binding_legal(self, combo_ids: set[str], emotion: object) -> bool:
+    def _binding_legal(self, combo_ids: set[str], emotion: EmotionKind) -> bool:
         for rule in self._rules:
             if not isinstance(rule, BindingRule):
                 continue
@@ -193,7 +197,7 @@ class ExpressionSolver:
         )
         return base + coverage - size_penalty + rule_score - hist_penalty
 
-    def _rule_score(self, combo_ids: set[str], emotion: object) -> float:
+    def _rule_score(self, combo_ids: set[str], emotion: EmotionKind) -> float:
         score = 0.0
         for rule in self._rules:
             if rule.emotions and emotion not in rule.emotions:
@@ -222,7 +226,7 @@ class ExpressionSolver:
 
             if isinstance(unit, SemanticExpressionUnit):
                 for target in unit.targets:
-                    value = random.uniform(target.min_value, target.max_value)
+                    value = self._rng.uniform(target.min_value, target.max_value)
                     value = clamp_semantic_value(target.action, value)
                     semantic_targets.append(ResolvedSemanticTarget(action=target.action, value=value, easing=unit.easing))
             else:

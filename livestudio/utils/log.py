@@ -1,5 +1,6 @@
 """应用日志封装"""
 
+import os
 import sys
 import weakref
 from dataclasses import dataclass
@@ -7,6 +8,9 @@ from threading import RLock
 from typing import Final, TextIO
 
 from loguru import logger as _logger
+
+# 默认日志级别取自环境变量，缺省 INFO（避免导入即固定为 DEBUG 造成生产环境过于冗长）
+_DEFAULT_LEVEL: Final[str] = os.environ.get("LIVESTUDIO_LOG_LEVEL", "INFO")
 
 _DEFAULT_FORMAT: Final[str] = (
     "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green>"
@@ -63,7 +67,7 @@ def _install_log_sink(level: str) -> None:
     )
 
 
-_install_log_sink("DEBUG")
+_install_log_sink(_DEFAULT_LEVEL)
 
 logger = _logger.bind(app="livestudio")
 
@@ -92,7 +96,7 @@ class StatusLine:
             _finish_status_line_unlocked(self)
 
 
-def configure_logging(*, level: str = "DEBUG") -> None:
-    """重新配置全局日志输出"""
+def configure_logging(*, level: str | None = None) -> None:
+    """重新配置全局日志输出；level 省略时取环境变量 LIVESTUDIO_LOG_LEVEL（缺省 INFO）"""
 
-    _install_log_sink(level)
+    _install_log_sink(level or _DEFAULT_LEVEL)
