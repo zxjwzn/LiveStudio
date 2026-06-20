@@ -61,8 +61,3 @@ class BodySwingController(AnimationController[BodySwingControllerSettings]):
                 ),
             ],
         )
-
-    async def execute(self, **kwargs: object) -> None:
-        """idle 控制器不执行一次性动画"""
-
-        _ = kwargs

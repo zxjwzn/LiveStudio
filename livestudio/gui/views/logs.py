@@ -13,6 +13,7 @@ from __future__ import annotations
 import flet as ft
 
 from ..core.base_view import BaseView
+from ..core.observable import items_after_anchor
 from ..core.theme import PALETTE, TYPE, level_color
 from ..core.view_models import LogEntryVM
 
@@ -116,28 +117,13 @@ class LogsView(BaseView):
         self._render(entries)
 
     def _render(self, entries: list[LogEntryVM]) -> None:
-        visible = self._after_anchor(entries)
+        visible = items_after_anchor(entries, self._clear_anchor)
         filtered = [entry for entry in visible if self._matches(entry)]
         # 始终重建列表内容：筛选后为空也要清掉旧行，否则切回列表时残留上次的行
         self._list.controls = [self._row(entry) for entry in filtered]
         self._list.auto_scroll = self._auto_scroll
         self._body.content = self._empty if not filtered else self._list
         self.safe_update()
-
-    def _after_anchor(self, entries: list[LogEntryVM]) -> list[LogEntryVM]:
-        """返回清空锚点之后的日志。
-
-        锚点是清空时缓冲里的最后一条日志对象（identity）。锚点仍在缓冲里则只取
-        其之后的；锚点已被环形缓冲丢弃（说明缓冲里全是更新的日志）则全部展示。
-        """
-
-        anchor = self._clear_anchor
-        if anchor is None:
-            return entries
-        for index, entry in enumerate(entries):
-            if entry is anchor:
-                return entries[index + 1 :]
-        return entries
 
     # —— 过滤逻辑 ——
     def _matches(self, entry: LogEntryVM) -> bool:
@@ -146,7 +132,9 @@ class LogsView(BaseView):
             entry_prio = _LEVEL_PRIORITY.get(entry.level.upper(), 0)
             if entry_prio < min_prio:
                 return False
-        return not (self._keyword and self._keyword.lower() not in entry.message.lower())
+        if not self._keyword:
+            return True
+        return self._keyword.lower() in entry.message.lower()
 
     # —— 工具栏回调 ——
     def _on_level_change(self, e: ft.ControlEvent) -> None:

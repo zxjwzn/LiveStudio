@@ -9,12 +9,7 @@ from __future__ import annotations
 import flet as ft
 
 from ..core.theme import PALETTE, TYPE
-from ..core.view_models import AudioLevelVM, AudioSourceKind
-
-_SOURCE_LABELS: dict[AudioSourceKind, str] = {
-    AudioSourceKind.MICROPHONE: "麦克风",
-    AudioSourceKind.TTS: "TTS",
-}
+from ..core.view_models import AudioLevelVM, audio_source_label
 
 
 class AudioMeter(ft.Column):
@@ -56,8 +51,7 @@ class AudioMeter(ft.Column):
         self._rms_label.value = f"rms {level.rms:.2f}"
         self._peak_label.value = f"peak {level.peak:.2f}"
         if level.active:
-            source = _SOURCE_LABELS.get(level.source, level.source.value)
-            self._source_text.value = f"源: {source}"
+            self._source_text.value = f"源: {audio_source_label(level.source)}"
             self._source_text.color = PALETTE.text
         else:
             self._source_text.value = "音频未启动"
@@ -67,8 +61,4 @@ class AudioMeter(ft.Column):
 def _clamp(value: float) -> float:
     """把电平限制到 ProgressBar 可接受的 0..1。"""
 
-    if value < 0.0:
-        return 0.0
-    if value > 1.0:
-        return 1.0
-    return value
+    return max(0.0, min(1.0, value))

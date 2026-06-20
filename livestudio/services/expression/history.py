@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 
-from livestudio.services.expression.models import EmotionKind, ExpressionSignature
+from livestudio.services.expression.models import ExpressionSignature
 
 
 class ExpressionHistory:
@@ -26,10 +26,7 @@ class ExpressionHistory:
 
         for index, hist in enumerate(self._queue):
             union = candidate.unit_ids | hist.unit_ids
-            if not union:
-                unit_jaccard = 1.0
-            else:
-                unit_jaccard = len(candidate.unit_ids & hist.unit_ids) / len(union)
+            unit_jaccard = 1.0 if not union else len(candidate.unit_ids & hist.unit_ids) / len(union)
 
             emotion_match = 1.0 if candidate.emotion == hist.emotion else 0.0
             similarity = unit_jaccard * 0.65 + emotion_match * 0.35
@@ -59,8 +56,3 @@ class ExpressionHistory:
 
     def __len__(self) -> int:
         return len(self._queue)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, EmotionKind):
-            return NotImplemented
-        return NotImplemented

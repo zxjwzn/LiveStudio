@@ -54,8 +54,3 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
         )
         logger.debug("下次眨眼等待: {:.2f} 秒", wait_time)
         await asyncio.sleep(wait_time)
-
-    async def execute(self, **kwargs: object) -> None:
-        """idle 控制器不执行一次性动画"""
-
-        _ = kwargs

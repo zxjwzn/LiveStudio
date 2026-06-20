@@ -15,7 +15,7 @@ import flet as ft
 from ..components.toaster import ErrorToaster
 from ..core.theme import PALETTE, TYPE, connection_color
 from ..core.view_context import ViewContext
-from ..core.view_models import AudioLevelVM, PlatformStatusVM
+from ..core.view_models import AudioLevelVM, PlatformStatusVM, audio_source_label
 from .audio import AudioView
 from .dashboard import DashboardView
 from .logs import LogsView
@@ -174,7 +174,7 @@ class AppShell(ft.Row):
 
     def _on_audio(self, level: AudioLevelVM) -> None:
         if level.active:
-            self._audio_text.value = {"microphone": "麦克风", "tts": "TTS"}.get(level.source.value, level.source.value)
+            self._audio_text.value = audio_source_label(level.source)
             self._audio_text.color = PALETTE.text
         else:
             self._audio_text.value = "音频未启动"

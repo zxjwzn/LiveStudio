@@ -24,7 +24,7 @@ class ControllerCard(ft.Container):
         vm: ControllerVM,
         *,
         on_toggle: Callable[[ControllerVM, bool], None],
-        on_trigger: Callable[[ControllerVM], None],
+        on_trigger: Callable[[ControllerVM], None] | None = None,
     ) -> None:
         self._on_toggle = on_toggle
         self._on_trigger = on_trigger
@@ -44,7 +44,7 @@ class ControllerCard(ft.Container):
                 icon_size=TYPE.icon,
                 icon_color=PALETTE.primary_hover,
                 tooltip="触发",
-                on_click=lambda _e: self._on_trigger(vm),
+                on_click=lambda _e: self._on_trigger(vm) if self._on_trigger is not None else None,
             )
         else:
             action = ft.IconButton(

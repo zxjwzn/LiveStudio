@@ -37,6 +37,19 @@ class AudioSourceKind(str, Enum):
     TTS = "tts"
 
 
+# 音频源类型 -> 中文展示标签的权威映射（视图层统一复用，避免多处副本各自维护）
+AUDIO_SOURCE_LABELS: dict[AudioSourceKind, str] = {
+    AudioSourceKind.MICROPHONE: "麦克风",
+    AudioSourceKind.TTS: "TTS",
+}
+
+
+def audio_source_label(source: AudioSourceKind) -> str:
+    """返回音频源的中文标签；未知类型回退到其原始值。"""
+
+    return AUDIO_SOURCE_LABELS.get(source, source.value)
+
+
 # —— 平台相关 ——————————————————————————————————————————————
 
 

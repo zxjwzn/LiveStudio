@@ -19,7 +19,7 @@ from typing import Callable
 
 import flet as ft
 
-from ..core.observable import ObservableList
+from ..core.observable import ObservableList, items_after_anchor
 from ..core.theme import PALETTE, TYPE
 from ..core.view_models import LogEntryVM
 
@@ -58,23 +58,12 @@ class ErrorToaster:
             self._unsub = None
 
     def _on_logs(self, entries: list[LogEntryVM]) -> None:
-        new_entries = self._after_anchor(entries)
+        new_entries = items_after_anchor(entries, self._anchor)
         if entries:
             self._anchor = entries[-1]
         alerts = [entry for entry in new_entries if entry.level.upper() in _ALERT_LEVELS]
         if alerts:
             self._show(alerts)
-
-    def _after_anchor(self, entries: list[LogEntryVM]) -> list[LogEntryVM]:
-        """返回锚点之后的日志；锚点已被环形缓冲丢弃则全部视为新。"""
-
-        anchor = self._anchor
-        if anchor is None:
-            return entries
-        for index, entry in enumerate(entries):
-            if entry is anchor:
-                return entries[index + 1 :]
-        return entries
 
     def _show(self, alerts: list[LogEntryVM]) -> None:
         """把一批告警合并成一个 SnackBar 弹出。"""

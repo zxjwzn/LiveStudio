@@ -136,7 +136,6 @@ class DashboardView(BaseView):
                 content=ControllerCard(
                     vm,
                     on_toggle=self._toggle_controller,
-                    on_trigger=self._trigger_controller,
                 ),
             )
             for vm in idle
@@ -150,13 +149,6 @@ class DashboardView(BaseView):
         if adapter is None:
             return
         self.run_intent(lambda: adapter.set_controller_enabled(vm.key, enabled))
-
-    def _trigger_controller(self, vm: ControllerVM) -> None:
-        _ = vm  # oneshot expression 控制器按情绪触发，这里用默认中性情绪
-        adapter = self._adapter()
-        if adapter is None:
-            return
-        self.run_intent(lambda: adapter.trigger_expression("neutral"))
 
     # —— 快速表情 ——
     def _on_expressions(self, expressions: list[ExpressionVM]) -> None:
