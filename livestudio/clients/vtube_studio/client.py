@@ -140,23 +140,26 @@ class VTubeStudioClient:
     async def connect(self) -> None:
         """连上 VTube Studio 的 WebSocket"""
 
-        if self._connection is not None:
-            return
+        # 加锁并在锁内复检，避免并发调用各自建立一条连接、互相覆盖导致连接泄漏。
+        async with self._lock:
+            if self._connection is not None:
+                return
 
-        try:
-            self._connection = await connect(
-                self.config.ws_url,
-                user_agent_header=self.config.user_agent,
-                open_timeout=self.config.connect_timeout,
-                close_timeout=self.config.connect_timeout,
-                max_size=4 * 1024 * 1024,
-            )
-            self._reader_task = asyncio.create_task(self._reader_loop())
-        except (OSError, TimeoutError, WebSocketException) as exc:
-            self._connection = None
-            raise VTubeStudioConnectionError(
-                f"无法连接到 {self.config.ws_url}",
-            ) from exc
+            try:
+                connection = await connect(
+                    self.config.ws_url,
+                    user_agent_header=self.config.user_agent,
+                    open_timeout=self.config.connect_timeout,
+                    close_timeout=self.config.connect_timeout,
+                    max_size=4 * 1024 * 1024,
+                )
+                self._connection = connection
+                self._reader_task = asyncio.create_task(self._reader_loop())
+            except (OSError, TimeoutError, WebSocketException) as exc:
+                self._connection = None
+                raise VTubeStudioConnectionError(
+                    f"无法连接到 {self.config.ws_url}",
+                ) from exc
 
     async def disconnect(self) -> None:
         """断开 WebSocket 连接"""

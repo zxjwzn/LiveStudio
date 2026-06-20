@@ -102,11 +102,16 @@ class AnimationController(ABC, Generic[ConfigT]):
             self._stop_event.set()
 
     async def _run_idle_loop(self) -> None:
+        consecutive_failures = 0
         while not self._stop_event.is_set():
             try:
                 await self.run_cycle()
+                consecutive_failures = 0
             except Exception:
+                consecutive_failures += 1
                 logger.exception("动画控制器 {} 循环周期运行失败", self.name)
+                # 退避，避免 run_cycle 在首个 await 前同步抛错时陷入 100% CPU 紧自旋
+                await asyncio.sleep(min(1.0, 0.1 * consecutive_failures))
 
     async def run_cycle(self) -> None:
         """执行一个循环周期，仅循环控制器需要实现"""

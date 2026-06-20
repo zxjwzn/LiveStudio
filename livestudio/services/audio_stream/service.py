@@ -96,7 +96,7 @@ class AudioStreamRouter(AudioStreamSource):
             await source.initialize()
         self._active_source_kind = self.config.source
         self._source_subscription = self.active_source.subscribe(
-            queue_maxsize=self.config.microphone.queue_maxsize,
+            queue_maxsize=self.config.queue_maxsize,
         )
         logger.info("音频流路由器已初始化，当前音频源: {}", self.active_source_kind)
 
@@ -176,7 +176,7 @@ class AudioStreamRouter(AudioStreamSource):
         self._active_source_kind = source_kind
         self.config.source = source_kind
         self._source_subscription = self.active_source.subscribe(
-            queue_maxsize=self.config.microphone.queue_maxsize,
+            queue_maxsize=self.config.queue_maxsize,
         )
 
     async def _stop_forward_task(self) -> None:
@@ -202,8 +202,10 @@ class AudioStreamRouter(AudioStreamSource):
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("音频流路由器转发任务异常")
-            self._mark_stopped()
+            logger.exception("音频流路由器转发任务异常，触发停机以回收资源")
+            # 在独立任务里停机：stop() 会 cancel 本转发任务并 await，
+            # 若在此直接 await self.stop() 会变成任务等待取消自身而死锁。
+            asyncio.get_running_loop().create_task(self.stop())
 
     @staticmethod
     def _chunk_analysis(chunk: AudioChunk) -> None:

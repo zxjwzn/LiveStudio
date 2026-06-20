@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Callable, Generic, Iterable, TypeVar
 
+from livestudio.utils.log import logger
+
 T = TypeVar("T")
 
 # 订阅回调与退订句柄的类型别名
@@ -66,7 +68,11 @@ class Observable(Generic[T]):
     def _emit(self) -> None:
         # 遍历副本，允许回调内部退订而不影响本轮通知
         for listener in list(self._listeners):
-            listener(self._value)
+            try:
+                listener(self._value)
+            except Exception:
+                # 单个订阅者回调异常不应中断本轮其余订阅者的通知
+                logger.exception("Observable 订阅者回调异常，已隔离")
 
 
 class ObservableList(Observable[list[T]]):
@@ -105,3 +111,19 @@ class ObservableList(Observable[list[T]]):
         """清空列表。"""
 
         self.set([])
+
+
+def items_after_anchor(items: list[T], anchor: T | None) -> list[T]:
+    """返回锚点（按 identity 比对）之后的元素。
+
+    用于 ObservableList 环形缓冲的"只处理新增项"语义：anchor 为 None 时返回全部；
+    anchor 仍在序列中则返回其之后的切片；anchor 已被环形缓冲丢弃（说明序列里都是
+    更新的元素）则返回全部。日志浮层与日志页的"清空/订阅锚点"逻辑共用此函数。
+    """
+
+    if anchor is None:
+        return items
+    for index, item in enumerate(items):
+        if item is anchor:
+            return items[index + 1 :]
+    return items

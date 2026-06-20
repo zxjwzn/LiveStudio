@@ -17,12 +17,12 @@ class Easing:
     @staticmethod
     def in_sine(t: float) -> float:
         """正弦缓入函数，缓慢开始加速"""
-        return math.sin(_HALF_PI * t)
+        return 1 - math.cos(_HALF_PI * t)
 
     @staticmethod
     def out_sine(t: float) -> float:
         """正弦缓出函数，逐渐减速至停止"""
-        return 1 + math.sin(_HALF_PI * (t - 1))
+        return math.sin(_HALF_PI * t)
 
     @staticmethod
     def in_out_sine(t: float) -> float:
@@ -128,20 +128,22 @@ class Easing:
 
     @staticmethod
     def in_circ(t: float) -> float:
-        """平方根缓入函数，平滑加速"""
-        return 1 - math.sqrt(1 - t)
+        """圆形缓入函数，平滑加速"""
+        return 1 - math.sqrt(max(0.0, 1 - t * t))
 
     @staticmethod
     def out_circ(t: float) -> float:
-        """平方根缓出函数，平滑减速"""
-        return math.sqrt(t)
+        """圆形缓出函数，平滑减速"""
+        t -= 1
+        return math.sqrt(max(0.0, 1 - t * t))
 
     @staticmethod
     def in_out_circ(t: float) -> float:
-        """平方根缓入缓出函数，非常平滑的速度变化"""
+        """圆形缓入缓出函数，非常平滑的速度变化"""
         if t < 0.5:
-            return (1 - math.sqrt(1 - 2 * t)) * 0.5
-        return (1 + math.sqrt(2 * t - 1)) * 0.5
+            return (1 - math.sqrt(max(0.0, 1 - 4 * t * t))) * 0.5
+        t = 2 * t - 2
+        return (math.sqrt(max(0.0, 1 - t * t)) + 1) * 0.5
 
     @staticmethod
     def in_back(t: float) -> float:

@@ -16,6 +16,12 @@ class AudioStreamRouterConfig(BaseModel):
         default=AudioSourceKind.MICROPHONE,
         description="当前激活的音频源",
     )
+    queue_maxsize: int = Field(
+        default=32,
+        ge=1,
+        le=4096,
+        description="路由器对活动音频源的转发订阅队列大小（与具体音源无关）",
+    )
     microphone: MicrophoneAudioStreamConfig = Field(
         default_factory=MicrophoneAudioStreamConfig,
         description="麦克风音频流配置",

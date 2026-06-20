@@ -25,6 +25,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stream: sd.InputStream | None = None
         self._device_info: InputDeviceInfo | None = None
+        # 实时回调里读的有效采样率快照，避免回调内访问可能抛错的属性
+        self._samplerate: int | None = None
         self._dropped_chunks = 0
         self._drop_status_line = StatusLine()
 
@@ -91,7 +93,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self.config.device_index = self._device_info.index
         await self._open_stream()
         logger.info(
-            "麦克风音频源已就地重启，目标设备: {} ({})",
+            "麦克风音频源重启，目标设备: {} ({})",
             self.device_info.name,
             self.device_info.index,
         )
@@ -137,10 +139,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
     async def _build_stream(self, device: InputDeviceInfo) -> sd.InputStream:
         """按给定设备/当前配置打开并启动一条底层输入流。"""
 
+        samplerate = self.config.samplerate or int(device.default_samplerate)
         stream = sd.InputStream(
             device=device.index,
             channels=self.config.channels,
-            samplerate=self.config.samplerate or int(device.default_samplerate),
+            samplerate=samplerate,
             dtype=self.config.dtype,
             blocksize=self.config.blocksize,
             latency=self.config.latency,
@@ -152,6 +155,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(stream.close)
             raise
+        # 流成功启动后再快照采样率，供实时回调直接读取
+        self._samplerate = samplerate
         return stream
 
     async def _close_stream(self) -> None:
@@ -166,6 +171,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         stream = self._stream
         self._stream = None
+        self._samplerate = None
         self._drop_status_line.finish()
         if stream is not None:
             await asyncio.to_thread(stream.stop)
@@ -181,30 +187,41 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self,
         indata: np.ndarray[
             tuple[int, int],
-            np.dtype[np.float32] | np.dtype[np.int16] | np.dtype[np.int32] | np.dtype[np.uint8],
+            np.dtype[np.float32]
+            | np.dtype[np.int16]
+            | np.dtype[np.int32]
+            | np.dtype[np.uint8],
         ],
         frames: int,
         time_info: SoundDeviceTimeInfo,
         status: sd.CallbackFlags,
     ) -> None:
-        loop = self._loop
-        if loop is None:
-            return
+        # 该回调运行在 sounddevice/PortAudio 的实时线程：任何未捕获异常都会被
+        # PortAudio 吞掉或中断音频流，故整体兜底。停流瞬间 _loop/_device_info 可能
+        # 被并发清空，访问 self.device_info 或向已关闭的 loop 投递都可能抛 RuntimeError。
+        try:
+            loop = self._loop
+            samplerate = self._samplerate
+            if loop is None or samplerate is None:
+                return
 
-        chunk = AudioChunk(
-            frames=frames,
-            samplerate=self.config.samplerate or int(self.device_info.default_samplerate),
-            channels=self.config.channels,
-            data=indata.copy(),
-            overflowed=bool(status.input_overflow),
-            metadata=AudioChunkMetadata(
-                input_buffer_adc_time=time_info.inputBufferAdcTime,
-                current_time=time_info.currentTime,
-                output_buffer_dac_time=time_info.outputBufferDacTime,
-                status=str(status),
-            ),
-        )
-        loop.call_soon_threadsafe(self._push_chunk_nowait, chunk)
+            chunk = AudioChunk(
+                frames=frames,
+                samplerate=samplerate,
+                channels=self.config.channels,
+                data=indata.copy(),
+                overflowed=bool(status.input_overflow),
+                metadata=AudioChunkMetadata(
+                    input_buffer_adc_time=time_info.inputBufferAdcTime,
+                    current_time=time_info.currentTime,
+                    output_buffer_dac_time=time_info.outputBufferDacTime,
+                    status=str(status),
+                ),
+            )
+            loop.call_soon_threadsafe(self._push_chunk_nowait, chunk)
+        except RuntimeError:
+            # 典型为停流竞态：事件循环已关闭。静默丢弃当前块即可。
+            return
 
     def _push_chunk_nowait(self, chunk: AudioChunk) -> None:
         self._publish_chunk(chunk)

@@ -197,6 +197,10 @@ class VTubeStudio(PlatformService):
                 logger.success("VTube Studio 已连接并完成认证")
             except VTubeStudioConnectionError as exc:
                 logger.warning(f"连接 VTube Studio 失败: {exc}，{retry_delay:.1f}秒后重试...")
+                # 认证阶段失败时连接可能已建立，重试前先断开，避免每轮泄漏一条 websocket
+                if self._client is not None:
+                    with contextlib.suppress(Exception):
+                        await self._client.disconnect()
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * backoff_factor, max_delay)
             except Exception:

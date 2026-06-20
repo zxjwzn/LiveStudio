@@ -12,7 +12,11 @@ ResponseDataT = TypeVar("ResponseDataT", bound=BaseModel)
 class VTSBaseModel(BaseModel):
     """所有 API 模型的公共基类"""
 
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="ignore",
+        protected_namespaces=(),  # 允许 model_loaded / model_id 等字段名，避免 pydantic 保留命名空间告警
+    )
 
 
 class VTSRequestEnvelope(VTSBaseModel, Generic[RequestDataT]):

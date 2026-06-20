@@ -3,6 +3,8 @@
 from types import TracebackType
 from typing import Self
 
+from livestudio.utils.log import logger
+
 
 class AsyncServiceLifecycleMixin:
     """为 initialize/start/restart/stop 风格服务提供统一生命周期。
@@ -87,7 +89,11 @@ class AsyncServiceLifecycleMixin:
         try:
             await self._do_start()
         except Exception:
-            await self.stop()
+            # 回滚清理本身若抛错，不应掩盖原始启动异常：记录后让原异常继续传播
+            try:
+                await self.stop()
+            except Exception:
+                logger.exception("启动失败后的回滚清理出错，已记录但仍抛出原始启动异常")
             raise
         self._mark_started()
 
@@ -127,7 +133,11 @@ class AsyncServiceLifecycleMixin:
         try:
             await self._do_restart()
         except Exception:
-            await self.stop()
+            # 回滚清理本身若抛错，不应掩盖原始重启异常：记录后让原异常继续传播
+            try:
+                await self.stop()
+            except Exception:
+                logger.exception("重启失败后的回滚清理出错，已记录但仍抛出原始重启异常")
             raise
 
     async def __aenter__(self) -> Self:
@@ -135,7 +145,11 @@ class AsyncServiceLifecycleMixin:
         try:
             await self.start()
         except Exception:
-            await self.stop()
+            # 回滚清理本身若抛错，不应掩盖原始启动异常：记录后让原异常继续传播
+            try:
+                await self.stop()
+            except Exception:
+                logger.exception("进入异步上下文失败后的回滚清理出错，已记录但仍抛出原始异常")
             raise
         return self
 

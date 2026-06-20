@@ -99,10 +99,6 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
         if not requests:
             return
 
-        for tween_request in requests:
-            if tween_request.fps <= 0:
-                tween_request.fps = self._default_fps
-
         # 让 _run_tween 能通过 asyncio.current_task() 获取自身引用。
         tasks = [asyncio.create_task(self._run_tween(tween_request)) for tween_request in requests]
         await asyncio.gather(*tasks)
@@ -249,8 +245,10 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
 
         loop = asyncio.get_running_loop()
         start_time = loop.time()
-        steps = max(1, int(request.duration * request.fps))
+        effective_fps = request.fps if request.fps > 0 else self._default_fps
+        steps = max(1, int(request.duration * effective_fps))
         interval = request.duration / steps
+        easing_fn = self._resolve_easing(request.easing)
 
         async with self._lock:
             if not self._try_acquire(current_task, request, context="缓动"):
@@ -266,7 +264,7 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
 
                 elapsed = min(request.duration, max(0.0, loop.time() - start_time))
                 t = min(1.0, elapsed / request.duration)
-                value = start_value + (request.end_value - start_value) * self._resolve_easing(request.easing)(t)
+                value = start_value + (request.end_value - start_value) * easing_fn(t)
                 state_to_send: ControlledParameterState | None = None
 
                 async with self._lock:
@@ -314,17 +312,17 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
                 self._release_active(current_task, request.parameter_name)
 
     async def _keep_alive_loop(self) -> None:
-        try:
-            loop = asyncio.get_running_loop()
-            start_time = loop.time()
-            tick = 0
-            while True:
-                tick += 1
-                next_time = start_time + tick * self._keep_alive_interval
-                sleep_time = next_time - loop.time()
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
+        tick = 0
+        while True:
+            tick += 1
+            next_time = start_time + tick * self._keep_alive_interval
+            sleep_time = next_time - loop.time()
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
 
+            try:
                 async with self._lock:
                     states_to_send = [
                         state
@@ -336,8 +334,10 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
                     continue
 
                 await self._send_parameter_values(states_to_send)
-        except Exception:
-            logger.exception("缓动引擎保活循环出错")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("缓动引擎保活循环单次发送失败，将继续")
 
     async def _send_parameter_values(
         self,
