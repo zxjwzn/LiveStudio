@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from ..core.theme import PALETTE
+from ..core.theme import PALETTE, TYPE
 from ..core.view_models import AudioLevelVM, AudioSourceKind
 
 _SOURCE_LABELS: dict[AudioSourceKind, str] = {
@@ -22,7 +22,7 @@ class AudioMeter(ft.Column):
 
     def __init__(self, *, compact: bool = False) -> None:
         self._compact = compact
-        self._source_text = ft.Text("音频未启动", size=13, color=PALETTE.text_muted)
+        self._source_text = ft.Text("音频未启动", size=TYPE.body, color=PALETTE.text_muted)
         self._rms_bar = ft.ProgressBar(
             value=0.0,
             bgcolor=PALETTE.surface_alt,
@@ -37,8 +37,8 @@ class AudioMeter(ft.Column):
             bar_height=6,
             border_radius=ft.border_radius.all(3),
         )
-        self._rms_label = ft.Text("rms 0.00", size=11, color=PALETTE.text_muted)
-        self._peak_label = ft.Text("peak 0.00", size=11, color=PALETTE.text_muted)
+        self._rms_label = ft.Text("rms 0.00", size=TYPE.small, color=PALETTE.text_muted)
+        self._peak_label = ft.Text("peak 0.00", size=TYPE.small, color=PALETTE.text_muted)
         super().__init__(
             spacing=6,
             controls=[

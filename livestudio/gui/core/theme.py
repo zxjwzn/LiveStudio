@@ -37,6 +37,44 @@ class Palette:
 PALETTE = Palette()
 
 
+# 全局字号缩放系数：想整体放大/缩小界面文字只改这一处。
+_FONT_SCALE = 1.2
+
+
+@dataclass(frozen=True)
+class Typography:
+    """语义字号 token。各处只引用 TYPE.xxx，禁止内联 size 数值；
+    想统一调整字号只改 _FONT_SCALE 一处。"""
+
+    title: int  # 页面主标题
+    heading: int  # 应用名 / 占位标题
+    section: int  # 卡片 / 分区标题
+    body_lg: int  # 强调正文 / 列表项标签
+    body: int  # 默认正文
+    caption: int  # 次要说明
+    small: int  # 提示 / 辅助
+    icon: int  # 行内小图标
+
+
+def _build_typography(scale: float) -> Typography:
+    def s(base: int) -> int:
+        return round(base * scale)
+
+    return Typography(
+        title=s(22),
+        heading=s(16),
+        section=s(15),
+        body_lg=s(14),
+        body=s(13),
+        caption=s(12),
+        small=s(11),
+        icon=s(18),
+    )
+
+
+TYPE = _build_typography(_FONT_SCALE)
+
+
 def build_theme(font_family: str | None = None) -> ft.Theme:
     """构造粉白 ft.Theme；font_family 为已注册的中文字体族名。"""
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from ..core.theme import PALETTE
+from ..core.theme import PALETTE, TYPE
 
 
 class Placeholder(ft.Container):
@@ -16,11 +16,11 @@ class Placeholder(ft.Container):
 
     def __init__(self, icon: str, title: str, subtitle: str = "") -> None:
         controls: list[ft.Control] = [
-            ft.Icon(icon, size=64, color=PALETTE.primary),
-            ft.Text(title, size=22, weight=ft.FontWeight.W_600, color=PALETTE.text),
+            ft.Icon(icon, size=64, color=PALETTE.primary),  # 装饰性大图标，非正文，不随字号 token 缩放
+            ft.Text(title, size=TYPE.title, weight=ft.FontWeight.W_600, color=PALETTE.text),
         ]
         if subtitle:
-            controls.append(ft.Text(subtitle, size=14, color=PALETTE.text_muted))
+            controls.append(ft.Text(subtitle, size=TYPE.body_lg, color=PALETTE.text_muted))
 
         super().__init__(
             expand=True,

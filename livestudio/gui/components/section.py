@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from ..core.theme import PALETTE
+from ..core.theme import PALETTE, TYPE
 
 
 class Section(ft.Container):
@@ -25,7 +25,7 @@ class Section(ft.Container):
         header_row = ft.Row(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             controls=[
-                ft.Text(title, size=15, weight=ft.FontWeight.W_600, color=PALETTE.text),
+                ft.Text(title, size=TYPE.section, weight=ft.FontWeight.W_600, color=PALETTE.text),
                 trailing or ft.Container(),
             ],
         )

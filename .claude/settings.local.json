@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(git checkout *)",
       "Bash(git branch *)",
@@ -84,7 +85,14 @@
       "PowerShell($procId = \\(Get-NetTCPConnection -State Listen -LocalPort 8559 -ErrorAction SilentlyContinue\\).OwningProcess | Select-Object -Unique; if \\($procId\\) { Stop-Process -Id $procId -Force }; \"stopped\")",
       "Bash(cp /tmp/service_fixed.py livestudio/services/audio_stream/service.py)",
       "Bash(rm -f /tmp/service_fixed.py)",
-      "Bash(ruff check *)"
+      "Bash(ruff check *)",
+      "Bash(.venv/Scripts/black.exe --check livestudio/gui tests/test_gui_config_editor.py tests/test_gui_audio_logs.py)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(.venv/Scripts/black.exe --check livestudio/gui/)",
+      "Bash(.venv/Scripts/black.exe livestudio/gui/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8557/)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://127.0.0.1:8560/)",
+      "Bash(tasklist)"
     ]
   }
 }

@@ -12,7 +12,7 @@ from typing import Callable
 
 import flet as ft
 
-from ..core.theme import PALETTE, controller_color
+from ..core.theme import PALETTE, TYPE, controller_color
 from ..core.view_models import ControllerState, ControllerVM
 
 
@@ -36,12 +36,12 @@ class ControllerCard(ft.Container):
             border_radius=5,
             bgcolor=controller_color(vm.state),
         )
-        name = ft.Text(vm.display_name, size=13, color=PALETTE.text)
+        name = ft.Text(vm.display_name, size=TYPE.body, color=PALETTE.text)
 
         if vm.type == "oneshot":
             action: ft.Control = ft.IconButton(
                 icon=ft.Icons.PLAY_ARROW,
-                icon_size=18,
+                icon_size=TYPE.icon,
                 icon_color=PALETTE.primary_hover,
                 tooltip="触发",
                 on_click=lambda _e: self._on_trigger(vm),
@@ -49,7 +49,7 @@ class ControllerCard(ft.Container):
         else:
             action = ft.IconButton(
                 icon=ft.Icons.PAUSE if running else ft.Icons.PLAY_ARROW,
-                icon_size=18,
+                icon_size=TYPE.icon,
                 icon_color=PALETTE.primary_hover,
                 tooltip="停止" if running else "启动",
                 on_click=lambda _e, run=running: self._on_toggle(vm, not run),

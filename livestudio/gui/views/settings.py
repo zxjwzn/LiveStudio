@@ -9,6 +9,7 @@ import flet as ft
 
 from ..components.placeholder import Placeholder
 from ..core.base_view import BaseView
+from ..core.theme import TYPE
 
 
 class SettingsView(BaseView):
@@ -17,7 +18,7 @@ class SettingsView(BaseView):
     def build_content(self) -> ft.Control:
         return ft.Column(
             [
-                ft.Text("设置", size=22, weight=ft.FontWeight.W_600),
+                ft.Text("设置", size=TYPE.title, weight=ft.FontWeight.W_600),
                 Placeholder(
                     icon=ft.Icons.SETTINGS_OUTLINED,
                     title="GUI 设置",

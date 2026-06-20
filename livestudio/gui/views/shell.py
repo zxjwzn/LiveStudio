@@ -12,7 +12,7 @@ from typing import Callable
 
 import flet as ft
 
-from ..core.theme import PALETTE, connection_color
+from ..core.theme import PALETTE, TYPE, connection_color
 from ..core.view_context import ViewContext
 from ..core.view_models import AudioLevelVM, PlatformStatusVM
 from .audio import AudioView
@@ -77,7 +77,7 @@ class AppShell(ft.Row):
             bgcolor=PALETTE.surface,
             indicator_color=PALETTE.primary_soft,
             leading=ft.Container(
-                content=ft.Text("🌸", size=26),
+                content=ft.Text("🌸", size=TYPE.title),
                 padding=ft.padding.symmetric(vertical=16),
                 tooltip="LiveStudio",
             ),
@@ -99,19 +99,19 @@ class AppShell(ft.Row):
     # —— 顶部状态栏 ——
     def _build_topbar(self) -> ft.Control:
         self._status_dot = ft.Container(width=10, height=10, border_radius=5, bgcolor=PALETTE.text_muted)
-        self._status_text = ft.Text("未连接", size=13, color=PALETTE.text_muted)
-        self._audio_text = ft.Text("音频未启动", size=13, color=PALETTE.text_muted)
+        self._status_text = ft.Text("未连接", size=TYPE.body, color=PALETTE.text_muted)
+        self._audio_text = ft.Text("音频未启动", size=TYPE.body, color=PALETTE.text_muted)
         return ft.Container(
             padding=ft.padding.symmetric(horizontal=20, vertical=14),
             bgcolor=PALETTE.surface,
             content=ft.Row(
                 [
-                    ft.Text("LiveStudio", size=16, weight=ft.FontWeight.W_600, color=PALETTE.primary_hover),
+                    ft.Text("LiveStudio", size=TYPE.heading, weight=ft.FontWeight.W_600, color=PALETTE.primary_hover),
                     ft.Row(
                         [
                             ft.Row([self._status_dot, self._status_text], spacing=6),
                             ft.Container(width=16),
-                            ft.Icon(ft.Icons.MULTITRACK_AUDIO, size=16, color=PALETTE.text_muted),
+                            ft.Icon(ft.Icons.MULTITRACK_AUDIO, size=TYPE.heading, color=PALETTE.text_muted),
                             self._audio_text,
                         ],
                         spacing=6,

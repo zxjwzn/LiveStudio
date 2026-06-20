@@ -16,7 +16,7 @@ from ..components.controller_card import ControllerCard
 from ..components.expression_button import ExpressionButton
 from ..components.section import Section
 from ..core.base_view import BaseView
-from ..core.theme import PALETTE, connection_color
+from ..core.theme import PALETTE, TYPE, connection_color
 from ..core.view_models import (
     AudioLevelVM,
     ConnectionState,
@@ -40,10 +40,10 @@ class DashboardView(BaseView):
     def build_content(self) -> ft.Control:
         # —— 连接状态卡 ——
         self._conn_dot = ft.Container(width=12, height=12, border_radius=6, bgcolor=PALETTE.text_muted)
-        self._conn_name = ft.Text("VTube Studio", size=14, weight=ft.FontWeight.W_600, color=PALETTE.text)
-        self._conn_state = ft.Text("未连接", size=13, color=PALETTE.text_muted)
-        self._conn_endpoint = ft.Text("", size=12, color=PALETTE.text_muted)
-        self._conn_model = ft.Text("", size=12, color=PALETTE.text_muted)
+        self._conn_name = ft.Text("VTube Studio", size=TYPE.body_lg, weight=ft.FontWeight.W_600, color=PALETTE.text)
+        self._conn_state = ft.Text("未连接", size=TYPE.body, color=PALETTE.text_muted)
+        self._conn_endpoint = ft.Text("", size=TYPE.caption, color=PALETTE.text_muted)
+        self._conn_model = ft.Text("", size=TYPE.caption, color=PALETTE.text_muted)
         connection_card = Section(
             "连接状态",
             ft.Column(
@@ -73,7 +73,7 @@ class DashboardView(BaseView):
             scroll=ft.ScrollMode.AUTO,
             spacing=16,
             controls=[
-                ft.Text("仪表盘", size=22, weight=ft.FontWeight.W_600, color=PALETTE.text),
+                ft.Text("仪表盘", size=TYPE.title, weight=ft.FontWeight.W_600, color=PALETTE.text),
                 ft.Row(
                     spacing=16,
                     controls=[
@@ -142,7 +142,7 @@ class DashboardView(BaseView):
             for vm in idle
         ]
         if not idle:
-            self._controllers_wrap.controls = [ft.Text("未连接，暂无控制器", size=13, color=PALETTE.text_muted)]
+            self._controllers_wrap.controls = [ft.Text("未连接，暂无控制器", size=TYPE.body, color=PALETTE.text_muted)]
         self.safe_update()
 
     def _toggle_controller(self, vm: ControllerVM, enabled: bool) -> None:
@@ -162,7 +162,7 @@ class DashboardView(BaseView):
     def _on_expressions(self, expressions: list[ExpressionVM]) -> None:
         self._expressions_wrap.controls = [ExpressionButton(vm, on_trigger=self._trigger_expression) for vm in expressions]
         if not expressions:
-            self._expressions_wrap.controls = [ft.Text("未连接，暂无可用表情", size=13, color=PALETTE.text_muted)]
+            self._expressions_wrap.controls = [ft.Text("未连接，暂无可用表情", size=TYPE.body, color=PALETTE.text_muted)]
         self.safe_update()
 
     def _trigger_expression(self, vm: ExpressionVM) -> None:

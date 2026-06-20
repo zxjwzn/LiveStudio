@@ -157,6 +157,38 @@ class AudioStreamRouter(AudioStreamSource):
 
         logger.info("音频流路由器已切换音频源: {}", source_kind)
 
+    async def reload_active_source(self) -> None:
+        """就地重启当前活动音频源（重读其配置/设备），不动路由器的下游订阅。
+
+        与 switch_source 的区别：不更换活动源。停掉旧物理流、按最新配置重新
+        initialize + start，并重建路由器对源的转发订阅。关键是**不触碰**
+        self._subscriptions（路由器对外的下游订阅者，如 MouthSyncController）——
+        它们由 _publish_chunk 广播，重启活动源不应清空它们。配置改动（如更换
+        输入设备）经此生效，且不会切断任何下游音频消费。
+        """
+
+        if not self._initialized:
+            await self.initialize()
+            return
+
+        was_started = self.is_started
+        if was_started:
+            await self._stop_forward_task()
+            # 源 stop() 会 _clear_subscriptions 清掉自己的全部订阅（含路由器对它的
+            # 转发订阅 _source_subscription），故置空、重启后重新订阅。
+            await self.active_source.stop()
+            self._source_subscription = None
+
+        await self.active_source.initialize()
+        if was_started:
+            await self.active_source.start()
+            self._source_subscription = self.active_source.subscribe(
+                queue_maxsize=self.config.microphone.queue_maxsize,
+            )
+            self._forward_task = asyncio.create_task(self._forward_chunks())
+
+        logger.info("音频流路由器已就地重启活动音频源: {}", self._active_source_kind)
+
     def _rebind_active_source(self, source_kind: AudioSourceKind) -> None:
         """切换活动源标识并重建对该源的订阅。"""
 

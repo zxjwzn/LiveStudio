@@ -141,18 +141,48 @@ class LogEntryVM:
 
 
 @dataclass(frozen=True)
-class ConfigFieldVM:
-    """单个可编辑配置项的描述符（数据驱动渲染）。"""
+class ChoiceVM:
+    """下拉选项：展示标签与实际值解耦（如设备名 -> 设备索引）。"""
 
-    path: str  # 模型配置中的点路径 "controllers.blink.interval"
+    value: Any
     label: str
-    kind: Literal["bool", "int", "float", "text", "enum", "range", "group"]
+
+
+ValueType = Literal["bool", "int", "float", "str", "enum", "group", "list", "dict"]
+
+
+@dataclass(frozen=True)
+class ConfigFieldVM:
+    """单个可编辑配置项的描述符（数据驱动渲染）。
+
+    核心设计：数据类型（value_type）与渲染控件（widget）解耦。
+    - value_type 说明「数据是什么」：bool/int/float/str/enum/group/list/dict。
+    - widget 说明「怎么渲染」：查 WidgetRegistry 的 key；"auto" 按 value_type
+      取默认控件。同一个 int 可在 slider / spinbox / number 间切换，只改 widget。
+    - 自定义控件（旋钮、颜色选择器等）= 注册一个新 renderer，无需改编辑器。
+
+    复合结构递归：
+    - group：固定子字段，用 fields 描述。
+    - list：变长，用 item_template 描述每项的形状，支持增删。
+    - dict：键值对，用 item_template 描述值的形状，支持加键。
+    """
+
+    path: str  # 配置中的点路径 "microphone.samplerate"；list 项用 "expressions[0].name"
+    label: str
+    value_type: ValueType
+    widget: str = "auto"  # WidgetRegistry 的 key；"auto" 按 value_type 取默认控件
     value: Any = None
     default: Any = None
-    choices: tuple[str, ...] = ()  # kind=enum
-    min: float | None = None  # kind=int/float/range
+    # enum 选项：静态 choices，或经 ChoicesRegistry 异步拉取的动态源
+    choices: tuple[ChoiceVM, ...] = ()
+    choices_source: str = ""
+    # 数值约束（int/float，滑块/旋钮也用）
+    min: float | None = None
     max: float | None = None
     step: float | None = None
+    # 复合结构
+    fields: tuple["ConfigFieldVM", ...] = ()  # value_type=group 的固定子字段
+    item_template: "ConfigFieldVM | None" = None  # value_type=list/dict 的每项形状
     help: str = ""
 
 

@@ -200,6 +200,57 @@ async def test_router_forwards_active_source_chunks_to_subscribers() -> None:
     await router.stop()
 
 
+async def test_reload_active_source_keeps_downstream_subscribers() -> None:
+    """就地重启活动源后，路由器对外的下游订阅仍存活并继续收到音频块。
+
+    回归：重启整个路由器会 _clear_subscriptions 清掉下游订阅（如 MouthSync），
+    导致换设备后无音频。reload_active_source 必须只重启源、保留下游订阅。
+    """
+    router = AudioStreamRouter()
+    router.config_manager = cast(
+        ConfigManager[AudioStreamConfigFile],
+        type(
+            "_ConfigManager",
+            (),
+            {
+                "config": AudioStreamConfigFile(),
+                "save_calls": 0,
+                "save": lambda self: _save_config(self),
+            },
+        )(),
+    )
+    microphone = _DummySource()
+    tts = _DummySource()
+    router._microphone_source = cast(MicrophoneAudioStreamSource, microphone)
+    router._tts_source = cast(Any, tts)
+    router._sources = {
+        AudioSourceKind.MICROPHONE: microphone,
+        AudioSourceKind.TTS: tts,
+    }
+    router._active_source_kind = AudioSourceKind.MICROPHONE
+    router._source_subscription = microphone.subscribe(queue_maxsize=4)
+    router._initialized = True
+
+    # 模拟一个下游订阅者（如 MouthSyncController 在 app 启动时订阅一次）
+    downstream = router.subscribe(queue_maxsize=4)
+    await router.start()
+
+    # 就地重启活动源（换设备等配置生效）
+    await router.reload_active_source()
+
+    # 源被停了又起（物理流重建）
+    assert microphone.stop_calls >= 1
+    assert microphone.start_calls >= 2
+
+    # 关键：下游订阅没被清掉，重启后仍能收到音频块
+    chunk = _make_chunk(0.7)
+    microphone.emit(chunk)
+    received = await asyncio.wait_for(downstream.queue.get(), timeout=0.5)
+    assert received is chunk
+
+    await router.stop()
+
+
 async def test_microphone_start_closes_stream_when_start_fails(monkeypatch) -> None:
     stream = _FakeInputStream(fail_start=True)
     monkeypatch.setattr(microphone_module.sd, "InputStream", lambda **_: stream)

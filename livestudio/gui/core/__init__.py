@@ -11,11 +11,14 @@ from __future__ import annotations
 from .app_state import AppState
 from .async_bridge import AsyncBridge
 from .base_view import BaseView
+from .choices_registry import ChoicesProvider, ChoicesRegistry
 from .observable import Observable, ObservableList
 from .registry import PlatformRegistry
 from .theme import (
     PALETTE,
+    TYPE,
     Palette,
+    Typography,
     apply_page_theme,
     build_theme,
     connection_color,
@@ -27,6 +30,7 @@ from .view_models import (
     AudioDeviceVM,
     AudioLevelVM,
     AudioSourceKind,
+    ChoiceVM,
     ConfigFieldVM,
     ConfigSectionVM,
     ConnectionState,
@@ -42,12 +46,16 @@ from .view_models import (
 
 __all__ = [
     "PALETTE",
+    "TYPE",
     "AppState",
     "AsyncBridge",
     "AudioDeviceVM",
     "AudioLevelVM",
     "AudioSourceKind",
     "BaseView",
+    "ChoiceVM",
+    "ChoicesProvider",
+    "ChoicesRegistry",
     "ConfigFieldVM",
     "ConfigSectionVM",
     "ConnectionState",
@@ -63,6 +71,7 @@ __all__ = [
     "PlatformDescriptor",
     "PlatformRegistry",
     "PlatformStatusVM",
+    "Typography",
     "ViewContext",
     "apply_page_theme",
     "build_theme",

@@ -19,12 +19,23 @@ from livestudio.utils.log import logger
 
 from ..core.app_state import AppState
 from ..core.async_bridge import AsyncBridge
+from ..core.choices_registry import ChoicesRegistry
 from ..core.registry import PlatformRegistry
-from ..core.view_models import AudioSourceKind, PlatformDescriptor
+from ..core.view_models import AudioSourceKind, ConfigSectionVM, PlatformDescriptor
 from .audio_controller import AudioController
 from .log_controller import LogController
 from .platforms.base import PlatformAdapter, PlatformContext
 from .platforms.vtube_studio import VTubeStudioAdapter
+from .schema_introspect import FieldOverride, introspect_model
+
+# 动态下拉数据源 key（配置编辑器字段绑定用）。
+# 注意：与麦克风配置模型里 device_name 的 gui_choices_source 保持一致。
+CHOICES_AUDIO_INPUT_DEVICES = "audio.input_devices"
+
+# 麦克风配置的 GUI 元数据（label/widget/hidden/choices_source）现已写在
+# MicrophoneAudioStreamConfig 各字段的 json_schema_extra 里，introspect 直接读取，
+# 无需在此重复声明。如需临时覆盖模型设定，可在此填 FieldOverride。
+_MIC_FIELD_OVERRIDES: dict[str, FieldOverride] = {}
 
 
 class ServiceBridge:
@@ -35,6 +46,7 @@ class ServiceBridge:
         self.state = AppState()
         self.async_bridge = AsyncBridge(page)
         self.registry = PlatformRegistry()
+        self.choices = ChoicesRegistry()
 
         # 后端服务（与现有 main.py 相同的装配）
         self.audio_router = AudioStreamRouter()
@@ -48,6 +60,12 @@ class ServiceBridge:
         self.adapters: dict[str, PlatformAdapter] = {}
 
         self._register_platforms()
+        self._register_choices()
+
+    def _register_choices(self) -> None:
+        """注册动态下拉数据源。新增数据源只需在此加一行 register(...)。"""
+
+        self.choices.register(CHOICES_AUDIO_INPUT_DEVICES, self.audio.list_input_devices)
 
     def _register_platforms(self) -> None:
         """注册内置平台。新增平台只需在此追加一行 register(...)。"""
@@ -115,3 +133,35 @@ class ServiceBridge:
         """切换音频源（音频流页调用）。"""
 
         await self.audio.switch_source(kind)
+
+    # —— 配置编辑（音频流页用，P4 模型配置同构复用）——
+    def microphone_config_section(self) -> ConfigSectionVM:
+        """把麦克风配置反射成 ConfigSectionVM（含字段级覆盖）。"""
+
+        return introspect_model(
+            self.audio.microphone_config(),
+            section_id="microphone",
+            title="麦克风",
+            path_prefix="microphone",
+            overrides=_MIC_FIELD_OVERRIDES,
+        )
+
+    async def apply_microphone_field(self, path: str, value: object) -> None:
+        """已弃用：保留兼容旧调用。等价于暂存（不落盘）。"""
+
+        self.audio.stage_microphone_field(path, value)
+
+    def stage_microphone_field(self, path: str, value: object) -> None:
+        """暂存麦克风配置单字段改动到内存（配置编辑器 on_change 调用，不落盘）。"""
+
+        self.audio.stage_microphone_field(path, value)
+
+    async def save_microphone_config(self) -> bool:
+        """把暂存的麦克风配置落盘（保存按钮调用）。"""
+
+        return await self.audio.save_microphone_config()
+
+    async def restart_audio_source(self) -> bool:
+        """以配置文件为准重启当前音频源（重启按钮调用）。"""
+
+        return await self.audio.restart_source()

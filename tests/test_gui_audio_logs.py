@@ -12,12 +12,20 @@ P3 阶段那次"测试通过但运行时 AssertionError"的保真度漏洞。
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import flet as ft
 
 from livestudio.gui.core.app_state import AppState
+from livestudio.gui.core.choices_registry import ChoicesRegistry
 from livestudio.gui.core.view_context import ViewContext
-from livestudio.gui.core.view_models import AudioLevelVM, AudioSourceKind, LogEntryVM
+from livestudio.gui.core.view_models import (
+    AudioLevelVM,
+    AudioSourceKind,
+    ConfigFieldVM,
+    ConfigSectionVM,
+    LogEntryVM,
+)
 from livestudio.gui.views.audio import AudioView
 from livestudio.gui.views.logs import LogsView
 
@@ -37,13 +45,35 @@ class _FakePage:
 
 
 class _FakeBridge:
-    """假桥接：记录音频源切换调用。"""
+    """假桥接：记录音频源切换调用，并提供麦克风配置反射所需的最小接口。"""
 
     def __init__(self) -> None:
         self.switched: list = []
+        self.staged: list = []
+        self.saved: int = 0
+        self.restarted: int = 0
+        self.choices = ChoicesRegistry()
 
     async def switch_audio_source(self, kind: AudioSourceKind) -> None:
         self.switched.append(kind)
+
+    def microphone_config_section(self) -> ConfigSectionVM:
+        return ConfigSectionVM(
+            id="microphone",
+            title="麦克风",
+            fields=(ConfigFieldVM(path="microphone.channels", label="声道数", value_type="int", value=1),),
+        )
+
+    def stage_microphone_field(self, path: str, value: object) -> None:
+        self.staged.append((path, value))
+
+    async def save_microphone_config(self) -> bool:
+        self.saved += 1
+        return True
+
+    async def restart_audio_source(self) -> bool:
+        self.restarted += 1
+        return True
 
 
 class _Ctl:
@@ -56,6 +86,16 @@ class _Ctl:
 class _Ev:
     def __init__(self, value) -> None:
         self.control = _Ctl(value)
+
+
+def _ev(value) -> ft.ControlEvent:
+    """构造一个鸭子类型的 on_change 事件并按 ControlEvent 交给 handler。"""
+
+    return cast(ft.ControlEvent, _Ev(value))
+
+
+# 点击类 handler 不读事件参数，传 None 即可（按 ControlEvent 类型交付）。
+_CLICK: ft.ControlEvent = cast(ft.ControlEvent, None)
 
 
 def _mount_audio(state: AppState, bridge: object | None) -> tuple[AudioView, _FakePage]:
@@ -99,7 +139,7 @@ def test_audio_view_radio_change_enables_switch_button() -> None:
     """改 radio 草稿后按钮启用且文案恢复"""
     state = AppState()
     view, _page = _mount_audio(state, _FakeBridge())
-    view._on_radio_change(_Ev("tts"))
+    view._on_radio_change(_ev("tts"))
     assert view._draft == AudioSourceKind.TTS
     assert view._switch_button.disabled is False
     assert view._switch_button.text == "切换为选中源"
@@ -110,8 +150,8 @@ async def test_audio_view_click_switch_dispatches_intent_and_locks_button() -> N
     state = AppState()
     bridge = _FakeBridge()
     view, page = _mount_audio(state, bridge)
-    view._on_radio_change(_Ev("tts"))
-    view._on_switch_click(None)
+    view._on_radio_change(_ev("tts"))
+    view._on_switch_click(_CLICK)
     assert view._switching is True
     assert view._switch_button.disabled is True
     assert view._switch_button.text == "切换中…"
@@ -124,8 +164,8 @@ def test_audio_view_backend_confirm_releases_button() -> None:
     """后端确认（state.audio_source 变更）后按钮恢复，提示更新"""
     state = AppState()
     view, _page = _mount_audio(state, _FakeBridge())
-    view._on_radio_change(_Ev("tts"))
-    view._on_switch_click(None)
+    view._on_radio_change(_ev("tts"))
+    view._on_switch_click(_CLICK)
     state.audio_source.set(AudioSourceKind.TTS)  # 模拟后端确认
     assert view._switching is False
     assert view._switch_button.disabled is True  # draft == active
@@ -137,8 +177,8 @@ def test_audio_view_click_without_bridge_is_noop() -> None:
     """无 bridge 时点击切换不抛异常、不调度任务"""
     state = AppState()
     view, page = _mount_audio(state, bridge=None)
-    view._on_radio_change(_Ev("tts"))
-    view._on_switch_click(None)
+    view._on_radio_change(_ev("tts"))
+    view._on_switch_click(_CLICK)
     assert page.tasks == []
 
 
@@ -147,10 +187,47 @@ def test_audio_view_repeated_click_during_switching_is_ignored() -> None:
     state = AppState()
     bridge = _FakeBridge()
     view, page = _mount_audio(state, bridge)
-    view._on_radio_change(_Ev("tts"))
-    view._on_switch_click(None)
-    view._on_switch_click(None)  # 第二次应被忽略
+    view._on_radio_change(_ev("tts"))
+    view._on_switch_click(_CLICK)
+    view._on_switch_click(_CLICK)  # 第二次应被忽略
     assert len(page.tasks) == 1
+
+
+async def test_audio_view_config_edit_stages_not_saves() -> None:
+    """改配置只暂存到内存（不落盘），保存按钮变为可用"""
+    state = AppState()
+    bridge = _FakeBridge()
+    view, _page = _mount_audio(state, bridge)
+    view._on_config_change("microphone.channels", 2)
+    assert bridge.staged == [("microphone.channels", 2)]
+    assert bridge.saved == 0  # 未落盘
+    assert view._config_dirty is True
+    assert view._save_button.disabled is False
+
+
+async def test_audio_view_save_button_persists_and_clears_dirty() -> None:
+    """点保存：落盘一次，dirty 复位、保存按钮禁用"""
+    state = AppState()
+    bridge = _FakeBridge()
+    view, page = _mount_audio(state, bridge)
+    view._on_config_change("microphone.channels", 2)
+    view._on_save_click(_CLICK)
+    assert len(page.tasks) == 1
+    await page.tasks[-1]()
+    assert bridge.saved == 1
+    assert view._config_dirty is False
+    assert view._save_button.disabled is True
+
+
+async def test_audio_view_restart_button_invokes_bridge() -> None:
+    """点重启：调用 bridge 重启音源（重读配置）"""
+    state = AppState()
+    bridge = _FakeBridge()
+    view, page = _mount_audio(state, bridge)
+    view._on_restart_click(_CLICK)
+    assert len(page.tasks) == 1
+    await page.tasks[-1]()
+    assert bridge.restarted == 1
 
 
 # —— LogsView ——————————————————————————————————————————————
@@ -175,7 +252,7 @@ def test_logs_view_level_filter_uses_priority_threshold() -> None:
     state.logs.replace(
         [_entry("DEBUG", "d"), _entry("INFO", "i"), _entry("WARNING", "w"), _entry("ERROR", "e")],
     )
-    view._on_level_change(_Ev("WARNING"))
+    view._on_level_change(_ev("WARNING"))
     # WARNING 与 ERROR 通过，DEBUG / INFO 被过滤
     assert len(view._list.controls) == 2
 
@@ -185,7 +262,7 @@ def test_logs_view_keyword_filter_matches_message_only() -> None:
     state = AppState()
     view, _page = _mount_logs(state)
     state.logs.replace([_entry("INFO", "Hello world"), _entry("INFO", "goodbye")])
-    view._on_keyword_change(_Ev("hello"))
+    view._on_keyword_change(_ev("hello"))
     assert len(view._list.controls) == 1
 
 
@@ -194,11 +271,11 @@ def test_logs_view_pause_blocks_updates_and_resume_replays() -> None:
     state = AppState()
     view, _page = _mount_logs(state)
     state.logs.replace([_entry("INFO", "a")])
-    view._on_pause_click(None)  # 进入暂停
+    view._on_pause_click(_CLICK)  # 进入暂停
     assert view._paused is True
     state.logs.append(_entry("INFO", "b"))  # 暂停期间写入
     assert len(view._list.controls) == 1  # 视图未追加
-    view._on_pause_click(None)  # 继续
+    view._on_pause_click(_CLICK)  # 继续
     assert view._paused is False
     assert len(view._list.controls) == 2  # 拉到最新
 
@@ -209,9 +286,52 @@ def test_logs_view_clear_empties_view_but_keeps_state_buffer() -> None:
     view, _page = _mount_logs(state)
     state.logs.replace([_entry("INFO", "a"), _entry("INFO", "b")])
     assert len(view._list.controls) == 2
-    view._on_clear_click(None)
+    view._on_clear_click(_CLICK)
     assert len(view._list.controls) == 0
     assert len(state.logs.value) == 2  # 状态缓冲保留
+
+
+def test_logs_view_cleared_logs_do_not_reappear_on_new_entry() -> None:
+    """清空后来新日志：只显示清空之后的，旧日志不再被带回（清空锚点）"""
+    state = AppState()
+    view, _page = _mount_logs(state)
+    state.logs.replace([_entry("INFO", "old1"), _entry("INFO", "old2")])
+    assert len(view._list.controls) == 2
+
+    view._on_clear_click(_CLICK)
+    assert len(view._list.controls) == 0
+
+    # 来一条新日志：触发重渲染，旧日志不应重现，只显示新的
+    state.logs.append(_entry("INFO", "new1"))
+    assert len(view._list.controls) == 1
+
+
+def test_logs_view_clear_then_level_filter_excludes_old() -> None:
+    """清空后筛选仍只作用于清空之后的日志（清空 + 筛选组合）"""
+    state = AppState()
+    view, _page = _mount_logs(state)
+    state.logs.replace([_entry("ERROR", "old_err"), _entry("INFO", "old_info")])
+    view._on_clear_click(_CLICK)
+    # 清空后来两条
+    state.logs.append(_entry("ERROR", "new_err"))
+    state.logs.append(_entry("INFO", "new_info"))
+    view._on_level_change(_ev("ERROR"))
+    # 只剩清空之后的 ERROR（old_err 不应回来）
+    assert len(view._list.controls) == 1
+
+
+def test_logs_view_filter_to_empty_clears_stale_rows() -> None:
+    """筛选结果为空时必须清空列表行：否则旧行残留，看起来像筛选无效"""
+    state = AppState()
+    view, _page = _mount_logs(state)
+    state.logs.replace([_entry("INFO", "a"), _entry("DEBUG", "b"), _entry("INFO", "c")])
+    assert len(view._list.controls) == 3
+    # 筛选 WARNING：无任何匹配，列表行必须被清空（不能残留 3 条旧行）
+    view._on_level_change(_ev("WARNING"))
+    assert len(view._list.controls) == 0
+    # 再来一条匹配的 WARNING：只显示它，旧行不得残留
+    state.logs.append(_entry("WARNING", "w"))
+    assert len(view._list.controls) == 1
 
 
 def test_logs_view_auto_scroll_switch_propagates_to_listview() -> None:
@@ -219,7 +339,7 @@ def test_logs_view_auto_scroll_switch_propagates_to_listview() -> None:
     state = AppState()
     view, _page = _mount_logs(state)
     assert view._list.auto_scroll is True
-    view._on_auto_scroll_change(_Ev(False))
+    view._on_auto_scroll_change(_ev(False))
     assert view._auto_scroll is False
     assert view._list.auto_scroll is False
 
@@ -229,7 +349,7 @@ def test_logs_view_pause_button_icon_toggles() -> None:
     state = AppState()
     view, _page = _mount_logs(state)
     assert view._pause_button.icon == ft.Icons.PAUSE
-    view._on_pause_click(None)
+    view._on_pause_click(_CLICK)
     assert view._pause_button.icon == ft.Icons.PLAY_ARROW
-    view._on_pause_click(None)
+    view._on_pause_click(_CLICK)
     assert view._pause_button.icon == ft.Icons.PAUSE
