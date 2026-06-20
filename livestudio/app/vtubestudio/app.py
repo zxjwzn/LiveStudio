@@ -1,6 +1,6 @@
 """把 VTube Studio 应用流程串起来"""
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from livestudio.clients.vtube_studio.models import (
@@ -30,6 +30,11 @@ from livestudio.services.platforms.vtubestudio import (
     VTubeStudioExpressionStateConfig,
     VTubeStudioModelConfig,
 )
+from livestudio.utils.log import logger
+
+# 模型变更监听器：参数为 (model_id, model_name)。后端只负责广播「模型已就绪/已切换」，
+# 不关心由谁消费——GUI 适配器等外部观察者据此自我刷新，从而与本应用解耦。
+ModelChangedListener = Callable[[str, str], Awaitable[None] | None]
 
 
 class VTubeStudioApp(AsyncServiceLifecycleMixin):
@@ -46,6 +51,15 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         self.animation_manager = animation_manager
         self.animation_manager.register_runtime(self.platform)
         self._model_subscription: EventSubscriptionResponse | None = None
+        self._model_changed_listener: ModelChangedListener | None = None
+
+    def set_model_changed_listener(self, listener: ModelChangedListener | None) -> None:
+        """注册模型变更监听器（首次加载与运行时换模型都会触发）。
+
+        传 None 解除监听。监听器异常被隔离，不影响模型加载主流程。
+        """
+
+        self._model_changed_listener = listener
 
     async def _do_initialize(self) -> None:
         """初始化应用依赖"""
@@ -115,11 +129,25 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         )
 
     async def _refresh_for_model(self, model_id: str, model_name: str) -> None:
-        """重建模型配置并同步表情与动画控制器"""
+        """重建模型配置并同步表情与动画控制器，完成后广播模型变更"""
 
         model_config = await self.platform.reload_model_config(model_id, model_name)
         await self._sync_model_expressions(model_config)
         await self._apply_model_config(model_config)
+        await self._notify_model_changed(model_id, model_name)
+
+    async def _notify_model_changed(self, model_id: str, model_name: str) -> None:
+        """广播模型变更：同步或异步监听器都支持，异常隔离不影响主流程。"""
+
+        listener = self._model_changed_listener
+        if listener is None:
+            return
+        try:
+            result = listener(model_id, model_name)
+            if isinstance(result, Awaitable):
+                await result
+        except Exception:
+            logger.exception("模型变更监听器执行失败，已隔离")
 
     async def _fetch_expression_state(self) -> ExpressionStateResponse:
         """拉取当前模型的表情状态（含明细）"""

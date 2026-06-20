@@ -134,6 +134,10 @@ class _FakeApp:
         self.initialized = False
         self.started = False
         self.stopped = False
+        self.model_changed_listener = None
+
+    def set_model_changed_listener(self, listener) -> None:
+        self.model_changed_listener = listener
 
     async def initialize(self) -> None:
         self.initialized = True
@@ -388,6 +392,35 @@ async def test_adapter_connect_handles_unloaded_model() -> None:
     assert status is not None
     assert status.connection == ConnectionState.CONNECTED
     assert status.model_name == ""
+    await adapter.stop()
+
+
+async def test_adapter_model_changed_refreshes_without_reconnect() -> None:
+    """运行时换模型：后端触发监听器 → GUI 刷新模型名/控制器/表情，无需重连"""
+    state = AppState()
+    runtime = _FakeRuntime()
+    app = _FakeApp()
+    adapter = _make_adapter(app, runtime, state)
+    await adapter.start()
+    assert adapter._connect_task is not None
+    await cast(asyncio.Task[None], adapter._connect_task)
+
+    # start() 应已把适配器的回调注册到后端
+    assert app.model_changed_listener is not None
+
+    # 模拟后端换模型后新增了一个控制器，并广播模型变更
+    runtime.controllers["breathing"] = _FakeController(running=True)
+    app.model_changed_listener("model-2", "Akari")
+
+    status = state.platform_status("vtube_studio")
+    assert status is not None
+    # 连接状态保持 CONNECTED，模型名刷新为后端广播的新值
+    assert status.connection == ConnectionState.CONNECTED
+    assert status.model_name == "Akari"
+    assert status.model_id == "model-2"
+    # 控制器列表已重新发布，包含换模型后新增的控制器
+    keys = {c.key for c in state.controllers.value}
+    assert keys == {"blink", "expression", "breathing"}
     await adapter.stop()
 
 

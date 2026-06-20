@@ -90,6 +90,10 @@ class VTubeStudioAdapter(PlatformAdapter):
 
         self._app = self._app_factory(self.ctx)
         await self._app.initialize()
+        # 监听后端模型变更（首次加载 + 运行时换模型），据此自刷新模型名/控制器/表情。
+        # 后端只广播「模型已就绪」信号，不知道 GUI 的存在——二者由此解耦。
+        with contextlib.suppress(AttributeError):
+            self._app.set_model_changed_listener(self._on_model_changed)
         endpoint = self._read_endpoint()
         self._set_status(connection=ConnectionState.DISCONNECTED, endpoint=endpoint)
         # 自动连接放后台，避免 VTS 不可达时阻塞
@@ -202,7 +206,7 @@ class VTubeStudioAdapter(PlatformAdapter):
         self._refresh_after_connect()
 
     def _refresh_after_connect(self) -> None:
-        """连接成功后刷新模型名、控制器与表情。"""
+        """连接成功后刷新连接状态、模型名、控制器与表情。"""
 
         model_name, model_id = self._current_model()
         self._set_status(
@@ -211,6 +215,18 @@ class VTubeStudioAdapter(PlatformAdapter):
             model_id=model_id,
             detail="",
         )
+        self._refresh_controllers()
+        self._refresh_expressions()
+
+    def _on_model_changed(self, model_id: str, model_name: str) -> None:
+        """后端模型变更回调（首次加载 + 运行时换模型）。
+
+        后端在事件循环线程内同步调用本方法；只刷新模型名与动画/表情，不触碰
+        连接状态（换模型时连接仍在）。状态写入经 _set_status/_publish_* 走
+        async_bridge.post，线程安全。直接采用后端传入的身份，避免再查一次。
+        """
+
+        self._set_status(model_name=model_name, model_id=model_id)
         self._refresh_controllers()
         self._refresh_expressions()
 
