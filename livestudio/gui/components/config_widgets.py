@@ -20,6 +20,8 @@ from typing import Any
 
 import flet as ft
 
+from livestudio.utils.log import logger
+
 from ..core.theme import PALETTE, TYPE
 from ..core.view_models import ChoiceVM
 from ..core.widget_registry import RenderContext, WidgetRegistry
@@ -115,6 +117,7 @@ def render_dropdown(ctx: RenderContext) -> ft.Control:
         try:
             choices = await ctx.choices_registry.resolve(field.choices_source)
         except Exception:
+            logger.exception("动态下拉选项加载失败: {}", field.choices_source)
             status.value = "加载失败，点刷新重试"
             status.color = PALETTE.danger
             ctx.safe_update()

@@ -52,7 +52,7 @@ class VTubeStudioDiscovery:
             received = 0
             while max_messages is None or received < max_messages:
                 try:
-                    data, _ = await asyncio.wait_for(
+                    data, addr = await asyncio.wait_for(
                         loop.sock_recvfrom(sock, self._config.udp_buffer_size),
                         timeout=timeout or self._config.discovery_timeout,
                     )
@@ -60,11 +60,14 @@ class VTubeStudioDiscovery:
                     raise DiscoveryError("等待 VTube Studio UDP 广播超时") from exc
 
                 try:
-                    yield VTubeStudioAPIStateBroadcast.model_validate_json(
+                    broadcast = VTubeStudioAPIStateBroadcast.model_validate_json(
                         data.decode("utf-8"),
                     )
                 except (UnicodeDecodeError, ValidationError) as exc:
                     raise DiscoveryError("收到的 UDP 广播无法解析") from exc
+                # 广播负载本身不含主机地址，真实 IP 取自 UDP 数据包源地址
+                broadcast.source_host = addr[0] if addr else None
+                yield broadcast
                 received += 1
         finally:
             sock.close()

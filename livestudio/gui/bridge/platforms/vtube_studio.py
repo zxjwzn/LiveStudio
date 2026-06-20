@@ -95,8 +95,8 @@ class VTubeStudioAdapter(PlatformAdapter):
         # 自动连接放后台，避免 VTS 不可达时阻塞
         self._connect_task = asyncio.create_task(self._connect_flow())
 
-    async def stop(self) -> None:
-        """取消连接任务并停止后端应用。"""
+    async def _teardown(self) -> None:
+        """取消连接任务、停止后端应用并复位状态（stop/disconnect 共用）。"""
 
         await self._cancel_connect_task()
         if self._app is not None:
@@ -105,6 +105,11 @@ class VTubeStudioAdapter(PlatformAdapter):
         self._set_status(connection=ConnectionState.DISCONNECTED, model_name="", model_id="")
         self._publish_controllers([])
         self._publish_expressions([])
+
+    async def stop(self) -> None:
+        """取消连接任务并停止后端应用。"""
+
+        await self._teardown()
 
     # —— 连接 ——
     async def connect(self, endpoint: str | None = None) -> None:
@@ -118,13 +123,7 @@ class VTubeStudioAdapter(PlatformAdapter):
     async def disconnect(self) -> None:
         """断开连接并停止后端应用。"""
 
-        await self._cancel_connect_task()
-        if self._app is not None:
-            with contextlib.suppress(Exception):
-                await self._app.stop()
-        self._set_status(connection=ConnectionState.DISCONNECTED, model_name="", model_id="")
-        self._publish_controllers([])
-        self._publish_expressions([])
+        await self._teardown()
 
     async def discover(self) -> list[DiscoveredEndpointVM]:
         """LAN 发现可用 VTube Studio 端点。"""
@@ -140,7 +139,7 @@ class VTubeStudioAdapter(PlatformAdapter):
         result = [
             DiscoveredEndpointVM(
                 name=data.window_title or "VTube Studio",
-                host="127.0.0.1",
+                host=broadcast.source_host or "127.0.0.1",
                 port=data.port,
             )
         ]

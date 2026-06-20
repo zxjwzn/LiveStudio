@@ -22,6 +22,7 @@ from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
 
 from ..core.view_models import ChoiceVM, ConfigFieldVM, ConfigSectionVM, ValueType
 
@@ -149,8 +150,8 @@ def _field_default(info: FieldInfo) -> Any:
     """取字段默认值；无默认（PydanticUndefined）返回 None。"""
 
     default = info.default
-    # PydanticUndefined 不是公开类型，用 repr 兜底判断
-    if default is None or repr(default) == "PydanticUndefined":
+    # PydanticUndefined 表示该字段未设默认值，用 is 判断而非脆弱的 repr 字符串比较
+    if default is None or default is PydanticUndefined:
         return None
     return default
 

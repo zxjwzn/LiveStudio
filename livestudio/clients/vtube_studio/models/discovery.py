@@ -21,3 +21,9 @@ class VTubeStudioAPIStateBroadcast(
     VTSResponseEnvelope[VTubeStudioAPIStateBroadcastData],
 ):
     """VTube Studio API 状态 UDP 广播"""
+
+    source_host: str | None = Field(
+        default=None,
+        exclude=True,
+        description="发出该广播的源主机地址，由发现层从 UDP 数据包源地址填充，不在广播负载中",
+    )

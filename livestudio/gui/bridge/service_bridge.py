@@ -98,11 +98,14 @@ class ServiceBridge:
         ctx = self._platform_context()
         for desc in self.registry.all():
             adapter = desc.adapter_factory(ctx)
-            self.adapters[desc.id] = adapter
             try:
                 await adapter.start()
             except Exception:
-                logger.exception("平台适配器启动失败: {}", desc.id)
+                # 启动失败的适配器不纳入 adapters：否则可能被选为 active_platform_id，
+                # 导致 UI 默认激活一个不可用平台、后续意图调用全部静默失败。
+                logger.exception("平台适配器启动失败，已跳过: {}", desc.id)
+                continue
+            self.adapters[desc.id] = adapter
         if self.adapters and not self.state.active_platform_id.value:
             self.state.active_platform_id.set(next(iter(self.adapters)))
         logger.info("ServiceBridge 已启动，平台 {} 个", len(self.adapters))

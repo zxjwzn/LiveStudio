@@ -9,17 +9,14 @@ from __future__ import annotations
 
 import flet as ft
 
+from livestudio.utils.log import logger
+
 from ..components.audio_meter import AudioMeter
 from ..components.config_editor import ConfigEditor
 from ..components.section import Section
 from ..core.base_view import BaseView
 from ..core.theme import PALETTE, TYPE
-from ..core.view_models import AudioLevelVM, AudioSourceKind
-
-_SOURCE_LABELS: dict[AudioSourceKind, str] = {
-    AudioSourceKind.MICROPHONE: "麦克风",
-    AudioSourceKind.TTS: "TTS",
-}
+from ..core.view_models import AudioLevelVM, AudioSourceKind, audio_source_label
 
 
 class AudioView(BaseView):
@@ -179,7 +176,8 @@ class AudioView(BaseView):
 
         async def _save() -> None:
             ok = await bridge.save_microphone_config()
-            self._set_dirty(False) if ok else None
+            if ok:
+                self._set_dirty(False)
             self._config_hint.value = "已保存" if ok else "保存失败"
             self._config_hint.color = PALETTE.text_muted if ok else PALETTE.danger
             self.safe_update()
@@ -213,7 +211,8 @@ class AudioView(BaseView):
         self._draft = kind
         self._switching = False
         self._source_radio.value = kind.value
-        self._active_hint.value = f"当前: {_SOURCE_LABELS.get(kind, kind.value)}"
+        self._active_hint.value = f"当前: {audio_source_label(kind)}"
+        self._active_hint.color = PALETTE.text_muted
         self._update_switch_button()
         self.safe_update()
 
@@ -236,7 +235,21 @@ class AudioView(BaseView):
         self._update_switch_button()
         self.safe_update()
         target = self._draft
-        self.run_intent(lambda: bridge.switch_audio_source(target))
+
+        async def _switch() -> None:
+            # 成功时由 _on_audio_source 回调复位 _switching；失败时后端不会推送
+            # audio_source 变化，必须在此就地复位，否则按钮永久停在“切换中…”。
+            try:
+                await bridge.switch_audio_source(target)
+            except Exception:
+                logger.exception("切换音频源失败: {}", target)
+                self._switching = False
+                self._active_hint.value = "切换失败，请重试"
+                self._active_hint.color = PALETTE.danger
+                self._update_switch_button()
+                self.safe_update()
+
+        self.run_intent(_switch)
 
     def _update_switch_button(self) -> None:
         """根据是否切换中/草稿是否与当前一致，控制按钮可用与文案。"""
