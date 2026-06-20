@@ -5,6 +5,7 @@ import contextlib
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Literal
 
+from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.utils.log import logger
 
 from ...utils.easing import EASING_REGISTRY, EasingFunction
@@ -16,8 +17,17 @@ ParameterSender = Callable[
 ]
 
 
-class ParameterTweenEngine:
-    """以确定性的缓动时序驱动参数值变化"""
+class ParameterTweenEngine(AsyncServiceLifecycleMixin):
+    """以确定性的缓动时序驱动参数值变化。
+
+    生命周期统一走 ``AsyncServiceLifecycleMixin`` 的 initialize/start/restart/stop
+    四件套。缓动引擎无需初始化，``_do_initialize`` 留空占位即可；``start`` 拉起保活
+    循环，``stop`` 是唯一真正退出（取消保活与全部活动缓动、清空受控参数），
+    ``restart`` 默认 = stop+start（清空状态后重建保活循环）。
+
+    另保留 ``is_running`` 反映保活任务的真实存活性（区别于 Mixin 的 ``is_started``
+    标志）：前者看任务是否实际在跑，后者看是否已 start 且未 stop。
+    """
 
     def __init__(
         self,
@@ -52,17 +62,14 @@ class ParameterTweenEngine:
 
         return self._keep_alive_task is not None and not self._keep_alive_task.done()
 
-    def start(self) -> None:
+    async def _do_start(self) -> None:
         """启动保活循环"""
 
-        if self.is_running:
-            logger.warning("缓动引擎保活任务已在运行")
-            return
         self._keep_alive_task = asyncio.create_task(self._keep_alive_loop())
         logger.info("缓动引擎已启动")
 
-    async def stop(self) -> None:
-        """停止保活，并取消所有活动中的缓动任务"""
+    async def _do_stop(self) -> None:
+        """停止保活，并取消所有活动中的缓动任务（唯一真正的退出）"""
 
         task = self._keep_alive_task
         self._keep_alive_task = None
@@ -85,12 +92,6 @@ class ParameterTweenEngine:
 
         logger.info("缓动引擎已停止")
 
-    async def restart(self) -> None:
-        """重启缓动引擎"""
-
-        await self.stop()
-        self.start()
-
     async def tween(self, request: TweenRequest | list[TweenRequest]) -> None:
         """按请求使用固定采样与绝对时间对齐方式执行缓动"""
 
@@ -103,10 +104,7 @@ class ParameterTweenEngine:
                 tween_request.fps = self._default_fps
 
         # 让 _run_tween 能通过 asyncio.current_task() 获取自身引用。
-        tasks = [
-            asyncio.create_task(self._run_tween(tween_request))
-            for tween_request in requests
-        ]
+        tasks = [asyncio.create_task(self._run_tween(tween_request)) for tween_request in requests]
         await asyncio.gather(*tasks)
 
     async def release(self, parameter_name: str) -> None:
@@ -268,9 +266,7 @@ class ParameterTweenEngine:
 
                 elapsed = min(request.duration, max(0.0, loop.time() - start_time))
                 t = min(1.0, elapsed / request.duration)
-                value = start_value + (
-                    request.end_value - start_value
-                ) * self._resolve_easing(request.easing)(t)
+                value = start_value + (request.end_value - start_value) * self._resolve_easing(request.easing)(t)
                 state_to_send: ControlledParameterState | None = None
 
                 async with self._lock:
@@ -333,8 +329,7 @@ class ParameterTweenEngine:
                     states_to_send = [
                         state
                         for parameter_name, state in self._controlled_params.items()
-                        if state.keep_alive
-                        and parameter_name not in self._active_tweens
+                        if state.keep_alive and parameter_name not in self._active_tweens
                     ]
 
                 if not states_to_send:

@@ -126,11 +126,9 @@ class VTubeStudio(PlatformService):
             raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
         return self._discovery
 
-    async def initialize(self) -> None:
-        """加载配置并创建内部依赖"""
+    async def _do_initialize(self) -> None:
+        """加载配置并创建内部依赖（幂等与标志维护由 Mixin 负责）"""
 
-        if self._initialized:
-            return
         await self.config_manager.load()
         self._client = VTubeStudioClient(
             config=self.config,
@@ -141,13 +139,10 @@ class VTubeStudio(PlatformService):
             config_model=VTubeStudioModelConfig,
             model_config_dir=self.config.model_config_dir,
         )
-        self._mark_initialized()
 
-    async def stop(self) -> None:
-        """停止服务并按需保存配置"""
+    async def _do_stop(self) -> None:
+        """停止服务并按需保存配置（唯一真正的退出：释放依赖、断开连接）"""
 
-        if not self._initialized:
-            return
         await self.tween.stop()
         if self._client is not None:
             await self._client.disconnect()
@@ -159,10 +154,30 @@ class VTubeStudio(PlatformService):
         self._model_config_service = None
         self._semantic_adapter = None
         self._expression_adapter = None
-        self._mark_stopped(reset_initialized=True)
+
+    async def _do_restart(self) -> None:
+        """软重启：断开并重新连接认证，保留已初始化依赖与模型配置。
+
+        区别于 stop：不销毁 client/discovery/model_config_service、不复位
+        _initialized，因此重启后无需重新 initialize。重连不做无限重试——restart
+        是显式操作，失败时由 Mixin 的 restart() 统一回滚到 stop()。
+        """
+
+        await self.tween.stop()
+        if self._client is not None:
+            await self._client.disconnect()
+        await self.connect()
+        await self.authenticate()
+        await self.tween.start()
+        logger.success("VTube Studio 已重连并完成认证")
 
     async def start(self) -> None:
-        """启动连接与认证流程，连接失败时自动重连直到成功"""
+        """启动连接与认证流程，连接失败时自动重连直到成功。
+
+        VTube Studio 的连接需在不可达时无限重试，且失败清理刻意比 stop 轻量
+        （不落盘配置），故保留对 Mixin start() 的覆盖；initialize/stop/restart
+        均已统一走 Mixin 的 _do_* 模板方法。
+        """
 
         if self._started:
             return
@@ -177,7 +192,7 @@ class VTubeStudio(PlatformService):
             try:
                 await self.connect()
                 await self.authenticate()
-                self.tween.start()
+                await self.tween.start()
                 self._mark_started()
                 logger.success("VTube Studio 已连接并完成认证")
             except VTubeStudioConnectionError as exc:

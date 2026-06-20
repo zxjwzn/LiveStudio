@@ -17,6 +17,7 @@ from .models import (
     AudioSourceKind,
 )
 from .sources import MicrophoneAudioStreamSource, TTSAudioStreamSource
+from .sources.microphone.models import InputDeviceInfo
 
 
 class AudioStreamRouter(AudioStreamSource):
@@ -61,6 +62,18 @@ class AudioStreamRouter(AudioStreamSource):
             raise RuntimeError("音频流路由器尚未初始化")
         return self._microphone_source
 
+    async def list_input_devices(self) -> list[InputDeviceInfo]:
+        """枚举系统输入设备，与路由器生命周期解耦。
+
+        列设备是纯系统查询（sd.query_devices），不依赖音频管线是否已初始化/运行。
+        有现成麦克风源就复用，否则临时建一个只用于查询——这样即便活动源打不开
+        （设备被占用/拔出导致 start 回滚销毁了管线），设备下拉仍能正常列出，
+        用户得以换一个可用设备再重启。
+        """
+
+        source = self._microphone_source or MicrophoneAudioStreamSource(self.config.microphone)
+        return await source.list_input_devices()
+
     @property
     def tts_source(self) -> TTSAudioStreamSource:
         """返回内置 TTS 音频源"""
@@ -69,9 +82,7 @@ class AudioStreamRouter(AudioStreamSource):
             raise RuntimeError("音频流路由器尚未初始化")
         return self._tts_source
 
-    async def initialize(self) -> None:
-        if self._initialized:
-            return
+    async def _do_initialize(self) -> None:
         await self.config_manager.load()
 
         self._microphone_source = MicrophoneAudioStreamSource(self.config.microphone)
@@ -87,24 +98,14 @@ class AudioStreamRouter(AudioStreamSource):
         self._source_subscription = self.active_source.subscribe(
             queue_maxsize=self.config.microphone.queue_maxsize,
         )
-        self._mark_initialized()
         logger.info("音频流路由器已初始化，当前音频源: {}", self.active_source_kind)
 
-    async def start(self) -> None:
-        if self.is_started:
-            return
-        if not self._initialized:
-            await self.initialize()
-
+    async def _do_start(self) -> None:
         await self.active_source.start()
         self._forward_task = asyncio.create_task(self._forward_chunks())
-        self._mark_started()
 
-    async def stop(self) -> None:
-        """停止并释放音频流路由器资源"""
-
-        if not self._initialized:
-            return
+    async def _do_stop(self) -> None:
+        """停止并释放音频流路由器资源（唯一真正的退出入口）。"""
 
         await self._stop_forward_task()
         if self._source_subscription is not None:
@@ -119,7 +120,18 @@ class AudioStreamRouter(AudioStreamSource):
         self._tts_source = None
         self._sources = {}
         self._active_source_kind = None
-        self._mark_stopped(reset_initialized=True)
+
+    async def _do_restart(self) -> None:
+        """软重启：就地重启当前活动源（换设备等配置生效），保留对外契约。
+
+        委托给活动源自身的 ``restart()``——源的软重启只回收/重建物理流而**不**清空
+        其订阅，因此路由器对该源的转发订阅 ``_source_subscription`` 与转发任务都得以
+        存活，路由器对外的下游订阅者（如 MouthSyncController）更不受影响。这正是
+        统一生命周期里 restart 的语义：只有 stop 才真正断开对外契约。
+        """
+
+        await self.active_source.restart()
+        logger.info("音频流路由器已就地重启活动音频源: {}", self._active_source_kind)
 
     async def switch_source(
         self,
@@ -142,13 +154,11 @@ class AudioStreamRouter(AudioStreamSource):
 
         if was_started:
             try:
-                # 源在上一次切走时已 stop（麦克风会清空 _loop/_device_info），
-                # 重新 start 前必须先 initialize 以重建其运行所需状态。
-                await self.active_source.initialize()
+                # 源在上一次切走时已 stop（麦克风会清空 _loop/_device_info 并复位
+                # _initialized），start() 会按 Mixin 约定自动 initialize。
                 await self.active_source.start()
             except Exception:
                 self._rebind_active_source(previous_source_kind)
-                await self.active_source.initialize()
                 await self.active_source.start()
                 self._forward_task = asyncio.create_task(self._forward_chunks())
                 await self.config_manager.save()
@@ -156,38 +166,6 @@ class AudioStreamRouter(AudioStreamSource):
             self._forward_task = asyncio.create_task(self._forward_chunks())
 
         logger.info("音频流路由器已切换音频源: {}", source_kind)
-
-    async def reload_active_source(self) -> None:
-        """就地重启当前活动音频源（重读其配置/设备），不动路由器的下游订阅。
-
-        与 switch_source 的区别：不更换活动源。停掉旧物理流、按最新配置重新
-        initialize + start，并重建路由器对源的转发订阅。关键是**不触碰**
-        self._subscriptions（路由器对外的下游订阅者，如 MouthSyncController）——
-        它们由 _publish_chunk 广播，重启活动源不应清空它们。配置改动（如更换
-        输入设备）经此生效，且不会切断任何下游音频消费。
-        """
-
-        if not self._initialized:
-            await self.initialize()
-            return
-
-        was_started = self.is_started
-        if was_started:
-            await self._stop_forward_task()
-            # 源 stop() 会 _clear_subscriptions 清掉自己的全部订阅（含路由器对它的
-            # 转发订阅 _source_subscription），故置空、重启后重新订阅。
-            await self.active_source.stop()
-            self._source_subscription = None
-
-        await self.active_source.initialize()
-        if was_started:
-            await self.active_source.start()
-            self._source_subscription = self.active_source.subscribe(
-                queue_maxsize=self.config.microphone.queue_maxsize,
-            )
-            self._forward_task = asyncio.create_task(self._forward_chunks())
-
-        logger.info("音频流路由器已就地重启活动音频源: {}", self._active_source_kind)
 
     def _rebind_active_source(self, source_kind: AudioSourceKind) -> None:
         """切换活动源标识并重建对该源的订阅。"""

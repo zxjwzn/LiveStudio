@@ -74,7 +74,9 @@ class AudioController:
         """枚举麦克风输入设备，供配置编辑器的动态下拉用（设备名作为值）。"""
 
         try:
-            devices = await self.router.microphone_source.list_input_devices()
+            # 走路由器的设备枚举（与管线生命周期解耦）：即便活动源打不开导致
+            # 管线被销毁，设备下拉仍能列出，用户得以换一个可用设备再重启。
+            devices = await self.router.list_input_devices()
         except Exception as exc:
             logger.warning("枚举麦克风输入设备失败: {}", exc)
             return []
@@ -120,17 +122,17 @@ class AudioController:
         return True
 
     async def restart_source(self) -> bool:
-        """就地重启当前活动音频源，使（暂存到内存的）配置改动生效。
+        """就地软重启音频路由器，使（暂存到内存的）配置改动生效。
 
         关键：麦克风源持有的 config 与 router.config.microphone 是同一个活对象，
-        暂存即就地改它，源已看到新配置。这里只让路由器就地重启活动源（停旧物理流、
-        按最新配置重新 initialize + start），**不触碰**路由器对外的下游订阅
-        （如 MouthSyncController）——避免重启整个路由器把它们的订阅清掉导致无音频。
-        返回是否成功。
+        暂存即就地改它，源已看到新配置。这里调路由器的 ``restart()``（软重启）——
+        它委托活动源软重启：只回收/重建物理流，**不**清空订阅，因此路由器对外的
+        下游订阅（如 MouthSyncController）与转发链路都得以保留，避免重启后无音频。
+        语义上只有 ``stop()`` 才真正退出并断开对外契约。返回是否成功。
         """
 
         try:
-            await self.router.reload_active_source()
+            await self.router.restart()
         except Exception as exc:
             logger.warning("重启音频源失败: {}", exc)
             return False

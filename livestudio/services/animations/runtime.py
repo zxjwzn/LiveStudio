@@ -62,50 +62,38 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
 
         return await self._platform.get_semantic_value(action)
 
-    async def initialize(self) -> None:
+    async def _do_initialize(self) -> None:
         """加载当前平台的动画模板"""
 
         await self._template_player.load()
-        self._mark_initialized()
         logger.info("平台动画运行时已初始化: {}", self.platform_name)
 
-    async def start(self) -> None:
-        """启动当前平台所有已开启的待机控制器"""
+    async def _do_start(self) -> None:
+        """启动当前平台所有已开启的待机控制器。
 
-        if self._started:
-            return
-        if not self._initialized:
-            await self.initialize()
+        启动失败时不在此自行回滚——交由 Mixin 的 start() 统一调用 stop()
+        （即 _do_stop 取消全部控制器）回滚，避免重复取消。
+        """
 
         idle_controllers = [
             controller for controller in self._controllers.values() if controller.animation_type is AnimationType.IDLE
         ]
-        try:
-            results = await asyncio.gather(
-                *(controller.start() for controller in idle_controllers),
-            )
-        except Exception:
-            await asyncio.gather(
-                *(controller.cancel() for controller in idle_controllers),
-                return_exceptions=True,
-            )
-            self._mark_stopped()
-            raise
-        self._mark_started()
+        results = await asyncio.gather(
+            *(controller.start() for controller in idle_controllers),
+        )
         logger.info(
             "平台动画运行时已启动: {}，启动 idle 控制器 {} 个",
             self.platform_name,
             sum(1 for result in results if result),
         )
 
-    async def stop(self) -> None:
+    async def _do_stop(self) -> None:
         """停止当前平台全部控制器"""
 
         controllers = tuple(self._controllers.values())
         await asyncio.gather(
             *(controller.cancel() for controller in controllers),
         )
-        self._mark_stopped()
         logger.info("平台动画运行时已停止: {}", self.platform_name)
 
     async def reload_templates(self) -> None:
@@ -123,13 +111,18 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
         if not next_controllers:
             raise ValueError("重新加载控制器时至少需要提供一个控制器")
 
+        # 只回收/重建运行态，不走 stop()——stop 是真正退出会复位 _initialized
+        # （进而下次 start 重载模板）。控制器热替换属软重启范畴，保留初始化状态。
         was_started = self._started
-        await self.stop()
+        if was_started:
+            await self._do_stop()
+            self._mark_stopped()
         self._controllers = {}
         for controller in next_controllers:
             self.register_controller(controller)
         if was_started:
-            await self.start()
+            await self._do_start()
+            self._mark_started()
 
     def list_templates(self) -> list[LoadedTemplateInfo]:
         """返回当前平台已加载模板摘要"""

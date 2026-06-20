@@ -81,7 +81,7 @@ async def test_low_priority_is_rejected_by_running_high_priority() -> None:
 async def test_stop_clears_state() -> None:
     sender = _SenderRecorder()
     engine = ParameterTweenEngine(sender)
-    engine.start()
+    await engine.start()
 
     await engine.tween(
         TweenRequest(

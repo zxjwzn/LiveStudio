@@ -12,6 +12,7 @@ from typing import Callable
 
 import flet as ft
 
+from ..components.toaster import ErrorToaster
 from ..core.theme import PALETTE, TYPE, connection_color
 from ..core.view_context import ViewContext
 from ..core.view_models import AudioLevelVM, PlatformStatusVM
@@ -51,6 +52,7 @@ class AppShell(ft.Row):
         self.ctx.navigate = self.navigate  # 装配路由跳转，替换默认 no-op
         self._views: dict[str, ft.Control] = {}  # 路由 -> 视图实例缓存
         self._route_index = {item.route: i for i, item in enumerate(NAV_ITEMS)}
+        self._toaster: ErrorToaster | None = None  # did_mount 时 page 就绪才建立
 
         self._rail = self._build_rail()
         self._content = ft.Container(expand=True, padding=20)
@@ -140,10 +142,17 @@ class AppShell(ft.Row):
         self._unsub_platform = self.ctx.state.platforms.subscribe(self._on_platforms)
         self._unsub_active = self.ctx.state.active_platform_id.subscribe(lambda _: self._on_platforms(None))
         self._unsub_audio = self.ctx.state.audio_level.subscribe(self._on_audio)
+        # 全局错误/警告浮层：page 挂载后才可 open SnackBar，故在此建立。
+        # did_mount 时 page 通常已就绪；用显式守卫而非 assert，避免 -O 下被剥掉。
+        if self.page is not None:
+            self._toaster = ErrorToaster(self.page, self.ctx.state.logs)
+            self._toaster.start()
 
     def will_unmount(self) -> None:
         for unsub in (self._unsub_platform, self._unsub_active, self._unsub_audio):
             unsub()
+        if self._toaster is not None:
+            self._toaster.stop()
 
     def _on_platforms(self, _value: object) -> None:
         status: PlatformStatusVM | None = self.ctx.state.active_platform_status()

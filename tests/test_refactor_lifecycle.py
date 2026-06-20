@@ -164,6 +164,109 @@ async def test_restart_calls_stop_then_start() -> None:
     assert svc.is_started
 
 
+async def test_restart_is_soft_keeps_initialized() -> None:
+    """软重启不复位 _initialized：只有 stop 才是真正退出。"""
+
+    svc = _TemplateService()
+    await svc.start()
+    assert svc.is_initialized
+    await svc.restart()
+    # restart 后仍处于已初始化 + 已启动；区别于 stop（会复位 _initialized）
+    assert svc.is_initialized
+    assert svc.is_started
+
+
+async def test_restart_uses_do_restart_hook_not_stop_start() -> None:
+    """重写 _do_restart 的服务，restart 应走该钩子而非默认 stop+start。"""
+
+    class _SoftRestart(AsyncServiceLifecycleMixin):
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def _do_start(self) -> None:
+            self.calls.append("start")
+
+        async def _do_stop(self) -> None:
+            self.calls.append("stop")
+
+        async def _do_restart(self) -> None:
+            self.calls.append("restart")
+
+    svc = _SoftRestart()
+    await svc.start()
+    svc.calls.clear()
+    await svc.restart()
+    # 只调用了自定义软重启钩子，没有退化成 stop+start
+    assert svc.calls == ["restart"]
+    assert svc.is_started
+    assert svc.is_initialized
+
+
+async def test_restart_when_not_started_just_starts() -> None:
+    """已初始化但未启动时 restart 等价一次 start，不调用 _do_restart。"""
+
+    class _SoftRestart(AsyncServiceLifecycleMixin):
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def _do_start(self) -> None:
+            self.calls.append("start")
+
+        async def _do_stop(self) -> None:
+            self.calls.append("stop")
+
+        async def _do_restart(self) -> None:
+            self.calls.append("restart")
+
+    svc = _SoftRestart()
+    await svc.initialize()
+    await svc.restart()
+    assert svc.calls == ["start"]
+    assert svc.is_started
+
+
+async def test_restart_rolls_back_to_stop_on_failure() -> None:
+    """_do_restart 抛错时回滚到 stop（复位标志、释放资源）。"""
+
+    class _FailRestart(AsyncServiceLifecycleMixin):
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def _do_start(self) -> None:
+            self.calls.append("start")
+
+        async def _do_stop(self) -> None:
+            self.calls.append("stop")
+
+        async def _do_restart(self) -> None:
+            self.calls.append("restart")
+            raise RuntimeError("restart failed")
+
+    svc = _FailRestart()
+    await svc.start()
+    svc.calls.clear()
+    with pytest.raises(RuntimeError, match="restart failed"):
+        await svc.restart()
+    assert svc.calls == ["restart", "stop"]
+    assert not svc.is_started
+    assert not svc.is_initialized
+
+
+async def test_stop_resets_flags_even_when_do_stop_raises() -> None:
+    """stop 是终止入口：即使 _do_stop 抛错也在 finally 复位标志。"""
+
+    class _FailStop(AsyncServiceLifecycleMixin):
+        async def _do_stop(self) -> None:
+            raise RuntimeError("stop failed")
+
+    svc = _FailStop()
+    await svc.start()
+    with pytest.raises(RuntimeError, match="stop failed"):
+        await svc.stop()
+    assert not svc.is_started
+    assert not svc.is_initialized
+
+
 # ──────────────────────────────────────────────
 # 4. AudioStreamSource 统一 Mixin 标志
 # ──────────────────────────────────────────────

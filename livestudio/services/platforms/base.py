@@ -73,14 +73,5 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
     ) -> None:
         """发送一批底层平台参数状态"""
 
-    @abstractmethod
-    async def initialize(self) -> None:
-        """初始化平台服务"""
-
-    @abstractmethod
-    async def start(self) -> None:
-        """启动平台服务"""
-
-    @abstractmethod
-    async def stop(self) -> None:
-        """停止平台服务并释放资源"""
+    # 生命周期 initialize/start/restart/stop 由 AsyncServiceLifecycleMixin 统一提供，
+    # 平台子类只需实现 _do_initialize / _do_start / _do_stop（按需 _do_restart）副作用。

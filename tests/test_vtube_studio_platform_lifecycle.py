@@ -83,6 +83,50 @@ async def test_vtube_studio_start_disconnects_when_authentication_fails() -> Non
     assert not platform.tween.is_running
 
 
+async def test_vtube_studio_restart_reconnects_without_destroying_deps() -> None:
+    """软重启：断开重连但保留已初始化依赖（client/discovery/model_config_service）。
+
+    区别于 stop——restart 不复位 _initialized、不清空 client，重连成功后服务仍处
+    已初始化态。验证统一生命周期里 restart 的语义：只有 stop 才真正销毁依赖。
+    """
+    platform = VTubeStudio()
+    client = _DisconnectRecorder()
+    platform._initialized = True  # noqa: SLF001
+    platform._mark_started()  # noqa: SLF001
+    platform._client = cast(Any, client)  # noqa: SLF001
+    sentinel_discovery = object()
+    platform._discovery = cast(Any, sentinel_discovery)  # noqa: SLF001
+
+    connect_calls = 0
+    authenticate_calls = 0
+
+    async def connect() -> None:
+        nonlocal connect_calls
+        connect_calls += 1
+
+    async def authenticate() -> None:
+        nonlocal authenticate_calls
+        authenticate_calls += 1
+
+    platform.connect = connect  # type: ignore[method-assign]
+    platform.authenticate = authenticate  # type: ignore[method-assign]
+
+    await platform.restart()
+
+    # 重连发生：旧连接断开一次，随后重新 connect+authenticate
+    assert client.disconnect_calls == 1
+    assert connect_calls == 1
+    assert authenticate_calls == 1
+    # 关键：依赖未被销毁，服务仍处已初始化/已启动态
+    assert platform.is_initialized
+    assert platform.is_started
+    assert platform._client is client  # noqa: SLF001
+    assert platform._discovery is sentinel_discovery  # noqa: SLF001
+    assert platform.tween.is_running
+
+    await platform.stop()
+
+
 async def test_reload_model_config_refreshes_parameter_specs_from_vtube_studio(
     tmp_path,
 ) -> None:

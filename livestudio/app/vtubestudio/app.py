@@ -47,30 +47,21 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         self.animation_manager.register_runtime(self.platform)
         self._model_subscription: EventSubscriptionResponse | None = None
 
-    async def initialize(self) -> None:
+    async def _do_initialize(self) -> None:
         """初始化应用依赖"""
 
-        if self._initialized:
-            return
         await self.platform.initialize()
         await self.animation_manager.initialize()
-        self._mark_initialized()
 
-    async def start(self) -> None:
-        """启动 VTube Studio 相关应用"""
+    async def _do_start(self) -> None:
+        """启动 VTube Studio 相关应用。
 
-        if self._started:
-            return
-        if not self._initialized:
-            await self.initialize()
-        try:
-            await self.platform.start()
-            await self.load_current_model()
-            await self.animation_manager.start()
-        except Exception:
-            await self.stop()
-            raise
-        self._mark_started()
+        启动失败的回滚交由 Mixin 的 start() 统一调用 stop()（即 _do_stop）。
+        """
+
+        await self.platform.start()
+        await self.load_current_model()
+        await self.animation_manager.start()
 
     async def start_platform_for_expression_test(self) -> None:
         """启动平台并加载当前模型，但先不启动待机动画"""
@@ -84,15 +75,12 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         await self._subscribe_model_events()
         await self._load_active_model_config()
 
-    async def stop(self) -> None:
+    async def _do_stop(self) -> None:
         """停止应用并释放资源"""
 
-        if not self._initialized:
-            return
         await self.animation_manager.stop()
         await self.platform.stop()
         self._model_subscription = None
-        self._mark_stopped(reset_initialized=True)
 
     async def _subscribe_model_events(self) -> None:
         """监听 VTube Studio 的模型加载事件"""

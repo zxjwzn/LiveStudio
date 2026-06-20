@@ -42,11 +42,9 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         return self._dropped_chunks
 
-    async def initialize(self) -> None:
+    async def _do_initialize(self) -> None:
         """加载配置并解析目标输入设备"""
 
-        if self._stream is not None:
-            await self.stop()
         self._loop = asyncio.get_running_loop()
         self._device_info = await self._resolve_input_device()
         self._dropped_chunks = 0
@@ -58,19 +56,91 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             self.device_info.index,
         )
 
-    async def start(self) -> None:
+    async def _do_start(self) -> None:
         """启动麦克风输入流"""
-
-        if self.is_started:
-            return
 
         if self._loop is None or self._device_info is None:
             raise RuntimeError("麦克风音频源尚未初始化，请先调用 initialize()")
 
+        await self._open_stream()
+        logger.info("麦克风音频流已启动")
+
+    async def _do_stop(self) -> None:
+        """停止麦克风输入流并释放全部资源（含订阅）。"""
+
+        try:
+            await self._close_stream()
+        finally:
+            self._loop = None
+            self._device_info = None
+            self._clear_subscriptions()
+            logger.info("麦克风音频流已停止")
+
+    async def _do_restart(self) -> None:
+        """就地软重启：按最新配置重选设备并重建输入流，保留订阅者。
+
+        换设备等配置改动经此生效——关闭旧物理流、重新解析目标设备、开新流，
+        但**不清空订阅**（路由器对本源的转发订阅得以存活，避免重启后下游无音频）。
+        """
+
+        await self._close_stream()
+        self._loop = asyncio.get_running_loop()
+        self._device_info = await self._resolve_input_device()
+        self._dropped_chunks = 0
+        self.config.device_name = self._device_info.name
+        self.config.device_index = self._device_info.index
+        await self._open_stream()
+        logger.info(
+            "麦克风音频源已就地重启，目标设备: {} ({})",
+            self.device_info.name,
+            self.device_info.index,
+        )
+
+    async def _open_stream(self) -> None:
+        """按当前设备/配置打开并启动底层输入流；指定设备打不开时回退默认设备。
+
+        设备可能被占用或在解析后被拔出，导致 sd.InputStream 打开失败
+        （如 PaErrorCode -9996）。此时不直接抛错让整条管线崩，而是回退到系统
+        默认输入设备重试一次——这样配置指向的设备暂时不可用也能正常出声，
+        并把实际启用的设备回写到 _device_info / config。仅当默认设备也打不开
+        （或本就在用默认设备）时才抛出。
+        """
+
+        if self._device_info is None:
+            raise RuntimeError("麦克风音频源尚未初始化，请先调用 initialize()")
+
+        try:
+            stream = await self._build_stream(self._device_info)
+        except Exception as exc:
+            logger.warning(
+                "打开输入设备失败: {} ({})，尝试回退默认设备: {}",
+                self._device_info.name,
+                self._device_info.index,
+                exc,
+            )
+        else:
+            self._stream = stream
+            return
+
+        devices = await self.list_input_devices()
+        fallback = await self._resolve_default_device(devices) if devices else None
+        if fallback is None or fallback.index == self._device_info.index:
+            raise RuntimeError(
+                f"输入设备打开失败且无可用回退设备: {self._device_info.name}",
+            )
+        self._stream = await self._build_stream(fallback)
+        self._device_info = fallback
+        self.config.device_name = fallback.name
+        self.config.device_index = fallback.index
+        logger.info("已回退到默认输入设备: {} ({})", fallback.name, fallback.index)
+
+    async def _build_stream(self, device: InputDeviceInfo) -> sd.InputStream:
+        """按给定设备/当前配置打开并启动一条底层输入流。"""
+
         stream = sd.InputStream(
-            device=self._device_info.index,
+            device=device.index,
             channels=self.config.channels,
-            samplerate=self.config.samplerate or int(self._device_info.default_samplerate),
+            samplerate=self.config.samplerate or int(device.default_samplerate),
             dtype=self.config.dtype,
             blocksize=self.config.blocksize,
             latency=self.config.latency,
@@ -82,96 +152,30 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(stream.close)
             raise
-        self._stream = stream
-        self._mark_started()
-        logger.info("麦克风音频流已启动")
+        return stream
 
-    async def stop(self) -> None:
-        """停止麦克风输入流"""
+    async def _close_stream(self) -> None:
+        """停止并关闭底层输入流（不动订阅、不回写配置）。
+
+        刻意**不**把当前 device_info 回写 config：config 代表用户意图，
+        关流属于运行态收尾，不应反向覆盖它——否则软重启时先关旧流会把旧设备
+        写回 config，紧接着的 _resolve_input_device 又据此解析回旧设备，导致
+        “换设备保存后重启仍是旧设备”。设备的权威回写只发生在
+        _resolve_input_device 之后（_do_initialize / _do_restart 内）。
+        """
 
         stream = self._stream
         self._stream = None
-        device_info = self._device_info
         self._drop_status_line.finish()
-        try:
-            if stream is not None:
-                await asyncio.to_thread(stream.stop)
-                await asyncio.to_thread(stream.close)
-        finally:
-            if device_info is not None:
-                self.config.device_name = device_info.name
-                self.config.device_index = device_info.index
-            self._loop = None
-            self._device_info = None
-            self._clear_subscriptions()
-            self._mark_stopped()
-            logger.info("麦克风音频流已停止")
+        if stream is not None:
+            await asyncio.to_thread(stream.stop)
+            await asyncio.to_thread(stream.close)
 
     async def list_input_devices(self) -> list[InputDeviceInfo]:
         """列出当前系统可用的输入设备"""
 
         devices = await asyncio.to_thread(sd.query_devices)
         return self._normalize_input_devices(devices)
-
-    async def select_input_device(
-        self,
-        *,
-        device_name: str | None = None,
-        device_index: int | None = None,
-    ) -> InputDeviceInfo:
-        """根据设备名称或索引选择麦克风设备"""
-
-        if (device_name is None) == (device_index is None):
-            raise ValueError("必须且只能提供 device_name 或 device_index 其中之一")
-
-        devices = await self.list_input_devices()
-        selected_device = self._find_matching_device(
-            devices,
-            device_name=device_name,
-            device_index=device_index,
-        )
-        if selected_device is None:
-            selector = device_name if device_name is not None else device_index
-            raise RuntimeError(f"指定的麦克风设备不存在或不可用: {selector}")
-
-        was_started = self.is_started
-        if was_started:
-            await self.stop()
-        self._loop = asyncio.get_running_loop()
-        self._device_info = selected_device
-        self.config.device_name = selected_device.name
-        self.config.device_index = selected_device.index
-        self._dropped_chunks = 0
-        if was_started:
-            await self.start()
-
-        logger.info(
-            "麦克风输入设备已切换为: {} ({})",
-            selected_device.name,
-            selected_device.index,
-        )
-        return selected_device
-
-    async def reload_device(self) -> None:
-        """根据最新配置重新选择设备并重启输入流"""
-
-        was_started = self.is_started
-        if was_started:
-            await self.stop()
-
-        self._loop = asyncio.get_running_loop()
-        self._device_info = await self._resolve_input_device()
-        self._dropped_chunks = 0
-        self.config.device_name = self._device_info.name
-        self.config.device_index = self._device_info.index
-        logger.info(
-            "麦克风输入设备已刷新为: {} ({})",
-            self.device_info.name,
-            self.device_info.index,
-        )
-
-        if was_started:
-            await self.start()
 
     def _handle_audio_callback(
         self,
@@ -218,12 +222,19 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         if selected_device is not None:
             return selected_device
 
+        return await self._resolve_default_device(devices)
+
+    async def _resolve_default_device(
+        self,
+        devices: Sequence[InputDeviceInfo],
+    ) -> InputDeviceInfo:
+        """返回系统默认输入设备；无默认时回退到列表首个。"""
+
         default_input_index = await asyncio.to_thread(sd.default.device.__getitem__, 0)
         if default_input_index is not None and default_input_index >= 0:
             for device in devices:
                 if device.index == int(default_input_index):
                     return device
-
         return devices[0]
 
     def _find_matching_device(

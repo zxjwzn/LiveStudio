@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from abc import ABC, abstractmethod
+from abc import ABC
 from uuid import uuid4
 
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
@@ -11,22 +11,16 @@ from .models import AudioChunk, AudioChunkSubscription
 
 
 class AudioStreamSource(AsyncServiceLifecycleMixin, ABC):
-    """统一音频流来源抽象"""
+    """统一音频流来源抽象。
+
+    生命周期统一走 ``AsyncServiceLifecycleMixin`` 的 initialize/start/restart/stop
+    四件套：子类只实现 ``_do_initialize`` / ``_do_start`` / ``_do_stop``（按需重写
+    ``_do_restart``）副作用，幂等守卫、标志维护与失败回滚由 Mixin 统一处理。
+    其中 ``stop`` 是唯一真正释放资源的终止入口（会清空订阅）。
+    """
 
     def __init__(self) -> None:
         self._subscriptions: dict[str, AudioChunkSubscription] = {}
-
-    @abstractmethod
-    async def initialize(self) -> None:
-        """初始化音频源"""
-
-    @abstractmethod
-    async def start(self) -> None:
-        """启动音频源"""
-
-    @abstractmethod
-    async def stop(self) -> None:
-        """停止音频源"""
 
     def subscribe(self, *, queue_maxsize: int = 32) -> AudioChunkSubscription:
         """订阅当前音频源发布的音频块"""

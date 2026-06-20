@@ -105,17 +105,26 @@ def _merge_override(info: FieldInfo, code_override: FieldOverride) -> FieldOverr
     extra = info.json_schema_extra
     if not isinstance(extra, dict):
         return code_override
+
+    def _str(key: str) -> str | None:
+        value = extra.get(key)
+        return value if isinstance(value, str) else None
+
+    def _num(key: str) -> float | None:
+        value = extra.get(key)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
     return FieldOverride(
-        label=code_override.label if code_override.label is not None else extra.get("gui_label"),
-        widget=code_override.widget if code_override.widget is not None else extra.get("gui_widget"),
+        label=code_override.label if code_override.label is not None else _str("gui_label"),
+        widget=code_override.widget if code_override.widget is not None else _str("gui_widget"),
         choices_source=(
-            code_override.choices_source if code_override.choices_source is not None else extra.get("gui_choices_source")
+            code_override.choices_source if code_override.choices_source is not None else _str("gui_choices_source")
         ),
-        help=code_override.help if code_override.help is not None else extra.get("gui_help"),
+        help=code_override.help if code_override.help is not None else _str("gui_help"),
         hidden=code_override.hidden or bool(extra.get("gui_hidden", False)),
-        min=code_override.min if code_override.min is not None else extra.get("gui_min"),
-        max=code_override.max if code_override.max is not None else extra.get("gui_max"),
-        step=code_override.step if code_override.step is not None else extra.get("gui_step"),
+        min=code_override.min if code_override.min is not None else _num("gui_min"),
+        max=code_override.max if code_override.max is not None else _num("gui_max"),
+        step=code_override.step if code_override.step is not None else _num("gui_step"),
     )
 
 

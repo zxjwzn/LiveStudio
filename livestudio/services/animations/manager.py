@@ -98,35 +98,24 @@ class AnimationManager(AsyncServiceLifecycleMixin):
 
         await self.get_runtime(platform_name).restart()
 
-    async def initialize(self) -> None:
+    async def _do_initialize(self) -> None:
         """初始化全部平台动画运行时"""
 
-        if self._initialized:
-            return
         await asyncio.gather(
             *(runtime.initialize() for runtime in self._runtimes.values()),
         )
-        self._mark_initialized()
         logger.info("动画管理器已初始化，平台运行时 {} 个", len(self._runtimes))
 
-    async def start(self) -> None:
+    async def _do_start(self) -> None:
         """启动全部平台动画运行时"""
 
-        if self._started:
-            return
-        if not self._initialized:
-            await self.initialize()
         await asyncio.gather(*(runtime.start() for runtime in self._runtimes.values()))
-        self._mark_started()
         logger.info("动画管理器已启动")
 
-    async def stop(self) -> None:
+    async def _do_stop(self) -> None:
         """停止全部平台动画运行时"""
 
-        if not self._initialized:
-            return
         await asyncio.gather(*(runtime.stop() for runtime in self._runtimes.values()))
-        self._mark_stopped(reset_initialized=True)
         logger.info("动画管理器已停止")
 
     async def reload_templates(self, platform_name: str | None = None) -> None:

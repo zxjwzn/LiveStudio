@@ -221,7 +221,7 @@ async def test_cancel_all_stops_all_tweens_but_keeps_params() -> None:
 async def test_restart_clears_state_and_restarts_keep_alive() -> None:
     sender = _SenderRecorder()
     engine = ParameterTweenEngine(sender)
-    engine.start()
+    await engine.start()
     assert engine.is_running
 
     await engine.tween(
@@ -249,7 +249,7 @@ async def test_restart_clears_state_and_restarts_keep_alive() -> None:
 async def test_keep_alive_resends_controlled_params() -> None:
     sender = _SenderRecorder()
     engine = ParameterTweenEngine(sender, keep_alive_interval=0.05)
-    engine.start()
+    await engine.start()
 
     await engine.tween(
         TweenRequest(
@@ -278,7 +278,7 @@ async def test_keep_alive_resends_controlled_params() -> None:
 async def test_keep_alive_does_not_resend_non_keep_alive_params() -> None:
     sender = _SenderRecorder()
     engine = ParameterTweenEngine(sender, keep_alive_interval=0.05)
-    engine.start()
+    await engine.start()
 
     await engine.tween(
         TweenRequest(
@@ -484,9 +484,7 @@ async def test_equal_priority_new_preempts_running() -> None:
 
     # 新请求的值被发送，且接管后由它持有控制权
     found_new = any(
-        state.name == "Same" and state.value == pytest.approx(1.0)
-        for _, states in sender.calls
-        for state in states
+        state.name == "Same" and state.value == pytest.approx(1.0) for _, states in sender.calls for state in states
     )
     assert found_new, "同优先级新请求的值应被发送"
     assert engine.controlled_params["Same"].value == pytest.approx(1.0)
@@ -580,8 +578,8 @@ async def test_start_twice_does_not_create_duplicate_tasks() -> None:
     sender = _SenderRecorder()
     engine = ParameterTweenEngine(sender)
 
-    engine.start()
-    engine.start()  # 第二次应该是 noop
+    await engine.start()
+    await engine.start()  # 第二次应该是 noop
 
     assert engine.is_running
     await engine.stop()
