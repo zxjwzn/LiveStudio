@@ -34,6 +34,10 @@ class LogsView(BaseView):
         # 避免新日志触发重渲染时把已清空的旧日志重新铺出来。锚点被环形缓冲
         # 丢弃时，当前缓冲里的都是更新的日志，自然全部展示。
         self._clear_anchor: LogEntryVM | None = None
+        # 增量渲染锚点：记录已渲染进列表的最后一条日志对象。日志推送时只追加其
+        # 之后的新行，避免每次 flush 全量重建整个 ListView；锚点被环形缓冲丢弃
+        # 时回退到全量重建。过滤条件变化/清空/暂停恢复仍走全量 _render。
+        self._rendered_anchor: LogEntryVM | None = None
 
         # —— 工具栏控件 ——
         self._level_dropdown = ft.Dropdown(
@@ -114,7 +118,34 @@ class LogsView(BaseView):
     def _on_logs(self, entries: list[LogEntryVM]) -> None:
         if self._paused:
             return
-        self._render(entries)
+        self._append_new(entries)
+
+    def _append_new(self, entries: list[LogEntryVM]) -> None:
+        """增量追加：只渲染上次渲染锚点之后的新日志，避免每次 flush 全量重建。
+
+        锚点（上次已渲染的最后一条）仍在缓冲里 → 仅对其后的新条目过滤后 append；
+        锚点为 None（首次）或已被环形缓冲丢弃 → 回退到全量 _render。
+        """
+
+        anchor = self._rendered_anchor
+        if anchor is None:
+            self._render(entries)
+            return
+        new_entries = items_after_anchor(entries, anchor)
+        # 锚点已被丢弃时 items_after_anchor 返回全部，与「仅新增」语义不符，回退全量
+        if len(new_entries) == len(entries):
+            self._render(entries)
+            return
+        if not new_entries:
+            return
+        new_rows = [self._row(entry) for entry in new_entries if self._matches(entry)]
+        self._rendered_anchor = entries[-1]
+        if not new_rows:
+            return
+        self._list.controls.extend(new_rows)
+        self._list.auto_scroll = self._auto_scroll
+        self._body.content = self._list
+        self.safe_update()
 
     def _render(self, entries: list[LogEntryVM]) -> None:
         visible = items_after_anchor(entries, self._clear_anchor)
@@ -123,6 +154,8 @@ class LogsView(BaseView):
         self._list.controls = [self._row(entry) for entry in filtered]
         self._list.auto_scroll = self._auto_scroll
         self._body.content = self._empty if not filtered else self._list
+        # 记录已渲染锚点，供后续增量追加判断起点
+        self._rendered_anchor = entries[-1] if entries else None
         self.safe_update()
 
     # —— 过滤逻辑 ——
@@ -162,6 +195,8 @@ class LogsView(BaseView):
         # state.logs 缓冲不动；新日志触发重渲染时不会再把已清空的旧日志带回来。
         entries = self.state.logs.value
         self._clear_anchor = entries[-1] if entries else None
+        # 增量锚点同步到清空点，否则下次 flush 会从旧锚点把已清空的行重新铺出来
+        self._rendered_anchor = self._clear_anchor
         self._list.controls = []
         self._body.content = self._empty
         self.safe_update()

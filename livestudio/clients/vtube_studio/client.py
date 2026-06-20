@@ -236,8 +236,8 @@ class VTubeStudioClient:
             try:
                 await connection.send(payload)
             except ConnectionClosed as exc:
-                self._pending_requests.pop(request.request_id, None)
-                self._connection = None
+                # 连接已断：统一清理（置空连接 + 让全部挂起请求失败），不留半关闭态
+                self._handle_connection_lost(VTubeStudioConnectionError("VTube Studio 连接已关闭"))
                 raise VTubeStudioConnectionError("VTube Studio 连接已关闭") from exc
             except WebSocketException as exc:
                 self._pending_requests.pop(request.request_id, None)
@@ -276,10 +276,11 @@ class VTubeStudioClient:
         except asyncio.CancelledError:
             raise
         except ConnectionClosed:
-            self._connection = None
+            self._handle_connection_lost(
+                VTubeStudioConnectionError("VTube Studio 连接已关闭"),
+            )
         except WebSocketException as exc:
-            self._connection = None
-            self._fail_pending_requests(ResponseError("后台接收 VTube Studio 消息失败"))
+            self._handle_connection_lost(ResponseError("后台接收 VTube Studio 消息失败"))
             raise VTubeStudioConnectionError("后台接收 VTube Studio 消息失败") from exc
         finally:
             self._fail_pending_requests(
@@ -367,6 +368,18 @@ class VTubeStudioClient:
         for future in pending_requests:
             if not future.done():
                 future.set_exception(error)
+
+    def _handle_connection_lost(self, error: Exception) -> None:
+        """连接意外断开时的统一清理：置空连接并让全部挂起请求失败。
+
+        send_request 与 _reader_loop 检测到连接关闭时都走此入口，避免出现
+        「连接已置空但其余挂起请求仍悬空」的半关闭中间态。同步实现，便于在
+        send_request 的 _lock 临界区内直接调用。reader_task 的取消仍由
+        disconnect() 负责——此处只清理连接与挂起请求两类状态。
+        """
+
+        self._connection = None
+        self._fail_pending_requests(error)
 
     def _parse_response(
         self,
