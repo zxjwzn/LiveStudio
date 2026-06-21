@@ -79,11 +79,6 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         )
         await asyncio.sleep(self.config.update_interval)
 
-    async def execute(self, **kwargs: object) -> None:
-        """idle 控制器不执行一次性动画"""
-
-        _ = kwargs
-
     async def stop(self) -> None:
         await super().stop()
         self._release_subscription()
@@ -131,7 +126,6 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
                     duration=duration,
                     easing=Easing.linear,
                     priority=self.config.priority,
-                    keep_alive=True,
                 ),
             ],
         )

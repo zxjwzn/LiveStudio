@@ -22,7 +22,23 @@ ConfigFormat = Literal["json", "yaml"]
 
 
 class ConfigManager(Generic[ConfigT]):
-    """管理配置快照；文件不存在时创建默认配置，文件存在时严格读取。"""
+    """管理配置快照，全项目唯一的配置读写契约。
+
+    契约（不可协商，所有 config 都按此理解）：
+
+    1. **文件即全部**：文件存在时，``load()`` 严格 ``model_validate`` 整份文件并
+       替换内存快照，``default_config`` 被完全丢弃。**不做任何字段级合并**——
+       文件里没有的字段只回落到 pydantic 模型自带的字段默认，不会从
+       ``default_config`` 补字段。
+    2. **默认仅用于首次创建**：文件不存在且 ``auto_create`` 为真时，用
+       ``default_config or model_type()`` 落盘一次作为种子；此后该种子不再参与加载。
+    3. **保存即快照**：``save()`` 把当前内存快照 ``model_dump`` 落盘，不读旧文件、
+       不合并。
+
+    推论：seed-once 内容（用户可增删的集合、平台相关默认）只能通过
+    ``default_config`` 在首次创建时种入；运行时探测到的瞬态不应写进快照，
+    否则会污染"用户意图"这一定位。详见 docs/config-framework-redesign.md。
+    """
 
     def __init__(
         self,

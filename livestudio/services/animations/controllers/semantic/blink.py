@@ -30,7 +30,7 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
                     action_parameter_name=SemanticAction.EYE_OPEN,
                     end_value=0.0,
                     duration=self.config.close_duration,
-                    easing=Easing.in_sine,
+                    easing=Easing.out_sine,
                     priority=10,
                 ),
             ],

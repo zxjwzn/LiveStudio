@@ -350,9 +350,9 @@ async def test_tween_interpolation_is_monotonic_for_linear() -> None:
     values = [state.value for _, states in sender.calls for state in states if state.name == "Mono"]
     assert len(values) >= 2, "应该至少有两次发送"
     for i in range(1, len(values)):
-        assert (
-            values[i] >= values[i - 1] - 1e-9
-        ), f"线性缓动应单调递增: values[{i - 1}]={values[i - 1]}, values[{i}]={values[i]}"
+        assert values[i] >= values[i - 1] - 1e-9, (
+            f"线性缓动应单调递增: values[{i - 1}]={values[i - 1]}, values[{i}]={values[i]}"
+        )
 
 
 # ── delay ────────────────────────────────────────────────────────────
