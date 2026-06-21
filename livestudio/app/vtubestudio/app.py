@@ -231,55 +231,34 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
 
         runtime = self.animation_manager.get_runtime(self.platform.name)
         current_controllers = runtime.controllers
+        ctrls = config.controllers
+
+        # (key, 当前配置对象, 新建工厂)：复用判定与构造统一描述。新增控制器只加一行，
+        # 复用判定（配置对象未变则沿用现有 controller）只剩一份，不会在多段分支间漂移。
+        specs: list[tuple[str, Any, Callable[[], AnimationController[Any]]]] = [
+            ("blink", ctrls.blink, lambda: BlinkController(runtime, "blink", ctrls.blink)),
+            ("breathing", ctrls.breathing, lambda: BreathingController(runtime, "breathing", ctrls.breathing)),
+            ("body_swing", ctrls.body_swing, lambda: BodySwingController(runtime, "body_swing", ctrls.body_swing)),
+            (
+                "mouth_expression",
+                ctrls.mouth_expression,
+                lambda: MouthExpressionController(runtime, "mouth_expression", ctrls.mouth_expression),
+            ),
+            (
+                "mouth_sync",
+                ctrls.mouth_sync,
+                lambda: MouthSyncController(runtime, "mouth_sync", ctrls.mouth_sync, self.audio_stream),
+            ),
+        ]
+
         controllers: list[AnimationController[Any]] = []
+        for key, cfg, factory in specs:
+            existing = current_controllers.get(key)
+            controllers.append(existing if existing is not None and existing.config is cfg else factory())
 
-        # 眨眼控制器
-        if (current := current_controllers.get("blink")) is not None and current.config is config.controllers.blink:
-            controllers.append(current)
-        else:
-            controllers.append(BlinkController(runtime, "blink", config.controllers.blink))
-
-        # 呼吸控制器
-        if (current := current_controllers.get("breathing")) is not None and current.config is config.controllers.breathing:
-            controllers.append(current)
-        else:
-            controllers.append(BreathingController(runtime, "breathing", config.controllers.breathing))
-
-        # 身体摇摆控制器
-        if (current := current_controllers.get("body_swing")) is not None and current.config is config.controllers.body_swing:
-            controllers.append(current)
-        else:
-            controllers.append(BodySwingController(runtime, "body_swing", config.controllers.body_swing))
-
-        # 嘴部表情控制器
-        if (
-            current := current_controllers.get("mouth_expression")
-        ) is not None and current.config is config.controllers.mouth_expression:
-            controllers.append(current)
-        else:
-            controllers.append(MouthExpressionController(runtime, "mouth_expression", config.controllers.mouth_expression))
-
-        # 嘴部同步控制器（需要额外的 audio_stream）
-        if (current := current_controllers.get("mouth_sync")) is not None and current.config is config.controllers.mouth_sync:
-            controllers.append(current)
-        else:
-            controllers.append(
-                MouthSyncController(
-                    runtime,
-                    "mouth_sync",
-                    config.controllers.mouth_sync,
-                    self.audio_stream,
-                )
-            )
-
-        # 表情解算控制器（一次性，需要额外的 expression_profile）
+        # 表情解算控制器（一次性，额外依赖 expression_profile，单列于表外）
         controllers.append(
-            ExpressionController(
-                runtime,
-                "expression",
-                config.controllers.expression,
-                config.expression_profile,
-            )
+            ExpressionController(runtime, "expression", ctrls.expression, config.expression_profile)
         )
 
         await runtime.reload_controllers(controllers)

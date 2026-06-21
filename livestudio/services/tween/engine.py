@@ -296,17 +296,18 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
             if not self._try_acquire(current_task, request, context="即时设置"):
                 return
 
-            self._controlled_params[request.parameter_name] = ControlledParameterState(
+            state = ControlledParameterState(
                 name=request.parameter_name,
                 value=request.end_value,
                 mode=request.mode,
                 keep_alive=request.keep_alive,
             )
+            self._controlled_params[request.parameter_name] = state
 
         try:
-            await self._send_parameter_values(
-                [self._controlled_params[request.parameter_name]],
-            )
+            # 复用锁内绑定的 state 引用下发，避免锁外按键二次读字典——
+            # 期间锁已释放，并发 cancel(release=True) 可能 pop 掉该键导致 KeyError。
+            await self._send_parameter_values([state])
         finally:
             async with self._lock:
                 self._release_active(current_task, request.parameter_name)

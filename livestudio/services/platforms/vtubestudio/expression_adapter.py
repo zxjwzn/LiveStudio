@@ -82,16 +82,19 @@ class VTSExpressionAdapter:
         to_deactivate = self._active_files - wanted_files
         to_activate = wanted_files - self._active_files
 
+        # 逐项更新内部激活集：成功停用即 discard、成功激活即 add。
+        # 若某次 _set_active 抛异常中断循环，内部记录仍与 VTS 实际状态一致，
+        # 下次 diff 不会算错（整体赋值 self._active_files = wanted_files 在异常时会漂移）。
         for expression_file in sorted(to_deactivate):
             await self._set_active(
                 client, expression_file, active=False, fade_time=fade_time
             )
+            self._active_files.discard(expression_file)
         for expression_file in sorted(to_activate):
             await self._set_active(
                 client, expression_file, active=True, fade_time=fade_time
             )
-
-        self._active_files = wanted_files
+            self._active_files.add(expression_file)
 
     async def _set_active(
         self,

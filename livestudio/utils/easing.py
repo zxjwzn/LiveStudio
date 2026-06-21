@@ -6,6 +6,16 @@ from collections.abc import Callable
 EasingFunction = Callable[[float], float]
 
 _HALF_PI = math.pi / 2
+# 回退（back）缓动标准系数：c1 控制回退幅度，c3=c1+1，c2 为 in_out 版本的放大系数
+_BACK_C1 = 1.70158
+_BACK_C2 = _BACK_C1 * 1.525
+_BACK_C3 = _BACK_C1 + 1
+# 弹性（elastic）缓动标准角频率：c4 用于单边，c5 用于 in_out
+_ELASTIC_C4 = (2 * math.pi) / 3
+_ELASTIC_C5 = (2 * math.pi) / 4.5
+# 弹跳（bounce）缓动标准分段系数
+_BOUNCE_N1 = 7.5625
+_BOUNCE_D1 = 2.75
 
 
 class Easing:
@@ -111,20 +121,28 @@ class Easing:
 
     @staticmethod
     def in_expo(t: float) -> float:
-        """指数缓入函数，开始几乎静止"""
-        return (pow(2, 8 * t) - 1) / 255
+        """指数缓入函数，开始几乎静止（easings.net 标准 2^(10(t-1))）"""
+        if t <= 0.0:
+            return 0.0
+        return pow(2, 10 * (t - 1))
 
     @staticmethod
     def out_expo(t: float) -> float:
-        """指数缓出函数，快速减速到静止"""
-        return 1 - pow(2, -8 * t)
+        """指数缓出函数，快速减速到静止（easings.net 标准 1-2^(-10t)）"""
+        if t >= 1.0:
+            return 1.0
+        return 1 - pow(2, -10 * t)
 
     @staticmethod
     def in_out_expo(t: float) -> float:
-        """指数缓入缓出函数，两端极慢中间极快"""
+        """指数缓入缓出函数，两端极慢中间极快（easings.net 标准）"""
+        if t <= 0.0:
+            return 0.0
+        if t >= 1.0:
+            return 1.0
         if t < 0.5:
-            return (pow(2, 16 * t) - 1) / 510
-        return 1 - 0.5 * pow(2, -16 * (t - 0.5))
+            return pow(2, 20 * t - 10) / 2
+        return (2 - pow(2, -20 * t + 10)) / 2
 
     @staticmethod
     def in_circ(t: float) -> float:
@@ -147,94 +165,82 @@ class Easing:
 
     @staticmethod
     def in_back(t: float) -> float:
-        """回退缓入函数，先回退一点再前进"""
-        return t * t * (2.70158 * t - 1.70158)
+        """回退缓入函数，先回退一点再前进（easings.net 标准）"""
+        return _BACK_C3 * t * t * t - _BACK_C1 * t * t
 
     @staticmethod
     def out_back(t: float) -> float:
-        """回退缓出函数，超过终点一点再回退"""
+        """回退缓出函数，超过终点一点再回退（easings.net 标准）"""
         t -= 1
-        return 1 + t * t * (2.70158 * t + 1.70158)
+        return 1 + _BACK_C3 * t * t * t + _BACK_C1 * t * t
 
     @staticmethod
     def in_out_back(t: float) -> float:
-        """回退缓入缓出函数，两端都有回退效果"""
+        """回退缓入缓出函数，两端都有回退效果（easings.net 标准）"""
         if t < 0.5:
-            return t * t * (7 * t - 2.5) * 2
-        t -= 1
-        return 1 + t * t * 2 * (7 * t + 2.5)
+            return (pow(2 * t, 2) * ((_BACK_C2 + 1) * 2 * t - _BACK_C2)) / 2
+        return (pow(2 * t - 2, 2) * ((_BACK_C2 + 1) * (2 * t - 2) + _BACK_C2) + 2) / 2
 
     @staticmethod
     def in_elastic(t: float) -> float:
-        """弹性缓入函数，像橡皮筋一样来回震荡"""
-        t2 = t * t
-        return t2 * t2 * math.sin(t * math.pi * 4.5)
+        """弹性缓入函数，像橡皮筋一样来回震荡（easings.net 标准）"""
+        if t == 0:
+            return 0.0
+        if t == 1:
+            return 1.0
+        return -pow(2, 10 * t - 10) * math.sin((t * 10 - 10.75) * _ELASTIC_C4)
 
     @staticmethod
     def out_elastic(t: float) -> float:
-        """弹性缓出函数，结束时有弹性震荡效果"""
-        t2 = (t - 1) * (t - 1)
-        return 1 - t2 * t2 * math.cos(t * math.pi * 4.5)
+        """弹性缓出函数，结束时有弹性震荡效果（easings.net 标准）"""
+        if t == 0:
+            return 0.0
+        if t == 1:
+            return 1.0
+        return pow(2, -10 * t) * math.sin((t * 10 - 0.75) * _ELASTIC_C4) + 1
 
     @staticmethod
     def in_out_elastic(t: float) -> float:
-        """弹性缓入缓出函数，两端都有弹性效果"""
-        if t < 0.45:
-            t2 = t * t
-            return 8 * t2 * t2 * math.sin(t * math.pi * 9)
-        if t < 0.55:
-            return 0.5 + 0.75 * math.sin(t * math.pi * 4)
-        t2 = (t - 1) * (t - 1)
-        return 1 - 8 * t2 * t2 * math.sin(t * math.pi * 9)
-
-    @staticmethod
-    def in_bounce(t: float) -> float:
-        """弹跳缓入函数，像球落地一样弹跳效果"""
-        return pow(2, 6 * (t - 1)) * abs(math.sin(t * math.pi * 3.5))
+        """弹性缓入缓出函数，两端都有弹性效果（easings.net 标准）"""
+        if t == 0:
+            return 0.0
+        if t == 1:
+            return 1.0
+        if t < 0.5:
+            return -(pow(2, 20 * t - 10) * math.sin((20 * t - 11.125) * _ELASTIC_C5)) / 2
+        return (pow(2, -20 * t + 10) * math.sin((20 * t - 11.125) * _ELASTIC_C5)) / 2 + 1
 
     @staticmethod
     def out_bounce(t: float) -> float:
-        """弹跳缓出函数，结束时有多次弹跳"""
-        return 1 - pow(2, -6 * t) * abs(math.cos(t * math.pi * 3.5))
+        """弹跳缓出函数，结束时有多次弹跳（easings.net 标准分段实现）"""
+        if t < 1 / _BOUNCE_D1:
+            return _BOUNCE_N1 * t * t
+        if t < 2 / _BOUNCE_D1:
+            t -= 1.5 / _BOUNCE_D1
+            return _BOUNCE_N1 * t * t + 0.75
+        if t < 2.5 / _BOUNCE_D1:
+            t -= 2.25 / _BOUNCE_D1
+            return _BOUNCE_N1 * t * t + 0.9375
+        t -= 2.625 / _BOUNCE_D1
+        return _BOUNCE_N1 * t * t + 0.984375
+
+    @staticmethod
+    def in_bounce(t: float) -> float:
+        """弹跳缓入函数，像球落地一样弹跳效果（easings.net 标准：out_bounce 镜像）"""
+        return 1 - Easing.out_bounce(1 - t)
 
     @staticmethod
     def in_out_bounce(t: float) -> float:
-        """弹跳缓入缓出函数，两端都有弹跳效果"""
+        """弹跳缓入缓出函数，两端都有弹跳效果（easings.net 标准）"""
         if t < 0.5:
-            return 8 * pow(2, 8 * (t - 1)) * abs(math.sin(t * math.pi * 7))
-        return 1 - 8 * pow(2, -8 * t) * abs(math.sin(t * math.pi * 7))
+            return (1 - Easing.out_bounce(1 - 2 * t)) / 2
+        return (1 + Easing.out_bounce(2 * t - 1)) / 2
 
 
+# 自省 Easing 类的全部 staticmethod 自动构建注册表，避免手抄 30+ 行映射、
+# 新增缓动函数时漏登记（单一事实源：在 Easing 里加一个 @staticmethod 即自动注册）。
 EASING_REGISTRY: dict[str, EasingFunction] = {
-    "linear": Easing.linear,
-    "in_sine": Easing.in_sine,
-    "out_sine": Easing.out_sine,
-    "in_out_sine": Easing.in_out_sine,
-    "in_quad": Easing.in_quad,
-    "out_quad": Easing.out_quad,
-    "in_out_quad": Easing.in_out_quad,
-    "in_cubic": Easing.in_cubic,
-    "out_cubic": Easing.out_cubic,
-    "in_out_cubic": Easing.in_out_cubic,
-    "in_quart": Easing.in_quart,
-    "out_quart": Easing.out_quart,
-    "in_out_quart": Easing.in_out_quart,
-    "in_quint": Easing.in_quint,
-    "out_quint": Easing.out_quint,
-    "in_out_quint": Easing.in_out_quint,
-    "in_expo": Easing.in_expo,
-    "out_expo": Easing.out_expo,
-    "in_out_expo": Easing.in_out_expo,
-    "in_circ": Easing.in_circ,
-    "out_circ": Easing.out_circ,
-    "in_out_circ": Easing.in_out_circ,
-    "in_back": Easing.in_back,
-    "out_back": Easing.out_back,
-    "in_out_back": Easing.in_out_back,
-    "in_elastic": Easing.in_elastic,
-    "out_elastic": Easing.out_elastic,
-    "in_out_elastic": Easing.in_out_elastic,
-    "in_bounce": Easing.in_bounce,
-    "out_bounce": Easing.out_bounce,
-    "in_out_bounce": Easing.in_out_bounce,
+    name: member.__func__
+    for name, member in vars(Easing).items()
+    if isinstance(member, staticmethod)
 }

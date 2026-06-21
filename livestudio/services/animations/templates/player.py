@@ -78,7 +78,11 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
         operator = self._binary_operators.get(type(node.op))
         if operator is None:
             raise TemplateEvaluationError(f"不支持的二元运算: {type(node.op).__name__}")
-        return operator(self.visit(node.left), self.visit(node.right))
+        try:
+            return operator(self.visit(node.left), self.visit(node.right))
+        except ArithmeticError as exc:
+            # 除零/取模零等算术错误应收敛到统一的求值异常边界，不向外穿透
+            raise TemplateEvaluationError(f"表达式算术错误: {exc}") from exc
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> TemplateScalar:
         operator = self._unary_operators.get(type(node.op))
@@ -129,7 +133,9 @@ class AnimationTemplatePlayer:
 
     @property
     def templates(self) -> dict[str, AnimationTemplate]:
-        return self._templates
+        # 返回浅拷贝，与 manager.runtimes / runtime.controllers 等只读快照风格一致，
+        # 避免外部就地篡改内部 _templates。
+        return dict(self._templates)
 
     def list_loaded_templates(self) -> list[LoadedTemplateInfo]:
         """返回当前已加载模板摘要"""

@@ -46,13 +46,19 @@ def resource_path(*parts: str | os.PathLike[str]) -> Path:
 
 
 def resolve_config_path(path: str | os.PathLike[str]) -> Path:
-    """把配置路径整理成稳定可用的路径"""
+    """把配置路径整理成稳定可用的路径
+
+    绝对路径为有意设计，原样返回；相对路径解析后必须落在 CONFIG_DIR 内，
+    拒绝 ``..`` 穿越逃出配置目录（防越权读写）。
+    """
 
     candidate = Path(path).expanduser()
     if candidate.is_absolute():
         return candidate
 
-    if candidate.parts[:1] == ("configs",):
-        return CONFIG_DIR.joinpath(*candidate.parts[1:])
+    resolved = CONFIG_DIR.joinpath(*candidate.parts[1:]) if candidate.parts[:1] == ("configs",) else CONFIG_DIR / candidate
 
-    return CONFIG_DIR / candidate
+    base = CONFIG_DIR.resolve()
+    if not resolved.resolve().is_relative_to(base):
+        raise ValueError(f"配置路径越界，拒绝访问 configs 之外: {path}")
+    return resolved

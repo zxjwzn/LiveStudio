@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 from collections.abc import Iterable
-from typing import Literal
+from typing import Literal, TypeVar
 
 from livestudio.clients.vtube_studio.client import EventHandler as ListenerHandler
 from livestudio.clients.vtube_studio.client import VTubeStudioClient
@@ -42,6 +42,19 @@ from livestudio.utils.paths import config_path
 
 from .config import VTubeStudioModelConfig
 from .expression_adapter import VTSExpressionAdapter
+
+_RequiredT = TypeVar("_RequiredT")
+
+
+def _require(value: _RequiredT | None, message: str) -> _RequiredT:
+    """断言依赖已就绪：为 None 时抛出统一的 RuntimeError，否则原样返回。
+
+    收敛各属性「未初始化则抛错」的重复守卫，集中错误消息、统一风格。
+    """
+
+    if value is None:
+        raise RuntimeError(message)
+    return value
 
 
 class VTubeStudio(PlatformService):
@@ -93,38 +106,34 @@ class VTubeStudio(PlatformService):
     def model_config(self) -> VTubeStudioModelConfig:
         """返回当前模型配置快照"""
 
-        if self._model_config_service is None or self._model_config_service.config is None:
-            raise RuntimeError("当前没有已加载的模型配置")
-        return self._model_config_service.config
+        service = _require(self._model_config_service, "当前没有已加载的模型配置")
+        return _require(service.config, "当前没有已加载的模型配置")
 
     @property
     def model_config_manager(self) -> ConfigManager[VTubeStudioModelConfig]:
         """返回当前模型配置管理器实例"""
 
-        if self._model_config_service is None or self._model_config_service.manager is None:
-            raise RuntimeError("当前没有已加载的模型配置")
-        return self._model_config_service.manager
+        service = _require(self._model_config_service, "当前没有已加载的模型配置")
+        return _require(service.manager, "当前没有已加载的模型配置")
 
     @property
     def current_model(self) -> PlatformModelIdentity:
         """返回当前平台已加载模型身份"""
-        if self._model_config_service is None or self._model_config_service.identity is None:
-            raise RuntimeError("当前没有已加载的模型")
-        return self._model_config_service.identity
+
+        service = _require(self._model_config_service, "当前没有已加载的模型")
+        return _require(service.identity, "当前没有已加载的模型")
 
     @property
     def client(self) -> VTubeStudioClient:
         """返回已初始化的底层客户端"""
-        if self._client is None:
-            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
-        return self._client
+
+        return _require(self._client, "VTubeStudio 尚未初始化，请先调用 initialize()")
 
     @property
     def discovery(self) -> VTubeStudioDiscovery:
         """返回已经准备好的自动发现对象"""
-        if self._discovery is None:
-            raise RuntimeError("VTubeStudio 尚未初始化，请先调用 initialize()")
-        return self._discovery
+
+        return _require(self._discovery, "VTubeStudio 尚未初始化，请先调用 initialize()")
 
     async def _do_initialize(self) -> None:
         """加载配置并创建内部依赖（幂等与标志维护由 Mixin 负责）"""
@@ -144,8 +153,7 @@ class VTubeStudio(PlatformService):
         """停止服务并按需保存配置（唯一真正的退出：释放依赖、断开连接）"""
 
         await self.tween.stop()
-        if self._client is not None:
-            await self._client.disconnect()
+        await self._safe_disconnect()
         await self.config_manager.save()
         if self._model_config_service is not None:
             await self._model_config_service.save()
@@ -164,8 +172,7 @@ class VTubeStudio(PlatformService):
         """
 
         await self.tween.stop()
-        if self._client is not None:
-            await self._client.disconnect()
+        await self._safe_disconnect()
         await self.connect()
         await self.authenticate()
         await self.tween.start()
@@ -198,15 +205,12 @@ class VTubeStudio(PlatformService):
             except VTubeStudioConnectionError as exc:
                 logger.warning(f"连接 VTube Studio 失败: {exc}，{retry_delay:.1f}秒后重试...")
                 # 认证阶段失败时连接可能已建立，重试前先断开，避免每轮泄漏一条 websocket
-                if self._client is not None:
-                    with contextlib.suppress(Exception):
-                        await self._client.disconnect()
+                await self._safe_disconnect()
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * backoff_factor, max_delay)
             except Exception:
                 await self.tween.stop()
-                if self._client is not None:
-                    await self._client.disconnect()
+                await self._safe_disconnect()
                 raise
             else:
                 return
@@ -276,6 +280,17 @@ class VTubeStudio(PlatformService):
             return
 
         model_config.parameter_specs = specs
+
+    async def _safe_disconnect(self) -> None:
+        """断开底层客户端连接（若已建立），吞掉断连自身异常。
+
+        连接尚未建立或断连过程出错都不应阻断调用方的停机/重试流程，故统一在此
+        收敛 ``if self._client is not None`` 判定与异常抑制。
+        """
+
+        if self._client is not None:
+            with contextlib.suppress(Exception):
+                await self._client.disconnect()
 
     async def connect(self) -> None:
         """连接到 VTube Studio"""

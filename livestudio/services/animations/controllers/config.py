@@ -26,6 +26,12 @@ class BlinkControllerSettings(ControllerSettings):
     open_duration: float = Field(default=0.3, ge=0, description="睁眼动画持续时间")
     closed_hold: float = Field(default=0.05, ge=0, description="眼睛闭合状态保持时间")
 
+    @model_validator(mode="after")
+    def validate_blink_range(self) -> "BlinkControllerSettings":
+        if self.max_interval < self.min_interval:
+            raise ValueError("max_interval 不能小于 min_interval")
+        return self
+
 
 class BreathingControllerSettings(ControllerSettings):
     """呼吸控制器配置"""

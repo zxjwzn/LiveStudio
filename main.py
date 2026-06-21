@@ -11,7 +11,7 @@ from livestudio.utils.log import StatusLine, logger
 
 
 def _format_level_bar(level: float, *, width: int = 24) -> str:
-    """将 $[0, 1]$ 区间的电平值格式化为文本条"""
+    """将区间 [0, 1] 的电平值格式化为文本条"""
 
     clamped_level = max(0.0, min(1.0, level))
     filled = round(clamped_level * width)
@@ -33,7 +33,13 @@ async def monitor_audio_stream(audio_stream: AudioStreamRouter) -> None:
     subscription = audio_stream.subscribe(queue_maxsize=8)
     try:
         while True:
-            chunk = await asyncio.wait_for(subscription.queue.get(), timeout=5.0)
+            try:
+                chunk = await asyncio.wait_for(subscription.queue.get(), timeout=5.0)
+            except TimeoutError:
+                # 5 秒未收到音频块通常意味着流停滞/设备中断，刷新「无信号」后继续
+                # 监听，而非冒泡终止整个监听任务——退出仅由外层取消机制控制。
+                status_line.update(f"[AUDIO:{audio_stream.active_source_kind}] 无信号（等待音频块）…")
+                continue
             rms, peak = chunk.analysis.rms, chunk.analysis.peak
             status_line.update(
                 f"[AUDIO:{audio_stream.active_source_kind}] "

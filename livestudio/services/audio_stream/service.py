@@ -37,6 +37,7 @@ class AudioStreamRouter(AudioStreamSource):
         self._active_source_kind: AudioSourceKind | None = None
         self._source_subscription: AudioChunkSubscription | None = None
         self._forward_task: asyncio.Task[None] | None = None
+        self._shutdown_task: asyncio.Task[None] | None = None
 
     @property
     def config(self) -> AudioStreamRouterConfig:
@@ -205,7 +206,18 @@ class AudioStreamRouter(AudioStreamSource):
             logger.exception("音频流路由器转发任务异常，触发停机以回收资源")
             # 在独立任务里停机：stop() 会 cancel 本转发任务并 await，
             # 若在此直接 await self.stop() 会变成任务等待取消自身而死锁。
-            asyncio.get_running_loop().create_task(self.stop())
+            # 持有引用避免任务被 GC 回收，并通过回调记录 stop() 自身异常。
+            self._shutdown_task = asyncio.get_running_loop().create_task(self.stop())
+            self._shutdown_task.add_done_callback(self._on_shutdown_done)
+
+    def _on_shutdown_done(self, task: asyncio.Task[None]) -> None:
+        """转发任务触发的自动停机完成回调：清理句柄并记录失败。"""
+
+        self._shutdown_task = None
+        if task.cancelled():
+            return
+        if (exc := task.exception()) is not None:
+            logger.error("音频流路由器自动停机失败: {}", exc)
 
     @staticmethod
     def _chunk_analysis(chunk: AudioChunk) -> None:

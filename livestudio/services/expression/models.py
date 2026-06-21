@@ -162,7 +162,7 @@ class ExpressionRequest:
 
 @dataclass(frozen=True, slots=True)
 class ResolvedSemanticTarget:
-    action: str
+    action: SemanticAction  # 透传所属 target 的语义动作枚举
     value: float  # 已采样，直接用作 end_value
     easing: str = "out_cubic"  # 来自所属 AU
 

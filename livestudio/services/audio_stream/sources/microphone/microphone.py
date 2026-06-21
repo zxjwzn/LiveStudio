@@ -8,7 +8,7 @@ from typing import TypeGuard
 import numpy as np
 import sounddevice as sd
 
-from livestudio.utils.log import StatusLine, logger
+from livestudio.utils.log import logger
 
 from ...base import AudioStreamSource
 from ...models import AudioChunk, AudioChunkMetadata
@@ -27,8 +27,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self._device_info: InputDeviceInfo | None = None
         # 实时回调里读的有效采样率快照，避免回调内访问可能抛错的属性
         self._samplerate: int | None = None
-        self._dropped_chunks = 0
-        self._drop_status_line = StatusLine()
 
     @property
     def device_info(self) -> InputDeviceInfo:
@@ -38,18 +36,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
             raise RuntimeError("麦克风音频源尚未初始化")
         return self._device_info
 
-    @property
-    def dropped_chunks(self) -> int:
-        """返回因队列已满被丢弃的音频块数量"""
-
-        return self._dropped_chunks
-
     async def _do_initialize(self) -> None:
         """加载配置并解析目标输入设备"""
 
         self._loop = asyncio.get_running_loop()
         self._device_info = await self._resolve_input_device()
-        self._dropped_chunks = 0
         self.config.device_name = self._device_info.name
         self.config.device_index = self._device_info.index
         logger.info(
@@ -88,7 +79,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         await self._close_stream()
         self._loop = asyncio.get_running_loop()
         self._device_info = await self._resolve_input_device()
-        self._dropped_chunks = 0
         self.config.device_name = self._device_info.name
         self.config.device_index = self._device_info.index
         await self._open_stream()
@@ -172,7 +162,6 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         stream = self._stream
         self._stream = None
         self._samplerate = None
-        self._drop_status_line.finish()
         if stream is not None:
             await asyncio.to_thread(stream.stop)
             await asyncio.to_thread(stream.close)
@@ -187,10 +176,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         self,
         indata: np.ndarray[
             tuple[int, int],
-            np.dtype[np.float32]
-            | np.dtype[np.int16]
-            | np.dtype[np.int32]
-            | np.dtype[np.uint8],
+            np.dtype[np.float32] | np.dtype[np.int16] | np.dtype[np.int32] | np.dtype[np.uint8],
         ],
         frames: int,
         time_info: SoundDeviceTimeInfo,
@@ -222,9 +208,16 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         except RuntimeError:
             # 典型为停流竞态：事件循环已关闭。静默丢弃当前块即可。
             return
+        except Exception:
+            # 构造/拷贝等非竞态异常：记录后丢弃本帧，避免逸出被 PortAudio 吞掉或中断流。
+            logger.exception("麦克风音频回调异常，已忽略本帧")
 
     def _push_chunk_nowait(self, chunk: AudioChunk) -> None:
-        self._publish_chunk(chunk)
+        # 运行在 loop 线程，不在回调 try 覆盖范围内，需自带兜底避免单块发布异常逸出事件循环。
+        try:
+            self._publish_chunk(chunk)
+        except Exception:
+            logger.exception("发布麦克风音频块失败，已跳过该块")
 
     async def _resolve_input_device(self) -> InputDeviceInfo:
         devices = await self.list_input_devices()

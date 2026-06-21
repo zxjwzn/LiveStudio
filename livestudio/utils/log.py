@@ -3,7 +3,7 @@
 import os
 import sys
 import weakref
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import RLock
 from typing import Final, TextIO
 
@@ -54,7 +54,11 @@ def _clear_status_line_unlocked(status_line: "StatusLine") -> None:
     _ACTIVE_STATUS_LINES.discard(status_line)
 
 
+_configured: bool = False
+
+
 def _install_log_sink(level: str) -> None:
+    global _configured
     _logger.remove()
     _logger.add(
         _log_sink,
@@ -65,9 +69,22 @@ def _install_log_sink(level: str) -> None:
         backtrace=False,
         diagnose=False,
     )
+    _configured = True
 
 
-_install_log_sink(_DEFAULT_LEVEL)
+def _ensure_configured() -> None:
+    """惰性装配日志 sink：仅在尚未配置时装一次，幂等。
+
+    替代「导入即无条件 _logger.remove() 抢占全局 sink」的硬副作用——重复 import
+    或测试反复触发都不会重复抢占；宿主或测试可通过 configure_logging() 显式重配。
+    """
+
+    if not _configured:
+        _install_log_sink(_DEFAULT_LEVEL)
+
+
+# 保留「import 即可用」的体验，但经幂等守卫，不再每次都抢占全局 sink
+_ensure_configured()
 
 logger = _logger.bind(app="livestudio")
 
@@ -76,7 +93,8 @@ logger = _logger.bind(app="livestudio")
 class StatusLine:
     """在同一终端行刷新状态文本"""
 
-    stream: TextIO = sys.stderr
+    # 用 default_factory 延迟到实例化时取 sys.stderr，支持运行期重定向 stderr 后新实例写新流
+    stream: TextIO = field(default_factory=lambda: sys.stderr)
     line_length: int = 0
 
     def update(self, message: str) -> None:

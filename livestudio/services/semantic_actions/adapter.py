@@ -52,9 +52,7 @@ class SemanticActionAdapter:
 
     async def apply(self, requests: Sequence[SemanticTweenRequest]) -> None:
         """把一批语义缓动请求转换为平台 TweenRequest 并下发给引擎"""
-        tween_requests: list[TweenRequest] = []
-        for req in requests:
-            tween_requests.extend(self._resolve_request(req))
+        tween_requests = self.to_tween_requests(requests)
         if tween_requests:
             await self._engine.tween(tween_requests)
 

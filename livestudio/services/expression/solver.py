@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from enum import Enum, auto
 
 from livestudio.services.semantic_actions.models import (
     FacialRegion,
@@ -26,6 +27,13 @@ from .models import (
     SelectedExpression,
     SemanticExpressionUnit,
 )
+
+
+class _ConflictResolution(Enum):
+    """冲突解决结果中「非替换」的两种语义，替代裸字符串 sentinel。"""
+
+    NONE = auto()  # 无冲突
+    DISCARD = auto()  # 冲突且候选应被丢弃
 
 
 class ExpressionSolver:
@@ -113,7 +121,7 @@ class ExpressionSolver:
 
             # 互斥冲突检查（显式规则 + 隐式 action 冲突）
             conflict = self._find_conflict(candidate, combo, occupied_actions, request.emotion)
-            if conflict == "discard":
+            if conflict is _ConflictResolution.DISCARD:
                 continue
             if isinstance(conflict, ScoredExpressionUnit):
                 combo.remove(conflict)
@@ -137,8 +145,8 @@ class ExpressionSolver:
         combo: list[ScoredExpressionUnit],
         occupied_actions: set[str],
         emotion: EmotionKind,
-    ) -> ScoredExpressionUnit | str | None:
-        """返回 None（无冲突）、被替换的 ScoredExpressionUnit、或 'discard'"""
+    ) -> ScoredExpressionUnit | _ConflictResolution:
+        """返回 _ConflictResolution.NONE（无冲突）、被替换的 ScoredExpressionUnit、或 _ConflictResolution.DISCARD"""
         # 1. 显式互斥规则
         for rule in self._rules:
             if not isinstance(rule, MutualExclusionRule):
@@ -161,12 +169,21 @@ class ExpressionSolver:
                     if {t.action for t in existing.unit.targets} & candidate_actions:
                         return self._resolve_conflict(candidate, existing)
 
-        return None
+        return _ConflictResolution.NONE
 
-    def _resolve_conflict(self, candidate: ScoredExpressionUnit, existing: ScoredExpressionUnit) -> ScoredExpressionUnit | str:
+    def _resolve_conflict(
+        self, candidate: ScoredExpressionUnit, existing: ScoredExpressionUnit
+    ) -> ScoredExpressionUnit | _ConflictResolution:
         if candidate.score > existing.score + 0.03:
             return existing  # 替换 existing
-        return "discard"
+        return _ConflictResolution.DISCARD
+
+    @staticmethod
+    def _binding_violated(rule: BindingRule, combo_ids: set[str]) -> bool:
+        """绑定规则是否被违反：组合命中了规则的部分单元但未覆盖全部（部分绑定即违反）。"""
+
+        present = combo_ids & rule.unit_ids
+        return bool(present) and present != rule.unit_ids
 
     def _binding_legal(self, combo_ids: set[str], emotion: EmotionKind) -> bool:
         for rule in self._rules:
@@ -176,8 +193,7 @@ class ExpressionSolver:
                 continue
             if rule.penalty != float("inf"):
                 continue  # 软惩罚在 combo_score 里处理，此处只检查强制绑定
-            present = combo_ids & rule.unit_ids
-            if present and present != rule.unit_ids:
+            if self._binding_violated(rule, combo_ids):
                 return False
         return True
 
@@ -206,10 +222,12 @@ class ExpressionSolver:
                 score += rule.value
             elif isinstance(rule, PenaltyRule) and rule.unit_ids <= combo_ids:
                 score -= rule.value
-            elif isinstance(rule, BindingRule) and rule.penalty != float("inf"):
-                present = combo_ids & rule.unit_ids
-                if present and present != rule.unit_ids:
-                    score -= rule.penalty
+            elif (
+                isinstance(rule, BindingRule)
+                and rule.penalty != float("inf")
+                and self._binding_violated(rule, combo_ids)
+            ):
+                score -= rule.penalty
         return score
 
     def _make_result(self, combo: list[ScoredExpressionUnit], request: ExpressionRequest) -> SelectedExpression:

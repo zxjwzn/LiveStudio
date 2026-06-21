@@ -30,7 +30,7 @@ class ExpressionHistory:
 
             emotion_match = 1.0 if candidate.emotion == hist.emotion else 0.0
             similarity = unit_jaccard * 0.65 + emotion_match * 0.35
-            recency_weight = 1.0 - (index / capacity)
+            recency_weight = max(0.0, 1.0 - (index / capacity))
             weighted = similarity * recency_weight
             if weighted > max_weighted:
                 max_weighted = weighted
@@ -44,8 +44,8 @@ class ExpressionHistory:
             self._queue.pop()
 
     def snapshot(self) -> list[ExpressionSignature]:
-        """返回当前状态快照（用于 preview 恢复）"""
-        return list(self._queue)
+        """返回当前状态快照（用于 preview 恢复），语义同 recent。"""
+        return self.recent()
 
     def restore(self, snapshot: list[ExpressionSignature]) -> None:
         self._queue = deque(snapshot)
