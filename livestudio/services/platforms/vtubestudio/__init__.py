@@ -3,6 +3,8 @@
 from .config import (
     VTubeStudioExpressionStateConfig,
     VTubeStudioModelConfig,
+)
+from .defaults import (
     default_vtube_studio_parameter_specs,
     default_vtube_studio_semantic_profile,
 )

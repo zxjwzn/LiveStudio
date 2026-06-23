@@ -22,8 +22,8 @@ import pytest
 from livestudio.services.animations.manager import AnimationManager
 from livestudio.services.audio_stream import (
     AudioSourceKind,
-    AudioStreamConfigFile,
     AudioStreamRouter,
+    AudioStreamRouterConfig,
 )
 from livestudio.services.audio_stream.base import AudioStreamSource
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
@@ -311,7 +311,7 @@ async def _noop() -> None:
 
 async def _make_router() -> tuple[AudioStreamRouter, _MinimalSource, _MinimalSource]:
     router = AudioStreamRouter()
-    config = AudioStreamConfigFile()
+    config = AudioStreamRouterConfig()
     router.config_manager = type(  # type: ignore[assignment]
         "_CM",
         (),

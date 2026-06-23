@@ -127,9 +127,12 @@ async def test_vtube_studio_restart_reconnects_without_destroying_deps() -> None
     await platform.stop()
 
 
-async def test_reload_model_config_refreshes_parameter_specs_from_vtube_studio(
+async def test_reload_model_config_keeps_configured_parameter_specs(
     tmp_path,
 ) -> None:
+    """已有参数范围（首次创建即由 create_default 种入的 VTS 默认）时，
+    平台探测结果不得覆盖：parameter_specs 完全以配置为准。
+    """
     platform = VTubeStudio()
     platform._initialized = True  # noqa: SLF001
     platform._client = cast(  # noqa: SLF001
@@ -140,7 +143,11 @@ async def test_reload_model_config_refreshes_parameter_specs_from_vtube_studio(
 
     model_config = await platform.reload_model_config("model-1", "avatar")
 
-    assert model_config.parameter_specs == [spec for spec in model_config.parameter_specs if spec.name == "MouthOpen"]
+    # create_default 已种入 VTS 默认参数范围，MouthOpen 为 0..1，
+    # 探测返回的 -2..2 不会覆盖它。
+    mouth_open = next(spec for spec in model_config.parameter_specs if spec.name == "MouthOpen")
+    assert mouth_open.minimum == 0.0
+    assert mouth_open.maximum == 1.0
     request = platform.semantic_adapter.to_tween_requests(  # type: ignore[union-attr]
         [
             SemanticTweenRequest(
@@ -151,7 +158,7 @@ async def test_reload_model_config_refreshes_parameter_specs_from_vtube_studio(
             )
         ]
     )[0]
-    assert request.end_value == 2.0
+    assert request.end_value == 1.0
 
 
 async def test_reload_model_config_keeps_defaults_when_vtube_studio_query_fails(

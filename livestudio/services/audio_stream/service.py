@@ -10,7 +10,7 @@ from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path
 
 from .base import AudioStreamSource
-from .config import AudioStreamConfigFile, AudioStreamRouterConfig
+from .config import AudioStreamRouterConfig
 from .models import (
     AudioChunk,
     AudioChunkSubscription,
@@ -28,7 +28,7 @@ class AudioStreamRouter(AudioStreamSource):
     ) -> None:
         super().__init__()
         self.config_manager = ConfigManager(
-            AudioStreamConfigFile,
+            AudioStreamRouterConfig,
             config_path("audio_stream.yaml"),
         )
         self._microphone_source: MicrophoneAudioStreamSource | None = None
@@ -41,7 +41,7 @@ class AudioStreamRouter(AudioStreamSource):
 
     @property
     def config(self) -> AudioStreamRouterConfig:
-        return self.config_manager.config.audio_stream
+        return self.config_manager.config
 
     @property
     def active_source_kind(self) -> AudioSourceKind:

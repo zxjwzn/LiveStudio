@@ -121,7 +121,7 @@ class VTubeStudioAdapter(PlatformAdapter):
 
         await self._cancel_connect_task()
         if endpoint:
-            self._write_endpoint(endpoint)
+            await self._write_endpoint(endpoint)
         self._connect_task = asyncio.create_task(self._connect_flow())
 
     async def disconnect(self) -> None:
@@ -285,11 +285,19 @@ class VTubeStudioAdapter(PlatformAdapter):
         except Exception:
             return ""
 
-    def _write_endpoint(self, endpoint: str) -> None:
-        """把新地址写回后端配置（下次连接生效）。"""
+    async def _write_endpoint(self, endpoint: str) -> None:
+        """把新地址暂存到后端配置并显式落盘（下次连接生效）。
 
-        with contextlib.suppress(Exception):
-            self._app.platform.config.ws_url = endpoint
+        走 ConfigManager.save() 持久化，而非裸 setattr——使 ws_url 与其它配置
+        遵循同一「显式动作即落盘」时机；写入/保存失败记日志而非静默吞掉。
+        """
+
+        try:
+            platform = self._app.platform
+            platform.config.ws_url = endpoint
+            await platform.config_manager.save()
+        except Exception as exc:
+            logger.warning("保存 VTube Studio 连接地址失败: {}", exc)
 
     async def _cancel_connect_task(self) -> None:
         task = self._connect_task

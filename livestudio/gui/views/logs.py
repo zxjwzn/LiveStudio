@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import flet as ft
 
 from ..core.base_view import BaseView
@@ -19,6 +21,13 @@ from ..core.view_models import LogEntryVM
 
 _LEVELS: tuple[str, ...] = ("ALL", "TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL")
 _LEVEL_PRIORITY: dict[str, int] = {name: i for i, name in enumerate(_LEVELS)}
+
+# 视图显示行数硬上限：state.logs 缓冲可达 2000 条，但一次性渲染上千个 flet
+# 控件会在事件循环线程内同步序列化推送，阻塞 drain/平台/音频等所有 async 任务。
+# 故视图只渲染最近 _VIEW_CAP 条，超出的旧行从 ListView 头部裁掉。
+_VIEW_CAP = 500
+# 过滤输入防抖：关键字逐字符触发全量重渲染开销大，合并到一次。
+_FILTER_DEBOUNCE_SECONDS = 0.25
 
 
 class LogsView(BaseView):
@@ -38,6 +47,9 @@ class LogsView(BaseView):
         # 之后的新行，避免每次 flush 全量重建整个 ListView；锚点被环形缓冲丢弃
         # 时回退到全量重建。过滤条件变化/清空/暂停恢复仍走全量 _render。
         self._rendered_anchor: LogEntryVM | None = None
+        # 过滤防抖：关键字逐字符输入会触发全量重渲染，用 epoch 计数器合并。每次
+        # 输入递增 epoch 并延迟调度，回调执行时若 epoch 已过期（有更新的输入）则跳过。
+        self._filter_epoch: int = 0
 
         # —— 工具栏控件 ——
         self._level_dropdown = ft.Dropdown(
@@ -143,6 +155,7 @@ class LogsView(BaseView):
         if not new_rows:
             return
         self._list.controls.extend(new_rows)
+        self._trim_controls()
         self._list.auto_scroll = self._auto_scroll
         self._body.content = self._list
         self.safe_update()
@@ -150,6 +163,10 @@ class LogsView(BaseView):
     def _render(self, entries: list[LogEntryVM]) -> None:
         visible = items_after_anchor(entries, self._clear_anchor)
         filtered = [entry for entry in visible if self._matches(entry)]
+        # 只渲染最近 _VIEW_CAP 条：上千行一次性建控件会阻塞事件循环。超出部分丢弃，
+        # 旧日志仍可在 state.logs 缓冲里（此处仅限制 UI 同时展示的行数）。
+        if len(filtered) > _VIEW_CAP:
+            filtered = filtered[-_VIEW_CAP:]
         # 始终重建列表内容：筛选后为空也要清掉旧行，否则切回列表时残留上次的行
         self._list.controls = [self._row(entry) for entry in filtered]
         self._list.auto_scroll = self._auto_scroll
@@ -157,6 +174,13 @@ class LogsView(BaseView):
         # 记录已渲染锚点，供后续增量追加判断起点
         self._rendered_anchor = entries[-1] if entries else None
         self.safe_update()
+
+    def _trim_controls(self) -> None:
+        """增量追加后裁剪列表头部，保持显示行数不超过 _VIEW_CAP。"""
+
+        overflow = len(self._list.controls) - _VIEW_CAP
+        if overflow > 0:
+            del self._list.controls[:overflow]
 
     # —— 过滤逻辑 ——
     def _matches(self, entry: LogEntryVM) -> bool:
@@ -176,7 +200,30 @@ class LogsView(BaseView):
 
     def _on_keyword_change(self, e: ft.ControlEvent) -> None:
         self._keyword = (e.control.value or "").strip()
-        self._render(self.state.logs.value)
+        self._schedule_filter_render()
+
+    def _schedule_filter_render(self) -> None:
+        """防抖：逐字符输入合并为一次重渲染。
+
+        有运行中事件循环时递增 epoch 并延迟调度，回调执行时若 epoch 已过期
+        （期间又有新输入）则跳过；无事件循环（如单元测试同步驱动）时直接同步渲染，
+        保证调用后立即可断言。
+        """
+
+        self._filter_epoch += 1
+        epoch = self._filter_epoch
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._render(self.state.logs.value)
+            return
+
+        async def _debounced() -> None:
+            await asyncio.sleep(_FILTER_DEBOUNCE_SECONDS)
+            if epoch == self._filter_epoch:
+                self._render(self.state.logs.value)
+
+        loop.create_task(_debounced())
 
     def _on_pause_click(self, _e: ft.ControlEvent) -> None:
         self._paused = not self._paused
@@ -208,12 +255,21 @@ class LogsView(BaseView):
 
     # —— 行渲染 ——
     def _row(self, entry: LogEntryVM) -> ft.Control:
-        return ft.Row(
-            [
-                ft.Text(entry.ts, size=TYPE.caption, color=PALETTE.text_muted, font_family="monospace"),
-                ft.Text(entry.level, size=TYPE.caption, weight=ft.FontWeight.W_600, color=level_color(entry.level), width=72),
-                ft.Text(entry.message, size=TYPE.caption, color=PALETTE.text, expand=True, selectable=True),
+        # 单个 Text + TextSpan：span 是数据而非控件，每行只占 1 个 flet 控件
+        # （旧实现为 1 Row + 3 Text = 4 控件，且 selectable=True 在 Flutter 侧
+        # 开销大）。500 行即 500 控件，大幅降低 update 的序列化/diff 成本。
+        return ft.Text(
+            size=TYPE.caption,
+            selectable=True,
+            spans=[
+                ft.TextSpan(
+                    f"{entry.ts}  ",
+                    ft.TextStyle(color=PALETTE.text_muted, font_family="monospace"),
+                ),
+                ft.TextSpan(
+                    f"{entry.level:<8} ",
+                    ft.TextStyle(color=level_color(entry.level), weight=ft.FontWeight.W_600),
+                ),
+                ft.TextSpan(entry.message, ft.TextStyle(color=PALETTE.text)),
             ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.START,
         )

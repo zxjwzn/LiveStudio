@@ -50,7 +50,7 @@ class ExpressionProfileConfig(BaseModel):
         return list(self.rules)
 
     @classmethod
-    def with_default_units(cls) -> "ExpressionProfileConfig":
+    def create_default(cls) -> "ExpressionProfileConfig":
         """构造带内置默认语义 AU 与规则的 profile（仅首次初始化配置文件时用）"""
         from .defaults import default_rules, default_semantic_units
 

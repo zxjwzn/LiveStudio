@@ -7,7 +7,7 @@ GUI 不复用后端 Pydantic 模型，统一在此定义只读 dataclass。
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Literal
 
@@ -217,4 +217,3 @@ class ModelConfigVM:
     model_name: str
     sections: tuple[ConfigSectionVM, ...] = ()
     dirty: bool = False  # 是否有未保存修改
-    raw: dict = field(default_factory=dict)  # 原始 dict，保存时回写兜底

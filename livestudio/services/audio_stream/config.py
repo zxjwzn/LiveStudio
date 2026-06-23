@@ -8,7 +8,7 @@ from .sources.tts.config import TTSAudioStreamConfig
 
 
 class AudioStreamRouterConfig(BaseModel):
-    """音频流路由配置"""
+    """音频流路由配置（即音频流配置文件的根模型，无额外包装层）"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -29,14 +29,4 @@ class AudioStreamRouterConfig(BaseModel):
     tts: TTSAudioStreamConfig = Field(
         default_factory=TTSAudioStreamConfig,
         description="TTS 音频流配置",
-    )
-
-
-class AudioStreamConfigFile(BaseModel):
-    """音频流独立配置文件"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    audio_stream: AudioStreamRouterConfig = Field(
-        default_factory=AudioStreamRouterConfig,
     )

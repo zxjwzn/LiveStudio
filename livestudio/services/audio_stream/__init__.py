@@ -1,7 +1,7 @@
 """通用音频流服务导出"""
 
 from .base import AudioStreamSource
-from .config import AudioStreamConfigFile, AudioStreamRouterConfig, TTSAudioStreamConfig
+from .config import AudioStreamRouterConfig, TTSAudioStreamConfig
 from .models import (
     AudioChunk,
     AudioChunkAnalysis,
@@ -25,7 +25,6 @@ __all__ = [
     "AudioChunkSubscription",
     "AudioPhonemeAnnotation",
     "AudioSourceKind",
-    "AudioStreamConfigFile",
     "AudioStreamRouter",
     "AudioStreamRouterConfig",
     "AudioStreamSource",

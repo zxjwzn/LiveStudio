@@ -16,6 +16,7 @@ from livestudio.services.expression import (
     default_rules,
     default_semantic_units,
 )
+from livestudio.services.platforms.model import PlatformModelIdentity
 from livestudio.services.platforms.vtubestudio import VTubeStudioModelConfig
 
 
@@ -47,8 +48,8 @@ def test_default_units_fresh_instances() -> None:
     assert a[0] is not b[0]
 
 
-def test_with_default_units_builds_solvable_profile() -> None:
-    profile = ExpressionProfileConfig.with_default_units()
+def test_create_default_builds_solvable_profile() -> None:
+    profile = ExpressionProfileConfig.create_default()
     assert profile.semantic_units
     assert profile.rules
     solver = _solver(profile)
@@ -65,25 +66,35 @@ def test_default_rules_reference_existing_units() -> None:
             assert uid in unit_ids, f"规则 {rule.id} 引用了不存在的 AU: {uid}"
 
 
-# ── init_defaults 种子机制 ────────────────────────────────────────────────────
+# ── create_default 种子机制 ────────────────────────────────────────────────────
 
 
-def test_init_defaults_seeds_expression_profile() -> None:
-    config = VTubeStudioModelConfig()
-    assert config.expression_profile.semantic_units == []
-    config.init_defaults()
+def test_create_default_seeds_expression_profile() -> None:
+    identity = PlatformModelIdentity(
+        platform_name="vtubestudio",
+        model_id="m1",
+        model_name="测试模型",
+    )
+    config = VTubeStudioModelConfig.create_default(identity)
     assert config.expression_profile.semantic_units
     assert config.expression_profile.rules
     # VTS 子类的语义 profile / 参数也应保留
     assert config.semantic_profile.bindings
     assert config.parameter_specs
+    # 空构造仍是空的（seed-once 内容只经 create_default 注入）
+    assert VTubeStudioModelConfig().expression_profile.semantic_units == []
 
 
 async def test_first_load_writes_defaults(tmp_path: Path) -> None:
     """配置文件不存在时，首次加载写入默认 AU"""
     config_path = tmp_path / "new_model.yaml"
-    default_config = VTubeStudioModelConfig()
-    default_config.init_defaults()
+    default_config = VTubeStudioModelConfig.create_default(
+        PlatformModelIdentity(
+            platform_name="vtubestudio",
+            model_id="m1",
+            model_name="测试模型",
+        )
+    )
     manager = ConfigManager(
         VTubeStudioModelConfig,
         config_path,
@@ -125,8 +136,13 @@ async def test_existing_file_not_overwritten_by_defaults(tmp_path: Path) -> None
         encoding="utf-8",
     )
 
-    default_config = VTubeStudioModelConfig()
-    default_config.init_defaults()
+    default_config = VTubeStudioModelConfig.create_default(
+        PlatformModelIdentity(
+            platform_name="vtubestudio",
+            model_id="m1",
+            model_name="测试模型",
+        )
+    )
     manager = ConfigManager(
         VTubeStudioModelConfig,
         config_path,
@@ -141,7 +157,7 @@ async def test_existing_file_not_overwritten_by_defaults(tmp_path: Path) -> None
 
 
 def test_default_brow_mutual_exclusion() -> None:
-    profile = ExpressionProfileConfig.with_default_units()
+    profile = ExpressionProfileConfig.create_default()
     solver = _solver(profile)
     brow_units = {"挑眉", "皱眉", "垂眉", "蹙眉", "自然眉"}
     for emotion in EmotionKind:

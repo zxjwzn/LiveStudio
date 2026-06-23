@@ -1,5 +1,7 @@
 """平台服务运行时模型"""
 
+from typing import Self
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.services.animations.controllers import AnimationControllerSettingsConfig
@@ -47,15 +49,19 @@ class PlatformModelConfig(BaseModel):
     )
     expression_profile: ExpressionProfileConfig = Field(
         default_factory=ExpressionProfileConfig,
-        description="情绪驱动的表情解算配置（AU、规则、运行时参数）",
+        description="情绪驱动的表情解算配置（AU、规则、运行时参数）；seed-once（语义 B），文件存在后完全以文件为准",
     )
 
-    def init_defaults(self) -> None:
-        """初始化该平台模型配置的默认内容。
+    @classmethod
+    def create_default(cls, identity: PlatformModelIdentity) -> Self:
+        """构造一份完整的默认模型配置（仅在配置文件首次生成时用）。
 
-        仅在配置文件首次生成时调用。这里写入平台无关的内置表情 AU 与规则，
-        作为用户后续微调的起点；配置文件存在后加载完全以文件为准。
-        子类覆盖时应调用 super().init_defaults() 以保留默认表情。
+        这里写入平台无关的内置表情 AU 与规则，作为用户后续微调的起点；
+        配置文件存在后加载完全以文件为准。子类覆盖时应基于本方法的结果再
+        填充平台相关默认（见 VTubeStudioModelConfig.create_default）。
         """
 
-        self.expression_profile = ExpressionProfileConfig.with_default_units()
+        return cls(
+            model=identity,
+            expression_profile=ExpressionProfileConfig.create_default(),
+        )

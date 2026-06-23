@@ -17,8 +17,8 @@ from livestudio.config import ConfigManager
 from livestudio.services.audio_stream import (
     AudioChunk,
     AudioSourceKind,
-    AudioStreamConfigFile,
     AudioStreamRouter,
+    AudioStreamRouterConfig,
     AudioStreamSource,
 )
 from livestudio.services.audio_stream.sources.microphone import (
@@ -156,12 +156,12 @@ async def test_tts_audio_source_start_stop_lifecycle() -> None:
 async def test_router_switch_source_rolls_back_when_new_source_fails() -> None:
     router = AudioStreamRouter()
     router.config_manager = cast(
-        ConfigManager[AudioStreamConfigFile],
+        ConfigManager[AudioStreamRouterConfig],
         type(
             "_ConfigManager",
             (),
             {
-                "config": AudioStreamConfigFile(),
+                "config": AudioStreamRouterConfig(),
                 "save_calls": 0,
                 "save": lambda self: _save_config(self),
             },
@@ -197,12 +197,12 @@ async def test_router_switch_source_rolls_back_when_new_source_fails() -> None:
 async def test_router_forwards_active_source_chunks_to_subscribers() -> None:
     router = AudioStreamRouter()
     router.config_manager = cast(
-        ConfigManager[AudioStreamConfigFile],
+        ConfigManager[AudioStreamRouterConfig],
         type(
             "_ConfigManager",
             (),
             {
-                "config": AudioStreamConfigFile(),
+                "config": AudioStreamRouterConfig(),
                 "save_calls": 0,
                 "save": lambda self: _save_config(self),
             },
@@ -240,12 +240,12 @@ async def test_restart_active_source_keeps_downstream_subscribers() -> None:
     """
     router = AudioStreamRouter()
     router.config_manager = cast(
-        ConfigManager[AudioStreamConfigFile],
+        ConfigManager[AudioStreamRouterConfig],
         type(
             "_ConfigManager",
             (),
             {
-                "config": AudioStreamConfigFile(),
+                "config": AudioStreamRouterConfig(),
                 "save_calls": 0,
                 "save": lambda self: _save_config(self),
             },
@@ -294,10 +294,11 @@ def _device(index: int, name: str) -> InputDeviceInfo:
 
 
 async def test_microphone_start_falls_back_to_default_device(monkeypatch) -> None:
-    """配置设备打不开时回退默认设备：成功出声并把启用设备回写 config（回归）。
+    """配置设备打不开时回退默认设备：成功出声，但不得回写 config（回归）。
 
     设备被占用/拔出会让 sd.InputStream 打开失败（PaErrorCode -9996），此时应回退到
-    系统默认输入设备重试，而非让整条管线崩溃。
+    系统默认输入设备重试，而非让整条管线崩溃。回退仅改运行态 _device_info，
+    config 代表用户意图（这里留空=自动），不被某次回退结果覆盖。
     """
     configured = _device(1, "坏设备")
     default = _device(9, "默认设备")
@@ -326,9 +327,9 @@ async def test_microphone_start_falls_back_to_default_device(monkeypatch) -> Non
 
     assert source.is_started
     assert source._device_info is default
-    # 实际启用的设备回写到 config，供下次/落盘使用
-    assert source.config.device_name == "默认设备"
-    assert source.config.device_index == 9
+    # 回退只改运行态，config 保持用户原意（留空），不被回退设备覆盖
+    assert source.config.device_name is None
+    assert source.config.device_index is None
     await source.stop()
 
 
@@ -386,10 +387,11 @@ async def test_microphone_stop_clears_state_when_stream_stop_fails() -> None:
 
 
 async def test_microphone_restart_switches_to_new_device_in_config(monkeypatch) -> None:
-    """换设备后重启应切到新设备，旧设备不得覆盖 config（回归）。
+    """换设备后重启应切到新设备，且重启不得回写 config（回归）。
 
     旧 bug：_close_stream 的 finally 把当前(旧)device_info 回写进 config，
     紧接着 _resolve_input_device 读 config 时又解析回旧设备，导致换设备无效。
+    现契约：设备解析结果只进运行态 _device_info，config 始终保持用户所设。
     """
 
     old_device = InputDeviceInfo(index=0, name="旧麦克风", max_input_channels=1, default_samplerate=48000.0, hostapi=0)
@@ -413,8 +415,9 @@ async def test_microphone_restart_switches_to_new_device_in_config(monkeypatch) 
     await source.restart()
 
     assert source.device_info.name == "新麦克风"
-    assert config.device_name == "新麦克风"  # 旧设备没有把它覆盖回去
-    assert config.device_index == 1
+    # config 保持用户所设，重启不回写（device_index 仍为用户清空后的 None）
+    assert config.device_name == "新麦克风"
+    assert config.device_index is None
 
     await source.stop()
 
@@ -484,12 +487,12 @@ async def test_router_switch_source_round_trip_reinitializes_source() -> None:
 
     router = AudioStreamRouter()
     router.config_manager = cast(
-        ConfigManager[AudioStreamConfigFile],
+        ConfigManager[AudioStreamRouterConfig],
         type(
             "_ConfigManager",
             (),
             {
-                "config": AudioStreamConfigFile(),
+                "config": AudioStreamRouterConfig(),
                 "save_calls": 0,
                 "save": lambda self: _save_config(self),
             },

@@ -90,25 +90,40 @@ class AudioController:
     def stage_microphone_field(self, path: str, value: Any) -> None:
         """把配置编辑器的单字段改动暂存到内存配置模型（不落盘）。
 
-        path 形如 "microphone.samplerate"，去掉前缀后即字段名。仅改内存，
-        显式保存（save_microphone_config）才落盘，重启音源（restart_source）
-        才让改动对运行中的流生效。
+        path 形如 "microphone.samplerate"，去掉首段 "microphone" 前缀后，按 "."
+        逐级 getattr 定位到目标（子）模型，再 setattr 叶子字段——这样嵌套
+        group 字段也能写到正确的子模型，而非误写顶层。仅改内存，显式保存
+        （save_microphone_config）才落盘，重启音源（restart_source）才让改动
+        对运行中的流生效。
         """
 
-        field_name = path.split(".")[-1]
-        mic_config = self.router.config.microphone
-        if not hasattr(mic_config, field_name):
-            logger.warning("未知麦克风配置字段: {}", field_name)
+        parts = path.split(".")
+        # 去掉首段 "microphone" 前缀（编辑器以 microphone_config() 为根反射）
+        if parts and parts[0] == "microphone":
+            parts = parts[1:]
+        if not parts:
+            logger.warning("空的麦克风配置字段路径: {}", path)
+            return
+
+        target: Any = self.router.config.microphone
+        *parents, field_name = parts
+        for parent_name in parents:
+            target = getattr(target, parent_name, None)
+            if target is None:
+                logger.warning("未知麦克风配置子路径: {}", path)
+                return
+        if not hasattr(target, field_name):
+            logger.warning("未知麦克风配置字段: {}", path)
             return
         try:
-            setattr(mic_config, field_name, value)
+            setattr(target, field_name, value)
         except Exception as exc:
-            logger.warning("暂存麦克风配置 {} 失败: {}", field_name, exc)
+            logger.warning("暂存麦克风配置 {} 失败: {}", path, exc)
             return
         # 改设备名时清掉旧的 device_index：后端解析优先按 index 匹配，残留的旧
         # index 会让新设备名失效（仍解析到旧设备）。清空后回退到按名称匹配。
-        if field_name == "device_name":
-            mic_config.device_index = None
+        if field_name == "device_name" and hasattr(target, "device_index"):
+            target.device_index = None
 
     async def save_microphone_config(self) -> bool:
         """把内存中的麦克风配置落盘；返回是否成功。"""

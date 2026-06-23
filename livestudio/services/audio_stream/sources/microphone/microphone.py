@@ -40,9 +40,10 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         """加载配置并解析目标输入设备"""
 
         self._loop = asyncio.get_running_loop()
+        # 解析出的真实设备只存进内存运行态 _device_info，刻意不回写 config：
+        # config 代表用户意图（留空=自动选择当前默认设备，选定=始终尊重），
+        # 不应被某次运行解析到的具体设备覆盖。
         self._device_info = await self._resolve_input_device()
-        self.config.device_name = self._device_info.name
-        self.config.device_index = self._device_info.index
         logger.info(
             "麦克风音频源已初始化，目标设备: {} ({})",
             self.device_info.name,
@@ -78,9 +79,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         await self._close_stream()
         self._loop = asyncio.get_running_loop()
+        # 同 _do_initialize：解析结果只进内存运行态，不回写 config。
         self._device_info = await self._resolve_input_device()
-        self.config.device_name = self._device_info.name
-        self.config.device_index = self._device_info.index
         await self._open_stream()
         logger.info(
             "麦克风音频源重启，目标设备: {} ({})",
@@ -94,8 +94,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         设备可能被占用或在解析后被拔出，导致 sd.InputStream 打开失败
         （如 PaErrorCode -9996）。此时不直接抛错让整条管线崩，而是回退到系统
         默认输入设备重试一次——这样配置指向的设备暂时不可用也能正常出声，
-        并把实际启用的设备回写到 _device_info / config。仅当默认设备也打不开
-        （或本就在用默认设备）时才抛出。
+        并把实际启用的设备更新到内存运行态 _device_info（不回写 config）。
+        仅当默认设备也打不开（或本就在用默认设备）时才抛出。
         """
 
         if self._device_info is None:
@@ -121,9 +121,8 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
                 f"输入设备打开失败且无可用回退设备: {self._device_info.name}",
             )
         self._stream = await self._build_stream(fallback)
+        # 实际启用的回退设备只更新内存运行态，不回写 config（同 _do_initialize）。
         self._device_info = fallback
-        self.config.device_name = fallback.name
-        self.config.device_index = fallback.index
         logger.info("已回退到默认输入设备: {} ({})", fallback.name, fallback.index)
 
     async def _build_stream(self, device: InputDeviceInfo) -> sd.InputStream:
@@ -150,13 +149,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         return stream
 
     async def _close_stream(self) -> None:
-        """停止并关闭底层输入流（不动订阅、不回写配置）。
+        """停止并关闭底层输入流（不动订阅）。
 
-        刻意**不**把当前 device_info 回写 config：config 代表用户意图，
-        关流属于运行态收尾，不应反向覆盖它——否则软重启时先关旧流会把旧设备
-        写回 config，紧接着的 _resolve_input_device 又据此解析回旧设备，导致
-        “换设备保存后重启仍是旧设备”。设备的权威回写只发生在
-        _resolve_input_device 之后（_do_initialize / _do_restart 内）。
+        全程不回写 config：解析/回退到的具体设备只存进内存运行态 _device_info，
+        config 始终保持用户意图（留空=自动选择，选定=尊重）。这样“换设备保存后
+        重启”不会因旧设备被写回 config 而解析回旧设备。
         """
 
         stream = self._stream
