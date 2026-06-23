@@ -33,7 +33,7 @@ from .base import PlatformAdapter, PlatformContext
 _CONTROLLER_LABELS: dict[str, tuple[str, Literal["idle", "oneshot"]]] = {
     "blink": ("眨眼", "idle"),
     "breathing": ("呼吸", "idle"),
-    "body_swing": ("身体摇摆", "idle"),
+    "gaze": ("眼神注视", "idle"),
     "mouth_expression": ("嘴型表情", "idle"),
     "mouth_sync": ("嘴型同步", "idle"),
     "expression": ("表情解算", "oneshot"),

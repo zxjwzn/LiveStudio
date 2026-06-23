@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-from enum import Enum, auto
 
 from livestudio.services.semantic_actions.models import (
     FacialRegion,
@@ -27,13 +26,6 @@ from .models import (
     SelectedExpression,
     SemanticExpressionUnit,
 )
-
-
-class _ConflictResolution(Enum):
-    """冲突解决结果中「非替换」的两种语义，替代裸字符串 sentinel。"""
-
-    NONE = auto()  # 无冲突
-    DISCARD = auto()  # 冲突且候选应被丢弃
 
 
 class ExpressionSolver:
@@ -89,8 +81,6 @@ class ExpressionSolver:
                 continue
             novelty = 0.35 if unit.id in recent_ids else 1.0
             score = correlation * 0.80 + novelty * 0.20
-            if score < request.min_au_score:
-                continue
             result.append(ScoredExpressionUnit(unit=unit, score=score, correlation=correlation))
         result.sort(key=lambda s: s.score, reverse=True)
         return result[: self._top_candidates]
@@ -112,6 +102,7 @@ class ExpressionSolver:
     def _build_combo(self, ranked: list[ScoredExpressionUnit], request: ExpressionRequest) -> list[ScoredExpressionUnit]:
         combo: list[ScoredExpressionUnit] = []
         occupied_actions: set[str] = set()
+        unmet = 1.0  # 情绪「未满足残量」，noisy-OR 累计：选入越多越趋近 0
 
         for candidate in ranked:
             if len(combo) >= request.max_units:
@@ -119,14 +110,18 @@ class ExpressionSolver:
             if not self._should_select(candidate, request):
                 continue
 
-            # 互斥冲突检查（显式规则 + 隐式 action 冲突）
-            conflict = self._find_conflict(candidate, combo, occupied_actions, request.emotion)
-            if conflict is _ConflictResolution.DISCARD:
-                continue
-            if isinstance(conflict, ScoredExpressionUnit):
-                combo.remove(conflict)
-                if isinstance(conflict.unit, SemanticExpressionUnit):
-                    occupied_actions -= {t.action for t in conflict.unit.targets}
+            # 互斥冲突检查（显式规则 + 隐式 action 冲突）。
+            # 一个候选可能同时与多个已入选单元冲突（多 target 时尤甚），必须全部收集后统一裁决，
+            # 否则只顶替其中一个会让候选与剩余冲突单元共占同一 action，留下非法组合。
+            conflicts = self._find_conflicts(candidate, combo, request.emotion)
+            if conflicts:
+                strongest = max(c.score for c in conflicts)
+                if candidate.score <= strongest + 0.03:
+                    continue  # 不足以顶替最强冲突者，丢弃候选
+                for victim in conflicts:
+                    combo.remove(victim)
+                    if isinstance(victim.unit, SemanticExpressionUnit):
+                        occupied_actions -= {t.action for t in victim.unit.targets}
 
             # BINDING 合法性检查（强制绑定）
             new_ids = {s.unit.id for s in combo} | {candidate.unit.id}
@@ -137,46 +132,59 @@ class ExpressionSolver:
             if isinstance(candidate.unit, SemanticExpressionUnit):
                 occupied_actions.update(t.action for t in candidate.unit.targets)
 
+            # 情绪饱和提前收手（多样性来源）：累计满足度足够后，按 (1 - diversity) 概率停手，
+            # 让「单个完整表情」与「多 AU 叠加」都能出现。randomness<=0 时保持确定性，不提前停。
+            unmet *= 1.0 - max(0.0, min(1.0, candidate.correlation))
+            if (
+                request.randomness > 0.0
+                and 1.0 - unmet >= 0.90
+                and self._rng.random() > request.diversity
+            ):
+                break
+
         return combo
 
-    def _find_conflict(
+    def _find_conflicts(
         self,
         candidate: ScoredExpressionUnit,
         combo: list[ScoredExpressionUnit],
-        occupied_actions: set[str],
         emotion: EmotionKind,
-    ) -> ScoredExpressionUnit | _ConflictResolution:
-        """返回 _ConflictResolution.NONE（无冲突）、被替换的 ScoredExpressionUnit、或 _ConflictResolution.DISCARD"""
-        # 1. 显式互斥规则
+    ) -> list[ScoredExpressionUnit]:
+        """收集 combo 中所有与 candidate 冲突的已入选单元（显式互斥规则 + 隐式 action 冲突）。
+
+        与旧版「命中第一个就返回」不同，这里返回全部冲突者：多 target 候选可能同时与
+        几个已入选单元各冲突一个 action，调用方需要看到完整冲突集才能正确裁决与回收。
+        """
+        conflicts: list[ScoredExpressionUnit] = []
+
+        candidate_actions: set[str] = set()
+        if isinstance(candidate.unit, SemanticExpressionUnit):
+            candidate_actions = {t.action for t in candidate.unit.targets}
+
+        # 当前情绪下生效、且包含 candidate 的显式互斥规则的并集
+        mutex_ids: set[str] = set()
         for rule in self._rules:
             if not isinstance(rule, MutualExclusionRule):
                 continue
             if rule.emotions and emotion not in rule.emotions:
                 continue
-            if candidate.unit.id not in rule.unit_ids:
+            if candidate.unit.id in rule.unit_ids:
+                mutex_ids |= rule.unit_ids
+
+        for existing in combo:
+            # 1. 显式互斥
+            if existing.unit.id in mutex_ids:
+                conflicts.append(existing)
                 continue
-            for existing in combo:
-                if existing.unit.id in rule.unit_ids:
-                    return self._resolve_conflict(candidate, existing)
+            # 2. 隐式 action 冲突（仅两端都是 SemanticExpressionUnit 时）
+            if (
+                candidate_actions
+                and isinstance(existing.unit, SemanticExpressionUnit)
+                and {t.action for t in existing.unit.targets} & candidate_actions
+            ):
+                conflicts.append(existing)
 
-        # 2. 隐式 action 冲突（仅 SemanticExpressionUnit）
-        if isinstance(candidate.unit, SemanticExpressionUnit):
-            candidate_actions = {t.action for t in candidate.unit.targets}
-            if candidate_actions & occupied_actions:
-                for existing in combo:
-                    if not isinstance(existing.unit, SemanticExpressionUnit):
-                        continue
-                    if {t.action for t in existing.unit.targets} & candidate_actions:
-                        return self._resolve_conflict(candidate, existing)
-
-        return _ConflictResolution.NONE
-
-    def _resolve_conflict(
-        self, candidate: ScoredExpressionUnit, existing: ScoredExpressionUnit
-    ) -> ScoredExpressionUnit | _ConflictResolution:
-        if candidate.score > existing.score + 0.03:
-            return existing  # 替换 existing
-        return _ConflictResolution.DISCARD
+        return conflicts
 
     @staticmethod
     def _binding_violated(rule: BindingRule, combo_ids: set[str]) -> bool:
@@ -203,15 +211,22 @@ class ExpressionSolver:
         for s in combo:
             covered.update(s.unit.regions)
 
-        base = sum(s.score for s in combo)
-        coverage = min(1.0, len(covered) / 4.0) * 0.14
-        size_penalty = max(0, len(combo) - 1) * 0.06
+        # 情绪饱和度（noisy-OR）：值域恒为 [0,1]，单个高相关 AU 即可逼近 1，
+        # 避免 sum 让「AU 数量」碾压「单个完整表情」——单一区域表情也能拿到接近满额的基础分。
+        unmet = 1.0
+        for s in combo:
+            unmet *= 1.0 - max(0.0, min(1.0, s.correlation))
+        fulfillment = 1.0 - unmet
+
+        # 多区域覆盖只作小额「锦上添花」，分母随 FacialRegion 成员数自适应（不再写死 4）。
+        variety = min(1.0, len(covered) / len(FacialRegion)) * 0.10
+        size_penalty = max(0, len(combo) - 1) * 0.04
         rule_score = self._rule_score(combo_ids, request.emotion)
         hist_penalty = self._history.penalty(
             ExpressionSignature(unit_ids=frozenset(combo_ids), emotion=request.emotion),
             request.history_avoidance,
         )
-        return base + coverage - size_penalty + rule_score - hist_penalty
+        return fulfillment + variety - size_penalty + rule_score - hist_penalty
 
     def _rule_score(self, combo_ids: set[str], emotion: EmotionKind) -> float:
         score = 0.0

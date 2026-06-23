@@ -46,28 +46,137 @@ class BreathingControllerSettings(ControllerSettings):
     exhale_duration: float = Field(default=2.0, ge=0, description="呼气持续时间")
 
 
-class BodySwingControllerSettings(ControllerSettings):
-    """身体摇摆控制器配置"""
+class GazeControllerSettings(ControllerSettings):
+    """眼神注视控制器配置
 
-    yaw_amplitude: float = Field(
-        default=0.4,
+    统一驱动 eye.gaze.x/y 与 head.yaw/head.roll：眼睛扫视到新注视点，头部延迟
+    较慢地按比例跟随，到位后凝视一段随机时长。head.pitch 仍归 breathing 控制器。
+    """
+
+    gaze_x_amplitude: float = Field(
+        default=1.0,
         ge=0.0,
         le=1.0,
-        description="头部左右偏转强度",
+        description="眼睛左右注视幅度（语义值域 -1~1，越大眼神越能转到边缘）",
     )
-    roll_amplitude: float = Field(
+    gaze_y_amplitude: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="眼睛上下注视幅度（上下幅度通常略小于左右，避免翻白眼）",
+    )
+    head_follow_ratio: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="头部偏转跟随眼神方向的比例（head_yaw = gaze_x * ratio），越大眼神转动时头跟得越多",
+    )
+    head_follow_chance: float = Field(
+        default=0.55,
+        ge=0.0,
+        le=1.0,
+        description="本次眼动是否带动头部转动的基础概率；大幅度注视会在此基础上提高转头倾向，"
+        "未命中时只动眼睛、头保持回正，模拟真人小幅扫视纯眼动、大角度才扭头",
+    )
+    head_roll_ratio: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description="头部侧倾跟随眼神方向的比例（head_roll = gaze_x * ratio）",
+    )
+    head_follow_delay: float = Field(
+        default=0.12,
+        ge=0.0,
+        description="头部跟随相对眼睛扫视的启动延迟，模拟前庭眼反射",
+    )
+    head_follow_duration: float = Field(
+        default=0.8,
+        gt=0.0,
+        description="头部跟随到位的过渡时长（比眼睛扫视慢）",
+    )
+    min_saccade_duration: float = Field(
+        default=0.08,
+        gt=0.0,
+        description="眼睛扫视到位的最短时长",
+    )
+    max_saccade_duration: float = Field(
+        default=0.22,
+        gt=0.0,
+        description="眼睛扫视到位的最长时长",
+    )
+    reach_min_scale: float = Field(
+        default=0.4,
+        gt=0.0,
+        le=1.0,
+        description="小幅度眼动相对风格基准时长的最小缩放：移动幅度趋近 0 时按此比例缩短，"
+        "幅度趋近最大时用满基准时长，使小幅看得快、大幅看得慢",
+    )
+    min_fixation: float = Field(default=1.0, ge=0, description="凝视停留最短时长")
+    max_fixation: float = Field(default=4.0, ge=0, description="凝视停留最长时长")
+    center_bias: float = Field(
         default=0.2,
         ge=0.0,
         le=1.0,
-        description="头部侧倾强度",
+        description="每次扫视回到中心附近（而非边缘）的概率",
     )
-    min_duration: float = Field(default=2.0, ge=0, description="摇摆最短持续时间")
-    max_duration: float = Field(default=8.0, ge=0, description="摇摆最长持续时间")
+    balance_window: int = Field(
+        default=6,
+        ge=0,
+        description="左右注视均衡的历史窗口大小：记录最近 N 次水平方向，"
+        "采样偏向已有多数侧时按不平衡程度概率翻转，使长短期左右注视频率趋于一致。0 关闭",
+    )
+    reverse_head_chance: float = Field(
+        default=0.18,
+        ge=0.0,
+        le=1.0,
+        description="头部反向跟随的概率：看一侧、头却朝另一侧偏/歪，制造俏皮歪头",
+    )
+    drift_chance: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="本次眼动为「缓慢漂移」的概率（慢移到新点，像走神/打量）",
+    )
+    min_drift_duration: float = Field(
+        default=0.6,
+        gt=0.0,
+        description="缓慢漂移到位的最短时长",
+    )
+    max_drift_duration: float = Field(
+        default=1.4,
+        gt=0.0,
+        description="缓慢漂移到位的最长时长",
+    )
+    dart_chance: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="本次眼动为「快速连扫」的概率（极短到位 + 极短凝视，连续瞟动）",
+    )
+    min_dart_fixation: float = Field(
+        default=0.15,
+        ge=0.0,
+        description="快速连扫的最短凝视时长",
+    )
+    max_dart_fixation: float = Field(
+        default=0.5,
+        ge=0.0,
+        description="快速连扫的最长凝视时长",
+    )
+    priority: int = Field(default=10, description="眼神/头部语义参数控制优先级")
 
     @model_validator(mode="after")
-    def validate_body_swing_range(self) -> "BodySwingControllerSettings":
-        if self.max_duration < self.min_duration:
-            raise ValueError("max_duration 不能小于 min_duration")
+    def validate_gaze_range(self) -> "GazeControllerSettings":
+        if self.max_saccade_duration < self.min_saccade_duration:
+            raise ValueError("max_saccade_duration 不能小于 min_saccade_duration")
+        if self.max_fixation < self.min_fixation:
+            raise ValueError("max_fixation 不能小于 min_fixation")
+        if self.max_drift_duration < self.min_drift_duration:
+            raise ValueError("max_drift_duration 不能小于 min_drift_duration")
+        if self.max_dart_fixation < self.min_dart_fixation:
+            raise ValueError("max_dart_fixation 不能小于 min_dart_fixation")
+        if self.drift_chance + self.dart_chance > 1.0:
+            raise ValueError("drift_chance 与 dart_chance 之和不能大于 1.0")
         return self
 
 
@@ -170,9 +279,9 @@ class AnimationControllerSettingsConfig(BaseModel):
         default_factory=BreathingControllerSettings,
         description="呼吸控制器配置",
     )
-    body_swing: BodySwingControllerSettings = Field(
-        default_factory=BodySwingControllerSettings,
-        description="身体摇摆控制器配置",
+    gaze: GazeControllerSettings = Field(
+        default_factory=GazeControllerSettings,
+        description="眼神注视控制器配置",
     )
     mouth_expression: MouthExpressionControllerSettings = Field(
         default_factory=MouthExpressionControllerSettings,

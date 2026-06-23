@@ -17,9 +17,9 @@ from livestudio.services.animations import (
     AnimationController,
     AnimationManager,
     BlinkController,
-    BodySwingController,
     BreathingController,
     ExpressionController,
+    GazeController,
     MouthExpressionController,
     MouthSyncController,
 )
@@ -238,7 +238,7 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         specs: list[tuple[str, Any, Callable[[], AnimationController[Any]]]] = [
             ("blink", ctrls.blink, lambda: BlinkController(runtime, "blink", ctrls.blink)),
             ("breathing", ctrls.breathing, lambda: BreathingController(runtime, "breathing", ctrls.breathing)),
-            ("body_swing", ctrls.body_swing, lambda: BodySwingController(runtime, "body_swing", ctrls.body_swing)),
+            ("gaze", ctrls.gaze, lambda: GazeController(runtime, "gaze", ctrls.gaze)),
             (
                 "mouth_expression",
                 ctrls.mouth_expression,

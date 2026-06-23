@@ -156,7 +156,6 @@ class ExpressionRequest:
     diversity: float = 0.6
     history_avoidance: float = 0.7
     max_units: int = 5
-    min_au_score: float = 0.08
     core_score: float = 0.65
 
 

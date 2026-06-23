@@ -2,19 +2,19 @@ from .base import AnimationController
 from .config import (
     AnimationControllerSettingsConfig,
     BlinkControllerSettings,
-    BodySwingControllerSettings,
     BreathingControllerSettings,
     ControllerSettings,
     ExpressionControllerSettings,
+    GazeControllerSettings,
     MouthExpressionControllerSettings,
     MouthSyncControllerSettings,
 )
 from .models import AnimationType
 from .semantic import (
     BlinkController,
-    BodySwingController,
     BreathingController,
     ExpressionController,
+    GazeController,
     MouthExpressionController,
     MouthSyncController,
 )
@@ -25,13 +25,13 @@ __all__ = [
     "AnimationType",
     "BlinkController",
     "BlinkControllerSettings",
-    "BodySwingController",
-    "BodySwingControllerSettings",
     "BreathingController",
     "BreathingControllerSettings",
     "ControllerSettings",
     "ExpressionController",
     "ExpressionControllerSettings",
+    "GazeController",
+    "GazeControllerSettings",
     "MouthExpressionController",
     "MouthExpressionControllerSettings",
     "MouthSyncController",
