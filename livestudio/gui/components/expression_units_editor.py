@@ -112,16 +112,6 @@ class ExpressionUnitsEditor(ft.Column):
             on_submit=lambda e, i=idx: self._update_semantic(i, "easing", e.control.value),
         )
 
-        threshold_field = ft.TextField(
-            value=str(unit.get("activation_threshold", 0.05)),
-            label="阈值",
-            width=80,
-            dense=True,
-            keyboard_type=ft.KeyboardType.NUMBER,
-            on_blur=lambda e, i=idx: self._update_semantic_num(i, "activation_threshold", e.control.value),
-            on_submit=lambda e, i=idx: self._update_semantic_num(i, "activation_threshold", e.control.value),
-        )
-
         delete_btn = ft.IconButton(
             icon=ft.Icons.DELETE_OUTLINE,
             icon_size=TYPE.icon,
@@ -147,7 +137,6 @@ class ExpressionUnitsEditor(ft.Column):
                         [
                             id_field,
                             easing_field,
-                            threshold_field,
                             ft.Text("启用:", size=TYPE.caption),
                             enabled_switch,
                             delete_btn,
@@ -302,7 +291,6 @@ class ExpressionUnitsEditor(ft.Column):
                 "targets": [],
                 "emotions": {},
                 "easing": "linear",
-                "activation_threshold": 0.05,
             }
         )
         self._rebuild()
@@ -503,7 +491,6 @@ class ExpressionUnitsEditor(ft.Column):
                 "native_ref": "",
                 "regions": [],
                 "emotions": {},
-                "activation_threshold": 0.05,
             }
         )
         self._rebuild()

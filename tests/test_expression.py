@@ -188,18 +188,6 @@ def test_solver_max_units_respected() -> None:
     assert len(result.units) <= 3
 
 
-def test_solver_activation_threshold_filters() -> None:
-    unit = SemanticExpressionUnit(
-        id="微弱",
-        targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.1, max_value=0.3)],
-        emotions={EmotionKind.JOY: 0.03},
-        activation_threshold=0.10,
-    )
-    solver = _make_solver(unit)
-    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
-    assert len(result.units) == 0
-
-
 def test_solver_mutual_exclusion_rule() -> None:
     u1 = SemanticExpressionUnit(
         id="皱眉",

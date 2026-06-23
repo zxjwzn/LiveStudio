@@ -44,7 +44,6 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
                 )
             ],
             emotions={EmotionKind.JOY: 0.80},
-            activation_threshold=0.30,
         ),
         SemanticExpressionUnit(
             id="眯眼笑",
@@ -101,7 +100,6 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
                 )
             ],
             emotions={EmotionKind.ANGER: 0.90, EmotionKind.SADNESS: 0.45},
-            activation_threshold=0.10,
         ),
         SemanticExpressionUnit(
             id="瞪眼",

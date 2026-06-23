@@ -77,7 +77,7 @@ class ExpressionSolver:
         result: list[ScoredExpressionUnit] = []
         for unit in self._units:
             correlation = unit.emotions.get(request.emotion, 0.0)
-            if correlation <= 0.0 or correlation < unit.activation_threshold:
+            if correlation <= 0.0:
                 continue
             novelty = 0.35 if unit.id in recent_ids else 1.0
             score = correlation * 0.80 + novelty * 0.20

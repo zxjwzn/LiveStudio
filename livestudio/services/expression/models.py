@@ -63,7 +63,6 @@ class SemanticExpressionUnit(_FrozenModel):
         default_factory=dict
     )  # 正数 (0,1]；缺失或 <=0 视为无关
     easing: str = "linear"
-    activation_threshold: float = 0.05
 
     @property
     def regions(self) -> frozenset[FacialRegion]:
@@ -83,7 +82,6 @@ class NativeExpressionUnit(_FrozenModel):
     native_ref: str
     regions: frozenset[FacialRegion]
     emotions: dict[EmotionKind, float] = Field(default_factory=dict)
-    activation_threshold: float = 0.05
 
 
 ExpressionUnit = SemanticExpressionUnit | NativeExpressionUnit

@@ -113,7 +113,6 @@ class TestExpressionUnitsEditorTargets:
                     "enabled": True,
                     "targets": [{"action": "brow.height", "min_value": 0.0, "max_value": 1.0}],
                     "emotions": {"joy": 0.8},
-                    "activation_threshold": 0.05,
                 }
             ],
             native_units=native or [],
@@ -184,7 +183,6 @@ class TestExpressionUnitsEditorEmotions:
                     "enabled": True,
                     "targets": [],
                     "emotions": {"joy": 0.8, "surprise": 0.3},
-                    "activation_threshold": 0.05,
                 }
             ],
             native_units=[],
