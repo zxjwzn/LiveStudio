@@ -33,7 +33,7 @@ class ParamSpecsEditor(ft.Column):
             rows.append(self._build_row(idx, spec))
 
         add_btn = ft.TextButton(
-            text="+ 添加参数",
+            text="添加参数",
             icon=ft.Icons.ADD,
             on_click=self._on_add,
             style=ft.ButtonStyle(color=PALETTE.primary_hover),

@@ -54,7 +54,7 @@ class BindingsEditor(ft.Column):
             rows.append(self._build_row(idx, binding))
 
         add_btn = ft.TextButton(
-            text="+ 添加绑定",
+            text="添加绑定",
             icon=ft.Icons.ADD,
             on_click=self._on_add,
             style=ft.ButtonStyle(color=PALETTE.primary_hover),

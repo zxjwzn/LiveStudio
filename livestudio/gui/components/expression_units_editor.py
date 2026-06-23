@@ -64,7 +64,7 @@ class ExpressionUnitsEditor(ft.Column):
             cards.append(self._build_semantic_card(idx, unit))
 
         add_btn = ft.TextButton(
-            text="+ 添加语义 AU",
+            text="添加语义 AU",
             icon=ft.Icons.ADD,
             on_click=self._add_semantic,
             style=ft.ButtonStyle(color=PALETTE.primary_hover),
@@ -207,7 +207,7 @@ class ExpressionUnitsEditor(ft.Column):
             )
 
         add_btn = ft.TextButton(
-            text="+ Target",
+            text="Target",
             icon=ft.Icons.ADD,
             style=ft.ButtonStyle(color=PALETTE.primary_hover),
             on_click=lambda _e, ui=unit_idx: self._add_target(ui),
@@ -261,7 +261,7 @@ class ExpressionUnitsEditor(ft.Column):
             )
 
         add_btn = ft.TextButton(
-            text="+ Emotion",
+            text="Emotion",
             icon=ft.Icons.ADD,
             style=ft.ButtonStyle(color=PALETTE.primary_hover),
             on_click=lambda _e, ui=unit_idx: self._add_emotion(ui),
@@ -405,7 +405,7 @@ class ExpressionUnitsEditor(ft.Column):
             cards.append(self._build_native_card(idx, unit))
 
         add_btn = ft.TextButton(
-            text="+ 添加原生 AU",
+            text="添加原生 AU",
             icon=ft.Icons.ADD,
             on_click=self._add_native,
             style=ft.ButtonStyle(color=PALETTE.primary_hover),
