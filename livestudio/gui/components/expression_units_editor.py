@@ -61,6 +61,8 @@ class ExpressionUnitsEditor(ft.Column):
     def _build_semantic_section(self) -> ft.Control:
         cards: list[ft.Control] = []
         for idx, unit in enumerate(self._semantic):
+            if cards:
+                cards.append(_divider())
             cards.append(self._build_semantic_card(idx, unit))
 
         add_btn = ft.TextButton(
@@ -402,6 +404,8 @@ class ExpressionUnitsEditor(ft.Column):
     def _build_native_section(self) -> ft.Control:
         cards: list[ft.Control] = []
         for idx, unit in enumerate(self._native):
+            if cards:
+                cards.append(_divider())
             cards.append(self._build_native_card(idx, unit))
 
         add_btn = ft.TextButton(
@@ -532,3 +536,7 @@ def _deep_copy_unit(unit: dict[str, Any]) -> dict[str, Any]:
     if "emotions" in result:
         result["emotions"] = dict(result["emotions"])
     return result
+
+
+def _divider() -> ft.Control:
+    return ft.Container(height=1, bgcolor=PALETTE.border)

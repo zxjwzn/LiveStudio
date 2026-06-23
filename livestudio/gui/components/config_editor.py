@@ -56,7 +56,7 @@ class ConfigEditor(MountAware, ft.Column):
         self._widgets = widget_registry or default_widget_registry()
         self._choices = choices_registry
         self._scheduler = scheduler
-        self.controls = [self._build_field(field) for field in fields]
+        self.controls = _with_dividers([self._build_field(field) for field in fields])
 
     # —— 字段渲染（递归）——
     def _build_field(self, field: ConfigFieldVM) -> ft.Control:
@@ -80,7 +80,7 @@ class ConfigEditor(MountAware, ft.Column):
     def _build_group(self, field: ConfigFieldVM) -> ft.Control:
         """group：固定子字段递归渲染为带标题的缩进块。"""
 
-        children = [self._build_field(sub) for sub in field.fields]
+        children = _with_dividers([self._build_field(sub) for sub in field.fields])
         body = ft.Column(children, spacing=12, tight=True)
         return ft.Column(
             spacing=8,
@@ -104,3 +104,19 @@ class ConfigEditor(MountAware, ft.Column):
         if control is None:
             return ft.Text(str(field.value), size=TYPE.body, color=PALETTE.text_muted)
         return control
+
+
+def _with_dividers(controls: list[ft.Control]) -> list[ft.Control]:
+    result: list[ft.Control] = []
+    for index, control in enumerate(controls):
+        if index == len(controls) - 1:
+            result.append(control)
+            continue
+        result.append(
+            ft.Container(
+                content=control,
+                padding=ft.padding.only(bottom=12),
+                border=ft.border.only(bottom=ft.BorderSide(1, PALETTE.border)),
+            )
+        )
+    return result
