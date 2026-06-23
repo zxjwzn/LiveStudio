@@ -31,6 +31,10 @@ class AsyncBridge:
         self._loop.call_soon_threadsafe(fn)
 
     def post_update(self, *controls: ft.Control) -> None:
-        """调度一次 page.update()（可指定局部控件）。"""
+        """调度一次 page.update()（可指定局部控件）。
+
+        预留接口：当前生产代码的状态写入都走 Observable 通知链触发刷新，未直连
+        使用本方法；保留它作为「需绕过 Observable 的局部刷新」入口，勿误判为死代码。
+        """
 
         self.post(lambda: self.page.update(*controls))

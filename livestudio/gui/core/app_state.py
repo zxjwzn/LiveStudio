@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from .observable import Observable, ObservableList
 from .view_models import (
-    AudioDeviceVM,
     AudioLevelVM,
     AudioSourceKind,
     ControllerVM,
@@ -36,7 +35,6 @@ class AppState:
 
         # —— 音频 ——
         self.audio_level: Observable[AudioLevelVM] = Observable(AudioLevelVM())
-        self.audio_devices: ObservableList[AudioDeviceVM] = ObservableList([])
         self.audio_source: Observable[AudioSourceKind] = Observable(AudioSourceKind.MICROPHONE)
 
         # —— 日志 ——
@@ -51,6 +49,14 @@ class AppState:
         return next((p for p in self.platforms.value if p.platform_id == pid), None)
 
     def active_platform_status(self) -> PlatformStatusVM | None:
-        """取当前激活平台的状态快照。"""
+        """取当前激活平台快照；激活 id 未命中时回退到第一个平台（若有）。
 
-        return self.platform_status(self.active_platform_id.value)
+        回退语义集中于此：视图首帧 active_platform_id 可能尚未由 bridge 设置，
+        仍应展示某个平台状态而非空白。此前 shell / dashboard 各写一遍回退，已收敛。
+        """
+
+        status = self.platform_status(self.active_platform_id.value)
+        if status is not None:
+            return status
+        platforms = self.platforms.value
+        return platforms[0] if platforms else None

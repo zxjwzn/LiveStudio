@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, get_args, get_origin
 
+import annotated_types as at
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
@@ -135,14 +136,15 @@ def _extract_bounds(info: FieldInfo) -> tuple[float | None, float | None]:
     minimum: float | None = None
     maximum: float | None = None
     for meta in info.metadata:
-        if (ge := getattr(meta, "ge", None)) is not None:
-            minimum = float(ge)
-        if (gt := getattr(meta, "gt", None)) is not None:
-            minimum = float(gt)
-        if (le := getattr(meta, "le", None)) is not None:
-            maximum = float(le)
-        if (lt := getattr(meta, "lt", None)) is not None:
-            maximum = float(lt)
+        # annotated_types 约束对象按类型显式判别（Ge/Gt -> 下限，Le/Lt -> 上限）
+        if isinstance(meta, at.Ge):
+            minimum = float(meta.ge)  # type: ignore[arg-type]
+        elif isinstance(meta, at.Gt):
+            minimum = float(meta.gt)  # type: ignore[arg-type]
+        elif isinstance(meta, at.Le):
+            maximum = float(meta.le)  # type: ignore[arg-type]
+        elif isinstance(meta, at.Lt):
+            maximum = float(meta.lt)  # type: ignore[arg-type]
     return minimum, maximum
 
 

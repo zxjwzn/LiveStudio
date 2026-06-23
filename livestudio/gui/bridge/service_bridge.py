@@ -149,11 +149,6 @@ class ServiceBridge:
             overrides=_MIC_FIELD_OVERRIDES,
         )
 
-    async def apply_microphone_field(self, path: str, value: object) -> None:
-        """已弃用：保留兼容旧调用。等价于暂存（不落盘）。"""
-
-        self.audio.stage_microphone_field(path, value)
-
     def stage_microphone_field(self, path: str, value: object) -> None:
         """暂存麦克风配置单字段改动到内存（配置编辑器 on_change 调用，不落盘）。"""
 

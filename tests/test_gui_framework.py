@@ -186,7 +186,7 @@ def test_observable_list_extend_replace_clear() -> None:
 
 
 def test_app_state_platform_lookup() -> None:
-    """platform_status 按 id 命中；active_platform_status 跟随激活 id"""
+    """platform_status 按 id 命中；active_platform_status 跟随激活 id，未命中时回退首个"""
     state = AppState()
     state.platforms.replace(
         [
@@ -198,11 +198,21 @@ def test_app_state_platform_lookup() -> None:
     assert other is not None
     assert other.display_name == "Other"
     assert state.platform_status("missing") is None
-    assert state.active_platform_status() is None  # 尚未指定激活平台
-    state.active_platform_id.set("vtube_studio")
+    # active_id 未命中（首帧尚未由 bridge 设置）时回退首个平台，而非空白
+    fallback = state.active_platform_status()
+    assert fallback is not None
+    assert fallback.platform_id == "vtube_studio"
+    # 指定激活平台后跟随该 id
+    state.active_platform_id.set("other")
     active = state.active_platform_status()
     assert active is not None
-    assert active.platform_id == "vtube_studio"
+    assert active.platform_id == "other"
+
+
+def test_app_state_active_status_empty_returns_none() -> None:
+    """无任何平台时 active_platform_status 返回 None（回退无目标）"""
+    state = AppState()
+    assert state.active_platform_status() is None
 
 
 # —— theme 着色函数 ——————————————————————————————————————————

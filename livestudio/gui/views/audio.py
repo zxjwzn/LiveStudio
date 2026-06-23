@@ -15,6 +15,7 @@ from ..components.audio_meter import AudioMeter
 from ..components.config_editor import ConfigEditor
 from ..components.section import Section
 from ..core.base_view import BaseView
+from ..core.mount_aware import updates_ui
 from ..core.theme import PALETTE, TYPE
 from ..core.view_models import AudioLevelVM, AudioSourceKind, audio_source_label
 
@@ -139,7 +140,7 @@ class AudioView(BaseView):
         """从 bridge 反射麦克风配置并渲染为 ConfigEditor（含动态设备下拉）。"""
 
         bridge = self.ctx.bridge
-        if bridge is None or not hasattr(bridge, "microphone_config_section"):
+        if bridge is None:
             return
         section = bridge.microphone_config_section()
         editor = ConfigEditor(
@@ -202,10 +203,11 @@ class AudioView(BaseView):
 
         self.run_intent(_restart)
 
+    @updates_ui
     def _on_audio_level(self, level: AudioLevelVM) -> None:
         self._audio_meter.update_level(level)
-        self.safe_update()
 
+    @updates_ui
     def _on_audio_source(self, kind: AudioSourceKind) -> None:
         # 后端确认切换后：单选同步、解禁按钮、刷新文案
         self._draft = kind
@@ -214,16 +216,15 @@ class AudioView(BaseView):
         self._active_hint.value = f"当前: {audio_source_label(kind)}"
         self._active_hint.color = PALETTE.text_muted
         self._update_switch_button()
-        self.safe_update()
 
     # —— 交互 ——
+    @updates_ui
     def _on_radio_change(self, e: ft.ControlEvent) -> None:
         try:
             self._draft = AudioSourceKind(e.control.value)
         except ValueError:
             return
         self._update_switch_button()
-        self.safe_update()
 
     def _on_switch_click(self, _e: ft.ControlEvent) -> None:
         bridge = self.ctx.bridge

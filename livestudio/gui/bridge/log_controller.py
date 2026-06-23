@@ -10,8 +10,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections import deque
+from typing import TYPE_CHECKING
 
 from livestudio.utils.log import logger
+
+if TYPE_CHECKING:
+    # loguru.Message 是运行时内部 str 子类，仅类型存根导出；__future__ annotations
+    # 让注解不在运行时求值，故用 TYPE_CHECKING 守卫导入，运行时零开销。
+    from loguru import Message
 
 from ..core.app_state import AppState
 from ..core.theme import level_color
@@ -62,12 +68,11 @@ class LogController:
         # 抛出，drain_loop 内的兜底 flush 不会执行，这里确保缓冲不丢。
         self._flush()
 
-    def _sink(self, message: object) -> None:
+    def _sink(self, message: Message) -> None:
         """loguru sink：在任意线程被调用，仅做无锁追加。"""
 
-        record = getattr(message, "record", None)
-        if record is None:
-            return
+        # loguru.Message 是 str 子类，.record 恒存在，直接取无需 getattr 兜底
+        record = message.record
         level_name = record["level"].name
         entry = LogEntryVM(
             ts=record["time"].strftime("%H:%M:%S.%f")[:-3],

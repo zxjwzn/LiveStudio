@@ -12,6 +12,7 @@ from .app_state import AppState
 from .async_bridge import AsyncBridge
 from .base_view import BaseView
 from .choices_registry import ChoicesProvider, ChoicesRegistry
+from .mount_aware import MountAware, SubscriptionHost, updates_ui
 from .observable import Observable, ObservableList
 from .registry import PlatformRegistry
 from .theme import (
@@ -27,7 +28,6 @@ from .theme import (
 )
 from .view_context import ViewContext
 from .view_models import (
-    AudioDeviceVM,
     AudioLevelVM,
     AudioSourceKind,
     ChoiceVM,
@@ -42,6 +42,8 @@ from .view_models import (
     ModelConfigVM,
     PlatformDescriptor,
     PlatformStatusVM,
+    audio_source_label,
+    connection_label,
 )
 
 __all__ = [
@@ -49,7 +51,6 @@ __all__ = [
     "TYPE",
     "AppState",
     "AsyncBridge",
-    "AudioDeviceVM",
     "AudioLevelVM",
     "AudioSourceKind",
     "BaseView",
@@ -74,8 +75,10 @@ __all__ = [
     "Typography",
     "ViewContext",
     "apply_page_theme",
+    "audio_source_label",
     "build_theme",
     "connection_color",
+    "connection_label",
     "controller_color",
     "level_color",
 ]

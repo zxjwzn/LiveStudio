@@ -147,7 +147,7 @@ class VTubeStudioAdapter(PlatformAdapter):
                 port=data.port,
             )
         ]
-        self.bridge.post(lambda: self.state.discovered.replace(result))
+        self.async_bridge.post(lambda: self.state.discovered.replace(result))
         return result
 
     # —— 状态 ——
@@ -333,7 +333,7 @@ class VTubeStudioAdapter(PlatformAdapter):
             detail=current.detail if detail is None else detail,
         )
         status = self._status
-        self.bridge.post(lambda: self._publish_status(status))
+        self.async_bridge.post(lambda: self._publish_status(status))
 
     def _publish_status(self, status: PlatformStatusVM) -> None:
         """把单平台状态合并进 platforms 列表。"""
@@ -348,7 +348,7 @@ class VTubeStudioAdapter(PlatformAdapter):
         self.state.platforms.replace(platforms)
 
     def _publish_controllers(self, vms: list[ControllerVM]) -> None:
-        self.bridge.post(lambda: self.state.controllers.replace(vms))
+        self.async_bridge.post(lambda: self.state.controllers.replace(vms))
 
     def _publish_expressions(self, vms: list[ExpressionVM]) -> None:
-        self.bridge.post(lambda: self.state.expressions.replace(vms))
+        self.async_bridge.post(lambda: self.state.expressions.replace(vms))

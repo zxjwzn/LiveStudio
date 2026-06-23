@@ -50,6 +50,22 @@ def audio_source_label(source: AudioSourceKind) -> str:
     return AUDIO_SOURCE_LABELS.get(source, source.value)
 
 
+# 连接状态 -> 中文展示标签的权威映射（仪表盘、顶栏、平台页统一复用）
+CONNECTION_LABELS: dict[ConnectionState, str] = {
+    ConnectionState.DISCONNECTED: "未连接",
+    ConnectionState.CONNECTING: "连接中",
+    ConnectionState.CONNECTED: "已连接",
+    ConnectionState.RECONNECTING: "重连中",
+    ConnectionState.ERROR: "连接错误",
+}
+
+
+def connection_label(state: ConnectionState) -> str:
+    """返回连接状态的中文标签；未知状态回退到其原始值。"""
+
+    return CONNECTION_LABELS.get(state, state.value)
+
+
 # —— 平台相关 ——————————————————————————————————————————————
 
 
@@ -129,15 +145,6 @@ class AudioLevelVM:
     peak: float = 0.0  # 0..1
     source: AudioSourceKind = AudioSourceKind.MICROPHONE
     active: bool = False
-
-
-@dataclass(frozen=True)
-class AudioDeviceVM:
-    """音频输入设备。"""
-
-    index: int
-    name: str
-    is_default: bool = False
 
 
 @dataclass(frozen=True)

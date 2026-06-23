@@ -18,6 +18,7 @@ from typing import Any, Awaitable, Callable
 import flet as ft
 
 from ..core.choices_registry import ChoicesRegistry
+from ..core.mount_aware import MountAware
 from ..core.theme import PALETTE, TYPE
 from ..core.view_models import ConfigFieldVM
 from ..core.widget_registry import RenderContext, WidgetRegistry
@@ -37,7 +38,7 @@ def default_widget_registry() -> WidgetRegistry:
     return registry
 
 
-class ConfigEditor(ft.Column):
+class ConfigEditor(MountAware, ft.Column):
     """把 ConfigFieldVM 列表递归渲染成可编辑表单。"""
 
     def __init__(
@@ -97,13 +98,9 @@ class ConfigEditor(ft.Column):
             emit=lambda value, f=field: self._on_change(f.path, value),
             scheduler=self._scheduler,
             choices_registry=self._choices,
-            safe_update=self._safe_update,
+            safe_update=self.safe_update,
         )
         control = self._widgets.render(ctx)
         if control is None:
             return ft.Text(str(field.value), size=TYPE.body, color=PALETTE.text_muted)
         return control
-
-    def _safe_update(self) -> None:
-        if self.page is not None:
-            self.update()

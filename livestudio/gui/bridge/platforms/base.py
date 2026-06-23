@@ -42,7 +42,7 @@ class PlatformAdapter(ABC):
     def __init__(self, ctx: PlatformContext) -> None:
         self.ctx = ctx
         self.state = ctx.state
-        self.bridge = ctx.async_bridge
+        self.async_bridge = ctx.async_bridge
 
     # —— 生命周期 ——
     @abstractmethod

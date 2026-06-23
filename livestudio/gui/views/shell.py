@@ -13,6 +13,7 @@ from typing import Callable
 import flet as ft
 
 from ..components.toaster import ErrorToaster
+from ..core.mount_aware import MountAware, SubscriptionHost, updates_ui
 from ..core.theme import PALETTE, TYPE, connection_color
 from ..core.view_context import ViewContext
 from ..core.view_models import AudioLevelVM, PlatformStatusVM, audio_source_label
@@ -43,11 +44,12 @@ NAV_ITEMS: tuple[NavItem, ...] = (
 )
 
 
-class AppShell(ft.Row):
+class AppShell(MountAware, SubscriptionHost, ft.Row):
     """应用外壳：导航 + 状态栏 + 内容容器。"""
 
     def __init__(self, ctx: ViewContext) -> None:
         super().__init__(expand=True, spacing=0)
+        self._init_subscriptions()
         self.ctx = ctx
         self.ctx.navigate = self.navigate  # 装配路由跳转，替换默认 no-op
         self._views: dict[str, ft.Control] = {}  # 路由 -> 视图实例缓存
@@ -139,9 +141,9 @@ class AppShell(ft.Row):
 
     # —— 顶栏状态订阅（随 Shell 挂载建立）——
     def did_mount(self) -> None:
-        self._unsub_platform = self.ctx.state.platforms.subscribe(self._on_platforms)
-        self._unsub_active = self.ctx.state.active_platform_id.subscribe(lambda _: self._on_platforms(None))
-        self._unsub_audio = self.ctx.state.audio_level.subscribe(self._on_audio)
+        self.watch(self.ctx.state.platforms, self._on_platforms)
+        self.watch(self.ctx.state.active_platform_id, lambda _v: self._on_platforms(None))
+        self.watch(self.ctx.state.audio_level, self._on_audio)
         # 全局错误/警告浮层：page 挂载后才可 open SnackBar，故在此建立。
         # did_mount 时 page 通常已就绪；用显式守卫而非 assert，避免 -O 下被剥掉。
         if self.page is not None:
@@ -149,15 +151,14 @@ class AppShell(ft.Row):
             self._toaster.start()
 
     def will_unmount(self) -> None:
-        for unsub in (self._unsub_platform, self._unsub_active, self._unsub_audio):
-            unsub()
+        self.release_subscriptions()
         if self._toaster is not None:
             self._toaster.stop()
 
+    @updates_ui
     def _on_platforms(self, _value: object) -> None:
+        # 回退语义集中在 AppState.active_platform_status()，此处不再各写一遍
         status: PlatformStatusVM | None = self.ctx.state.active_platform_status()
-        if status is None and self.ctx.state.platforms.value:
-            status = self.ctx.state.platforms.value[0]
         if status is None:
             self._status_dot.bgcolor = PALETTE.text_muted
             self._status_text.value = "未连接"
@@ -170,8 +171,8 @@ class AppShell(ft.Row):
                 label += f" · {status.model_name}"
             self._status_text.value = label
             self._status_text.color = PALETTE.text
-        self._safe_update()
 
+    @updates_ui
     def _on_audio(self, level: AudioLevelVM) -> None:
         if level.active:
             self._audio_text.value = audio_source_label(level.source)
@@ -179,8 +180,3 @@ class AppShell(ft.Row):
         else:
             self._audio_text.value = "音频未启动"
             self._audio_text.color = PALETTE.text_muted
-        self._safe_update()
-
-    def _safe_update(self) -> None:
-        if self.page is not None:
-            self.update()

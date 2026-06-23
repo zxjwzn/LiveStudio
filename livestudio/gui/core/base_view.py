@@ -7,6 +7,9 @@
 - 子类实现 ``bind()`` 建立订阅，统一用 ``self.watch(...)`` 登记。
 - 订阅在 ``did_mount`` 建立（此时 ``self.page`` 已就绪），在
   ``will_unmount`` 自动全部退订，避免视图被缓存复用时泄漏。
+
+``safe_update`` 与订阅管理（``watch`` / 退订）分别来自 ``MountAware`` 与
+``SubscriptionHost`` mixin，AppShell 等外壳级控件复用同一套基础设施。
 """
 
 from __future__ import annotations
@@ -15,18 +18,18 @@ from typing import Awaitable, Callable
 
 import flet as ft
 
-from .observable import Observable
+from .mount_aware import MountAware, SubscriptionHost
 from .view_context import ViewContext
 
 
-class BaseView(ft.Container):
+class BaseView(MountAware, SubscriptionHost, ft.Container):
     """所有页面视图的基类。"""
 
     def __init__(self, ctx: ViewContext) -> None:
         super().__init__(expand=True)
         self.ctx = ctx
         self.state = ctx.state
-        self._unsubs: list[Callable[[], None]] = []
+        self._init_subscriptions()
         self.content = self.build_content()
 
     # —— 子类实现 ——
@@ -38,18 +41,7 @@ class BaseView(ft.Container):
     def bind(self) -> None:
         """建立 Observable 订阅；默认无订阅。"""
 
-    # —— 订阅工具 ——
-    def watch(self, observable: Observable, handler: Callable, *, immediate: bool = True) -> None:
-        """订阅 ``observable`` 并登记退订句柄，由 ``will_unmount`` 统一释放。"""
-
-        self._unsubs.append(observable.subscribe(handler, immediate=immediate))
-
-    def safe_update(self) -> None:
-        """仅在已挂载时刷新，避免未挂载控件 update 报错。"""
-
-        if self.page is not None:
-            self.update()
-
+    # —— 异步意图 ——
     def run_intent(self, coro_factory: Callable[[], Awaitable[object]]) -> None:
         """在事件循环内调度一个异步意图（供 Flet 同步事件处理器转发到 bridge）。
 
@@ -71,6 +63,4 @@ class BaseView(ft.Container):
         self.bind()
 
     def will_unmount(self) -> None:
-        for unsubscribe in self._unsubs:
-            unsubscribe()
-        self._unsubs.clear()
+        self.release_subscriptions()
