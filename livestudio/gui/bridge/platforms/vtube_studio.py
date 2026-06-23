@@ -25,6 +25,7 @@ from ...core.view_models import (
     ControllerVM,
     DiscoveredEndpointVM,
     ExpressionVM,
+    ModelConfigSummaryVM,
     PlatformStatusVM,
 )
 from .base import PlatformAdapter, PlatformContext
@@ -352,3 +353,82 @@ class VTubeStudioAdapter(PlatformAdapter):
 
     def _publish_expressions(self, vms: list[ExpressionVM]) -> None:
         self.async_bridge.post(lambda: self.state.expressions.replace(vms))
+
+    # —— 模型配置文件管理 (P4) ——
+
+    def _model_config_dir(self) -> Any:
+        from livestudio.utils.paths import resolve_config_path
+
+        return resolve_config_path("models/vtubestudio")
+
+    async def list_model_configs(self) -> list[ModelConfigSummaryVM]:
+        """扫描 configs/models/vtubestudio/ 下的所有 YAML 文件。"""
+
+        import yaml
+
+        config_dir = self._model_config_dir()
+        if not config_dir.exists():
+            return []
+
+        results: list[ModelConfigSummaryVM] = []
+        for path in sorted(config_dir.glob("*.yaml")):
+            try:
+                text = path.read_text(encoding="utf-8")
+                data = yaml.safe_load(text) or {}
+                model_info = data.get("model", {})
+                results.append(
+                    ModelConfigSummaryVM(
+                        file_stem=path.stem,
+                        model_name=model_info.get("model_name", path.stem),
+                        model_id=model_info.get("model_id", ""),
+                        platform_name=model_info.get("platform_name", "vtubestudio"),
+                    )
+                )
+            except Exception:
+                logger.warning("跳过无法解析的模型配置: {}", path.name)
+        return results
+
+    async def load_model_config_raw(self, file_stem: str) -> Any:
+        """加载指定模型配置的 Pydantic 实例。"""
+
+        from livestudio.services.platforms.vtubestudio.config import (
+            VTubeStudioModelConfig,
+        )
+
+        path = self._model_config_dir() / f"{file_stem}.yaml"
+        if not path.exists():
+            return None
+
+        import yaml
+
+        text = path.read_text(encoding="utf-8")
+        data = yaml.safe_load(text) or {}
+        return VTubeStudioModelConfig.model_validate(data)
+
+    async def save_model_config_raw(self, file_stem: str, data: dict) -> None:
+        """把编辑后的字典原子写回 YAML。
+
+        先经 Pydantic 模型校验 + 序列化，确保枚举/frozenset 等类型被还原为
+        纯 Python 基础类型，避免 yaml.safe_dump 遇到不可表示对象报错。
+        """
+
+        import yaml
+
+        from livestudio.services.platforms.vtubestudio.config import (
+            VTubeStudioModelConfig,
+        )
+
+        # 校验并规范化
+        validated = VTubeStudioModelConfig.model_validate(data)
+        clean_data = validated.model_dump(mode="json", exclude_none=True)
+
+        path = self._model_config_dir() / f"{file_stem}.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        content = yaml.safe_dump(clean_data, allow_unicode=True, sort_keys=False)
+        temp = path.with_suffix(".yaml.tmp")
+        try:
+            temp.write_text(content, encoding="utf-8")
+            temp.replace(path)
+        finally:
+            if temp.exists():
+                temp.unlink(missing_ok=True)

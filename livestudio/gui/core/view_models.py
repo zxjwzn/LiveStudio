@@ -224,3 +224,13 @@ class ModelConfigVM:
     model_name: str
     sections: tuple[ConfigSectionVM, ...] = ()
     dirty: bool = False  # 是否有未保存修改
+
+
+@dataclass(frozen=True)
+class ModelConfigSummaryVM:
+    """模型配置文件摘要（列表页用）。"""
+
+    file_stem: str  # 文件名无后缀，唯一 key
+    model_name: str
+    model_id: str
+    platform_name: str

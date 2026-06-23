@@ -12,11 +12,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...core.app_state import AppState
 from ...core.async_bridge import AsyncBridge
-from ...core.view_models import DiscoveredEndpointVM, ModelConfigVM, PlatformStatusVM
+from ...core.view_models import DiscoveredEndpointVM, ModelConfigSummaryVM, PlatformStatusVM
 
 if TYPE_CHECKING:
     from livestudio.services.animations import AnimationManager
@@ -81,19 +81,15 @@ class PlatformAdapter(ABC):
     async def trigger_expression(self, key: str) -> None:
         """触发一次表情解算（key 为情绪标识）。"""
 
-    # —— 模型配置（P4 落地编辑器）——
-    async def load_model_config(self) -> ModelConfigVM | None:
-        """加载当前模型配置为可编辑 VM；P4 实现。"""
+    # —— 模型配置文件管理 (P4) ——
+    @abstractmethod
+    async def list_model_configs(self) -> list[ModelConfigSummaryVM]:
+        """枚举该平台所有已存在的模型配置文件摘要。"""
 
-        raise NotImplementedError("模型配置编辑将在 P4 实现")
+    @abstractmethod
+    async def load_model_config_raw(self, file_stem: str) -> "Any":
+        """加载指定模型配置的 Pydantic 实例（供 GUI 反射）。返回 PlatformModelConfig 子类实例。"""
 
-    def update_model_field(self, path: str, value: object) -> None:
-        """改内存 VM + 标记 dirty；P4 实现。"""
-
-        _ = path, value
-        raise NotImplementedError("模型配置编辑将在 P4 实现")
-
-    async def save_model_config(self) -> None:
-        """落盘模型配置；P4 实现。"""
-
-        raise NotImplementedError("模型配置编辑将在 P4 实现")
+    @abstractmethod
+    async def save_model_config_raw(self, file_stem: str, data: dict) -> None:
+        """把编辑后的字典原子写回 YAML。"""
