@@ -15,7 +15,8 @@ dependencies = [
     "json5~=0.12",
     "pyyaml~=6.0",
     "sounddevice~=0.5",
-    "flet[all]~=0.28",
+    "pyside6>=6.11.1",
+    "pyside6-fluent-widgets>=1.11.2",
 ]
 
 
@@ -93,8 +94,3 @@ select = [
 "**/__init__.py" = ["F401"]
 "tests/test_vtube_studio_client_extended.py" = ["SLF001"]
 "tests/test_vtubestudio_reconnect.py" = ["SIM117"]
-"tests/test_gui_framework.py" = ["SLF001"]
-"tests/test_gui_bridge.py" = ["SLF001", "ARG002"]
-"tests/test_gui_dashboard.py" = ["SLF001", "ARG002", "ARG005"]
-"tests/test_gui_audio_logs.py" = ["SLF001", "ARG002"]
-"tests/test_gui_config_editor.py" = ["SLF001", "ARG002", "ARG005"]

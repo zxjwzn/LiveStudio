@@ -26,15 +26,6 @@ uv sync
 
 启动后会监听默认麦克风并实时显示音量电平，按 `Ctrl+C` 退出。
 
-### 图形界面（GUI）
-
-```bash
-# 桌面窗口
-.venv\Scripts\python.exe -m livestudio.gui.main
-
-# 浏览器预览
-.venv\Scripts\python.exe -m livestudio.gui.main --web [--port 8550]
-```
 
 ## 配置
 
