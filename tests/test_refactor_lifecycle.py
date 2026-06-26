@@ -2,11 +2,10 @@
 
 覆盖：
 - Mixin 类级默认状态（不依赖子类 __init__ 声明）
-- Mixin 模板方法：_do_initialize / _do_start / _do_stop
+- Mixin 模板方法：_do_start / _do_stop
 - Mixin 幂等守卫：重复调用安全
 - AudioStreamSource 统一用 Mixin 标志（_mark_started / _mark_stopped）
 - AudioStreamRouter._rebind_active_source 原子切换
-- AnimationManager.initialize 幂等守卫
 - easing 常量精度（_HALF_PI）
 """
 
@@ -15,11 +14,9 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import pytest
 
-from livestudio.services.animations.manager import AnimationManager
 from livestudio.services.audio_stream import (
     AudioSourceKind,
     AudioStreamRouter,
@@ -28,7 +25,6 @@ from livestudio.services.audio_stream import (
 from livestudio.services.audio_stream.base import AudioStreamSource
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.utils.easing import _HALF_PI, Easing
-from tests.conftest import _SemanticPlatform
 
 # ──────────────────────────────────────────────
 # 1. Mixin 默认状态 & 类级属性
@@ -36,13 +32,12 @@ from tests.conftest import _SemanticPlatform
 
 
 def test_mixin_default_state_without_explicit_init() -> None:
-    """子类不声明 _initialized/_started 仍应返回 False。"""
+    """子类不声明 _started 仍应返回 False。"""
 
     class _Bare(AsyncServiceLifecycleMixin):
         pass
 
     obj = _Bare()
-    assert not obj.is_initialized
     assert not obj.is_started
 
 
@@ -53,22 +48,19 @@ def test_mixin_class_attrs_dont_bleed_across_instances() -> None:
         pass
 
     a, b = _Bare(), _Bare()
-    a._mark_initialized()
-    assert a.is_initialized
-    assert not b.is_initialized
+    a._mark_started()
+    assert a.is_started
+    assert not b.is_started
 
 
 # ──────────────────────────────────────────────
-# 2. 模板方法 _do_initialize / _do_start / _do_stop
+# 2. 模板方法 _do_start / _do_stop
 # ──────────────────────────────────────────────
 
 
 class _TemplateService(AsyncServiceLifecycleMixin):
     def __init__(self) -> None:
         self.calls: list[str] = []
-
-    async def _do_initialize(self) -> None:
-        self.calls.append("_do_initialize")
 
     async def _do_start(self) -> None:
         self.calls.append("_do_start")
@@ -77,19 +69,11 @@ class _TemplateService(AsyncServiceLifecycleMixin):
         self.calls.append("_do_stop")
 
 
-async def test_template_initialize_marks_initialized() -> None:
-    svc = _TemplateService()
-    await svc.initialize()
-    assert svc.is_initialized
-    assert "_do_initialize" in svc.calls
-
-
-async def test_template_start_auto_initializes_and_marks_started() -> None:
+async def test_template_start_marks_started() -> None:
     svc = _TemplateService()
     await svc.start()
-    assert svc.is_initialized
     assert svc.is_started
-    assert svc.calls == ["_do_initialize", "_do_start"]
+    assert svc.calls == ["_do_start"]
 
 
 async def test_template_stop_calls_do_stop_and_resets_flags() -> None:
@@ -97,21 +81,17 @@ async def test_template_stop_calls_do_stop_and_resets_flags() -> None:
     await svc.start()
     await svc.stop()
     assert not svc.is_started
-    assert not svc.is_initialized
     assert "_do_stop" in svc.calls
 
 
 async def test_template_start_rolls_back_on_failure() -> None:
-    """_do_start 抛错时 stop() 应被调用，标志复位。"""
+    """_do_start 抛错时应调用 _do_stop 清理，标志保持未启动。"""
 
     class _FailStart(AsyncServiceLifecycleMixin):
         calls: list[str]
 
         def __init__(self) -> None:
             self.calls = []
-
-        async def _do_initialize(self) -> None:
-            self.calls.append("init")
 
         async def _do_start(self) -> None:
             self.calls.append("start")
@@ -125,20 +105,12 @@ async def test_template_start_rolls_back_on_failure() -> None:
         await svc.start()
 
     assert not svc.is_started
-    assert not svc.is_initialized
-    assert svc.calls == ["init", "start", "stop"]
+    assert svc.calls == ["start", "stop"]
 
 
 # ──────────────────────────────────────────────
-# 3. 幂等守卫
+# 3. 幂等守卫与 restart
 # ──────────────────────────────────────────────
-
-
-async def test_initialize_is_idempotent() -> None:
-    svc = _TemplateService()
-    await svc.initialize()
-    await svc.initialize()
-    assert svc.calls.count("_do_initialize") == 1
 
 
 async def test_start_is_idempotent() -> None:
@@ -148,7 +120,7 @@ async def test_start_is_idempotent() -> None:
     assert svc.calls.count("_do_start") == 1
 
 
-async def test_stop_before_initialize_is_noop() -> None:
+async def test_stop_before_start_is_noop() -> None:
     svc = _TemplateService()
     await svc.stop()
     assert svc.calls == []
@@ -161,18 +133,6 @@ async def test_restart_calls_stop_then_start() -> None:
     await svc.restart()
     assert "_do_stop" in svc.calls
     assert "_do_start" in svc.calls
-    assert svc.is_started
-
-
-async def test_restart_is_soft_keeps_initialized() -> None:
-    """软重启不复位 _initialized：只有 stop 才是真正退出。"""
-
-    svc = _TemplateService()
-    await svc.start()
-    assert svc.is_initialized
-    await svc.restart()
-    # restart 后仍处于已初始化 + 已启动；区别于 stop（会复位 _initialized）
-    assert svc.is_initialized
     assert svc.is_started
 
 
@@ -196,14 +156,13 @@ async def test_restart_uses_do_restart_hook_not_stop_start() -> None:
     await svc.start()
     svc.calls.clear()
     await svc.restart()
-    # 只调用了自定义软重启钩子，没有退化成 stop+start
+    # 只调用了自定义重启钩子，没有退化成 stop+start
     assert svc.calls == ["restart"]
     assert svc.is_started
-    assert svc.is_initialized
 
 
 async def test_restart_when_not_started_just_starts() -> None:
-    """已初始化但未启动时 restart 等价一次 start，不调用 _do_restart。"""
+    """未启动时 restart 等价一次 start，不调用 _do_restart。"""
 
     class _SoftRestart(AsyncServiceLifecycleMixin):
         def __init__(self) -> None:
@@ -219,7 +178,6 @@ async def test_restart_when_not_started_just_starts() -> None:
             self.calls.append("restart")
 
     svc = _SoftRestart()
-    await svc.initialize()
     await svc.restart()
     assert svc.calls == ["start"]
     assert svc.is_started
@@ -249,7 +207,6 @@ async def test_restart_rolls_back_to_stop_on_failure() -> None:
         await svc.restart()
     assert svc.calls == ["restart", "stop"]
     assert not svc.is_started
-    assert not svc.is_initialized
 
 
 async def test_stop_resets_flags_even_when_do_stop_raises() -> None:
@@ -264,7 +221,6 @@ async def test_stop_resets_flags_even_when_do_stop_raises() -> None:
     with pytest.raises(RuntimeError, match="stop failed"):
         await svc.stop()
     assert not svc.is_started
-    assert not svc.is_initialized
 
 
 # ──────────────────────────────────────────────
@@ -273,9 +229,6 @@ async def test_stop_resets_flags_even_when_do_stop_raises() -> None:
 
 
 class _MinimalSource(AudioStreamSource):
-    async def initialize(self) -> None:
-        pass
-
     async def start(self) -> None:
         self._mark_started()
 
@@ -324,7 +277,6 @@ async def _make_router() -> tuple[AudioStreamRouter, _MinimalSource, _MinimalSou
     router._sources = {AudioSourceKind.MICROPHONE: mic, AudioSourceKind.TTS: tts}
     router._active_source_kind = AudioSourceKind.MICROPHONE
     router._source_subscription = mic.subscribe(queue_maxsize=4)
-    router._mark_initialized()
     return router, mic, tts
 
 
@@ -347,22 +299,7 @@ async def test_rebind_active_source_updates_config() -> None:
 
 
 # ──────────────────────────────────────────────
-# 6. AnimationManager.initialize 幂等守卫
-# ──────────────────────────────────────────────
-
-
-async def test_animation_manager_initialize_idempotent(tmp_path: Any) -> None:
-    manager = AnimationManager(template_root=tmp_path)
-    manager.register_runtime(_SemanticPlatform())
-
-    await manager.initialize()
-    await manager.initialize()  # 二次调用
-
-    assert manager.is_initialized
-
-
-# ──────────────────────────────────────────────
-# 7. easing 常量精度
+# 6. easing 常量精度
 # ──────────────────────────────────────────────
 
 

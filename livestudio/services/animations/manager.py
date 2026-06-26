@@ -78,11 +78,6 @@ class AnimationManager(AsyncServiceLifecycleMixin):
             controller,
         )
 
-    async def initialize_runtime(self, platform_name: str) -> None:
-        """初始化指定平台动画运行时"""
-
-        await self.get_runtime(platform_name).initialize()
-
     async def start_runtime(self, platform_name: str) -> None:
         """启动指定平台动画运行时"""
 
@@ -97,14 +92,6 @@ class AnimationManager(AsyncServiceLifecycleMixin):
         """重启指定平台动画运行时"""
 
         await self.get_runtime(platform_name).restart()
-
-    async def _do_initialize(self) -> None:
-        """初始化全部平台动画运行时"""
-
-        await asyncio.gather(
-            *(runtime.initialize() for runtime in self._runtimes.values()),
-        )
-        logger.info("动画管理器已初始化，平台运行时 {} 个", len(self._runtimes))
 
     async def _do_start(self) -> None:
         """启动全部平台动画运行时"""

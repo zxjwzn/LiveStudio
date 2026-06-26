@@ -61,14 +61,8 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
 
         self._model_changed_listener = listener
 
-    async def _do_initialize(self) -> None:
-        """初始化应用依赖"""
-
-        await self.platform.initialize()
-        await self.animation_manager.initialize()
-
     async def _do_start(self) -> None:
-        """启动 VTube Studio 相关应用。
+        """启动 VTube Studio 相关应用（含资源准备）。
 
         启动失败的回滚交由 Mixin 的 start() 统一调用 stop()（即 _do_stop）。
         """

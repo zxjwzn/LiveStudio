@@ -20,10 +20,9 @@ ParameterSender = Callable[
 class ParameterTweenEngine(AsyncServiceLifecycleMixin):
     """以确定性的缓动时序驱动参数值变化。
 
-    生命周期统一走 ``AsyncServiceLifecycleMixin`` 的 initialize/start/restart/stop
-    四件套。缓动引擎无需初始化，``_do_initialize`` 留空占位即可；``start`` 拉起保活
-    循环，``stop`` 是唯一真正退出（取消保活与全部活动缓动、清空受控参数），
-    ``restart`` 默认 = stop+start（清空状态后重建保活循环）。
+    生命周期统一走 ``AsyncServiceLifecycleMixin`` 的 start/restart/stop
+    三件套。``start`` 拉起保活循环，``stop`` 是唯一真正退出（取消保活与全部活动缓动、
+    清空受控参数），``restart`` 默认 = stop+start（清空状态后重建保活循环）。
 
     另保留 ``is_running`` 反映保活任务的真实存活性（区别于 Mixin 的 ``is_started``
     标志）：前者看任务是否实际在跑，后者看是否已 start 且未 stop。

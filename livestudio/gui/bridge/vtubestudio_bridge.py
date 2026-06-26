@@ -130,12 +130,11 @@ class VTubeStudioPlatformBridge(PlatformBridge):
     async def discover_addresses(self) -> list[str]:
         """LAN 搜索运行中的 VTS 实例,返回候选 ws 地址列表。
 
-        LAN 发现用于「连接前」找地址,故不要求已连接;但 discovery 对象在 initialize() 才建,
-        这里先确保平台已初始化(Mixin 的 initialize 幂等,不会发起连接)。无实例时后端按超时
-        抛 DiscoveryError,这里收敛为空列表(对 UI 即「未发现」)。
+        LAN 发现用于「连接前」找地址,故不要求已连接;discovery 对象随服务构造即可用,
+        无需先启动。无实例时后端按超时抛 DiscoveryError,这里收敛为空列表(对 UI 即
+        「未发现」)。
         """
 
-        await self._app.platform.initialize()
         config = self._app.platform.config
         try:
             broadcasts = await self._app.platform.listen_for_api(timeout=config.discovery_timeout)
@@ -218,7 +217,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
     async def apply_ws_url(self, ws_url: str) -> None:
         """校验并写入连接地址(具名属性赋值,非 setattr),持久化到磁盘。
 
-        改动需重连才生效(initialize 阶段才重读 config),由调用方决定何时重连。
+        改动需重连才生效(start/restart 阶段才重读 config),由调用方决定何时重连。
         校验复用模型的 ws_url field_validator:先 model_validate 再赋值。
         """
 

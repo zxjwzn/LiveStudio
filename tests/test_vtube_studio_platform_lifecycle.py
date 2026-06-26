@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, cast
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -63,7 +64,6 @@ def _input_parameter_response() -> InputParameterListResponse:
 async def test_vtube_studio_start_disconnects_when_authentication_fails() -> None:
     platform = VTubeStudio()
     client = _DisconnectRecorder()
-    platform._initialized = True  # noqa: SLF001
     platform._client = cast(Any, client)  # noqa: SLF001
 
     async def connect() -> None:
@@ -75,8 +75,9 @@ async def test_vtube_studio_start_disconnects_when_authentication_fails() -> Non
     platform.connect = connect  # type: ignore[method-assign]
     platform.authenticate = authenticate  # type: ignore[method-assign]
 
-    with pytest.raises(RuntimeError, match="auth failed"):
-        await platform.start()
+    with patch.object(platform.config_manager, "save", AsyncMock()):
+        with pytest.raises(RuntimeError, match="auth failed"):
+            await platform.start()
 
     assert client.disconnect_calls == 1
     assert not platform.is_started
@@ -84,18 +85,15 @@ async def test_vtube_studio_start_disconnects_when_authentication_fails() -> Non
 
 
 async def test_vtube_studio_restart_reconnects_without_destroying_deps() -> None:
-    """软重启：断开重连但保留已初始化依赖（client/discovery/model_config_service）。
+    """重启：断开重连但保留依赖（client/model_config_service）。
 
-    区别于 stop——restart 不复位 _initialized、不清空 client，重连成功后服务仍处
-    已初始化态。验证统一生命周期里 restart 的语义：只有 stop 才真正销毁依赖。
+    区别于 stop——restart 不清空 client，重连成功后服务仍处运行态。验证统一生命
+    周期里 restart 的语义：只有 stop 才真正销毁依赖。
     """
     platform = VTubeStudio()
     client = _DisconnectRecorder()
-    platform._initialized = True  # noqa: SLF001
     platform._mark_started()  # noqa: SLF001
     platform._client = cast(Any, client)  # noqa: SLF001
-    sentinel_discovery = object()
-    platform._discovery = cast(Any, sentinel_discovery)  # noqa: SLF001
 
     connect_calls = 0
     authenticate_calls = 0
@@ -117,11 +115,9 @@ async def test_vtube_studio_restart_reconnects_without_destroying_deps() -> None
     assert client.disconnect_calls == 1
     assert connect_calls == 1
     assert authenticate_calls == 1
-    # 关键：依赖未被销毁，服务仍处已初始化/已启动态
-    assert platform.is_initialized
+    # 关键：依赖未被销毁，服务仍处运行态
     assert platform.is_started
     assert platform._client is client  # noqa: SLF001
-    assert platform._discovery is sentinel_discovery  # noqa: SLF001
     assert platform.tween.is_running
 
     await platform.stop()
@@ -134,7 +130,6 @@ async def test_reload_model_config_keeps_configured_parameter_specs(
     平台探测结果不得覆盖：parameter_specs 完全以配置为准。
     """
     platform = VTubeStudio()
-    platform._initialized = True  # noqa: SLF001
     platform._client = cast(  # noqa: SLF001
         Any,
         _InputParameterClient(_input_parameter_response()),
@@ -165,7 +160,6 @@ async def test_reload_model_config_keeps_defaults_when_vtube_studio_query_fails(
     tmp_path,
 ) -> None:
     platform = VTubeStudio()
-    platform._initialized = True  # noqa: SLF001
     platform._client = cast(Any, _InputParameterClient())  # noqa: SLF001
     platform.config.model_config_dir = str(tmp_path)
 

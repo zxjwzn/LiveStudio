@@ -31,9 +31,6 @@ class _NoSemanticPlatform(PlatformService):
     ) -> None:
         _ = states, mode
 
-    async def initialize(self) -> None:
-        pass
-
     async def start(self) -> None:
         pass
 

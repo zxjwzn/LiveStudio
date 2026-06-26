@@ -73,5 +73,5 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
     ) -> None:
         """发送一批底层平台参数状态"""
 
-    # 生命周期 initialize/start/restart/stop 由 AsyncServiceLifecycleMixin 统一提供，
-    # 平台子类只需实现 _do_initialize / _do_start / _do_stop（按需 _do_restart）副作用。
+    # 生命周期 start/restart/stop 由 AsyncServiceLifecycleMixin 统一提供，
+    # 平台子类只需实现 _do_start / _do_stop（按需 _do_restart）副作用。

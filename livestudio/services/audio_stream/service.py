@@ -60,7 +60,7 @@ class AudioStreamRouter(AudioStreamSource):
         """返回内置麦克风音频源"""
 
         if self._microphone_source is None:
-            raise RuntimeError("音频流路由器尚未初始化")
+            raise RuntimeError("音频流路由器尚未启动")
         return self._microphone_source
 
     async def list_input_devices(self) -> list[InputDeviceInfo]:
@@ -80,10 +80,23 @@ class AudioStreamRouter(AudioStreamSource):
         """返回内置 TTS 音频源"""
 
         if self._tts_source is None:
-            raise RuntimeError("音频流路由器尚未初始化")
+            raise RuntimeError("音频流路由器尚未启动")
         return self._tts_source
 
-    async def _do_initialize(self) -> None:
+    async def _do_start(self) -> None:
+        await self._ensure_sources_built()
+        await self.active_source.start()
+        self._forward_task = asyncio.create_task(self._forward_chunks())
+
+    async def _ensure_sources_built(self) -> None:
+        """重读配置并构建音频源与活动源订阅（幂等：已构建则跳过）。
+
+        资源准备并入启动流程；switch_source 也复用，确保在路由器尚未启动时也能
+        先把源建好再切换。
+        """
+
+        if self._sources:
+            return
         await self.config_manager.load()
 
         self._microphone_source = MicrophoneAudioStreamSource(self.config.microphone)
@@ -92,18 +105,11 @@ class AudioStreamRouter(AudioStreamSource):
             AudioSourceKind.MICROPHONE: self._microphone_source,
             AudioSourceKind.TTS: self._tts_source,
         }
-
-        for source in self._sources.values():
-            await source.initialize()
         self._active_source_kind = self.config.source
         self._source_subscription = self.active_source.subscribe(
             queue_maxsize=self.config.queue_maxsize,
         )
-        logger.info("音频流路由器已初始化，当前音频源: {}", self.active_source_kind)
-
-    async def _do_start(self) -> None:
-        await self.active_source.start()
-        self._forward_task = asyncio.create_task(self._forward_chunks())
+        logger.info("音频流路由器音频源已就绪，当前音频源: {}", self.active_source_kind)
 
     async def _do_stop(self) -> None:
         """停止并释放音频流路由器资源（唯一真正的退出入口）。"""
@@ -140,8 +146,7 @@ class AudioStreamRouter(AudioStreamSource):
     ) -> None:
         if self._active_source_kind == source_kind:
             return
-        if not self._initialized:
-            await self.initialize()
+        await self._ensure_sources_built()
 
         was_started = self.is_started
         previous_source_kind = self._active_source_kind
@@ -155,8 +160,8 @@ class AudioStreamRouter(AudioStreamSource):
 
         if was_started:
             try:
-                # 源在上一次切走时已 stop（麦克风会清空 _loop/_device_info 并复位
-                # _initialized），start() 会按 Mixin 约定自动 initialize。
+                # 源在上一次切走时已 stop（麦克风会清空 _loop/_device_info），
+                # start() 会按 Mixin 约定重新解析设备并打开物理流。
                 await self.active_source.start()
             except Exception:
                 self._rebind_active_source(previous_source_kind)

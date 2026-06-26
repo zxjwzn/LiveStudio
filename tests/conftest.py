@@ -61,9 +61,6 @@ class _SemanticPlatform(PlatformService):
     async def get_semantic_value(self, action: str) -> float | None:
         return self.semantic_values.get(action)
 
-    async def initialize(self) -> None:
-        pass
-
     async def start(self) -> None:
         pass
 

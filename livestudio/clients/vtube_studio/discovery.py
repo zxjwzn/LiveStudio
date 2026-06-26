@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import socket
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 
 from pydantic import ValidationError
 
@@ -15,8 +15,15 @@ from .models import VTubeStudioAPIStateBroadcast
 class VTubeStudioDiscovery:
     """监听 VTube Studio 发出来的 UDP 广播"""
 
-    def __init__(self, config: VTubeStudioConfig) -> None:
-        self._config = config
+    def __init__(self, config_provider: Callable[[], VTubeStudioConfig]) -> None:
+        # 持有返回最新配置的 provider 而非配置快照：discovery 在服务构造期就建立，
+        # 但配置由 config_manager.load() 在 start 时替换为新对象，故每次监听都重新读取，
+        # 避免捕获构造期的陈旧默认值。
+        self._config_provider = config_provider
+
+    @property
+    def _config(self) -> VTubeStudioConfig:
+        return self._config_provider()
 
     async def discover_once(
         self,

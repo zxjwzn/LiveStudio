@@ -33,11 +33,11 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         """返回当前选中的输入设备信息"""
 
         if self._device_info is None:
-            raise RuntimeError("麦克风音频源尚未初始化")
+            raise RuntimeError("麦克风音频源尚未启动")
         return self._device_info
 
-    async def _do_initialize(self) -> None:
-        """加载配置并解析目标输入设备"""
+    async def _do_start(self) -> None:
+        """解析目标输入设备并启动麦克风输入流"""
 
         self._loop = asyncio.get_running_loop()
         # 解析出的真实设备只存进内存运行态 _device_info，刻意不回写 config：
@@ -45,17 +45,10 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         # 不应被某次运行解析到的具体设备覆盖。
         self._device_info = await self._resolve_input_device()
         logger.info(
-            "麦克风音频源已初始化，目标设备: {} ({})",
+            "麦克风目标设备已解析: {} ({})",
             self.device_info.name,
             self.device_info.index,
         )
-
-    async def _do_start(self) -> None:
-        """启动麦克风输入流"""
-
-        if self._loop is None or self._device_info is None:
-            raise RuntimeError("麦克风音频源尚未初始化，请先调用 initialize()")
-
         await self._open_stream()
         logger.info("麦克风音频流已启动")
 
@@ -79,7 +72,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
 
         await self._close_stream()
         self._loop = asyncio.get_running_loop()
-        # 同 _do_initialize：解析结果只进内存运行态，不回写 config。
+        # 同 _do_start：解析结果只进内存运行态，不回写 config。
         self._device_info = await self._resolve_input_device()
         await self._open_stream()
         logger.info(
@@ -99,7 +92,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
         """
 
         if self._device_info is None:
-            raise RuntimeError("麦克风音频源尚未初始化，请先调用 initialize()")
+            raise RuntimeError("麦克风音频源尚未解析目标设备")
 
         try:
             stream = await self._build_stream(self._device_info)
@@ -121,7 +114,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
                 f"输入设备打开失败且无可用回退设备: {self._device_info.name}",
             )
         self._stream = await self._build_stream(fallback)
-        # 实际启用的回退设备只更新内存运行态，不回写 config（同 _do_initialize）。
+        # 实际启用的回退设备只更新内存运行态，不回写 config（同 _do_start）。
         self._device_info = fallback
         logger.info("已回退到默认输入设备: {} ({})", fallback.name, fallback.index)
 

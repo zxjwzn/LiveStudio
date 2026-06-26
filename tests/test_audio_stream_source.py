@@ -145,7 +145,6 @@ async def test_source_restart_preserves_subscriptions_but_stop_clears_them() -> 
 async def test_tts_audio_source_start_stop_lifecycle() -> None:
     source = TTSAudioStreamSource(TTSAudioStreamConfig())
 
-    await source.initialize()
     await source.start()
     assert source.is_started
 
@@ -177,7 +176,6 @@ async def test_router_switch_source_rolls_back_when_new_source_fails() -> None:
     }
     router._active_source_kind = AudioSourceKind.MICROPHONE
     router._source_subscription = microphone.subscribe(queue_maxsize=4)
-    router._initialized = True
     router._mark_started()
     await microphone.start()
     router._forward_task = asyncio.create_task(router._forward_chunks())
@@ -218,7 +216,6 @@ async def test_router_forwards_active_source_chunks_to_subscribers() -> None:
     }
     router._active_source_kind = AudioSourceKind.MICROPHONE
     router._source_subscription = microphone.subscribe(queue_maxsize=4)
-    router._initialized = True
 
     subscriber = router.subscribe(queue_maxsize=4)
     await router.start()
@@ -261,7 +258,6 @@ async def test_restart_active_source_keeps_downstream_subscribers() -> None:
     }
     router._active_source_kind = AudioSourceKind.MICROPHONE
     router._source_subscription = microphone.subscribe(queue_maxsize=4)
-    router._initialized = True
 
     # 模拟一个下游订阅者（如 MouthSyncController 在 app 启动时订阅一次）
     downstream = router.subscribe(queue_maxsize=4)
@@ -310,17 +306,18 @@ async def test_microphone_start_falls_back_to_default_device(monkeypatch) -> Non
     monkeypatch.setattr(microphone_module.sd, "InputStream", _input_stream)
 
     source = MicrophoneAudioStreamSource(MicrophoneAudioStreamConfig())
-    source._loop = asyncio.get_running_loop()
-    source._device_info = configured
-    source._mark_initialized()
 
     async def _list() -> list[InputDeviceInfo]:
         return [configured, default]
+
+    async def _resolve_input() -> InputDeviceInfo:
+        return configured  # 解析得到配置设备(1)，随后 _open_stream 打不开触发回退
 
     async def _resolve_default(_devices: object) -> InputDeviceInfo:
         return default
 
     monkeypatch.setattr(source, "list_input_devices", _list)
+    monkeypatch.setattr(source, "_resolve_input_device", _resolve_input)
     monkeypatch.setattr(source, "_resolve_default_device", _resolve_default)
 
     await source.start()
@@ -340,17 +337,18 @@ async def test_microphone_start_raises_when_no_fallback_available(monkeypatch) -
     monkeypatch.setattr(microphone_module.sd, "InputStream", lambda **_: stream)
 
     source = MicrophoneAudioStreamSource(MicrophoneAudioStreamConfig())
-    source._loop = asyncio.get_running_loop()
-    source._device_info = only
-    source._mark_initialized()
 
     async def _list() -> list[InputDeviceInfo]:
         return [only]
+
+    async def _resolve_input() -> InputDeviceInfo:
+        return only
 
     async def _resolve_default(_devices: object) -> InputDeviceInfo:
         return only  # 默认设备就是配置设备本身 → 无可回退
 
     monkeypatch.setattr(source, "list_input_devices", _list)
+    monkeypatch.setattr(source, "_resolve_input_device", _resolve_input)
     monkeypatch.setattr(source, "_resolve_default_device", _resolve_default)
 
     with pytest.raises(RuntimeError, match="无可用回退设备"):
@@ -372,8 +370,7 @@ async def test_microphone_stop_clears_state_when_stream_stop_fails() -> None:
         hostapi=0,
     )
     source._stream = cast(Any, _FakeInputStream(fail_stop=True))
-    source._mark_initialized()  # 伪造已初始化，否则 stop() 因未初始化直接返回（幂等守卫）
-    source._mark_started()
+    source._mark_started()  # 伪造已启动，否则 stop() 因未启动直接返回（幂等守卫）
     subscription = source.subscribe(queue_maxsize=4)
 
     with pytest.raises(RuntimeError, match="stream stop failed"):
@@ -452,26 +449,23 @@ class _FakeInputStream:
 
 
 class _ReinitSource(AudioStreamSource):
-    """模拟麦克风式生命周期：stop 清空状态，start 前必须 (重新) initialize。
+    """模拟麦克风式生命周期：stop 清空状态，start 时重新解析资源。
 
     走 Mixin 模板方法：_do_stop 清空 _ready（模拟麦克风清 _loop/_device_info），
-    _do_start 在未就绪时抛错。验证切走被 stop 复位后，再切回经 Mixin 的 start
-    自动 initialize 而成功——这正是简化后 switch_source 依赖的契约。
+    _do_start 每次重新「准备」（解析设备）再启动。验证切走被 stop 复位后，再切回
+    经 start 重新准备而成功——这正是简化后 switch_source 依赖的契约。
     """
 
     def __init__(self) -> None:
         super().__init__()
         self._ready = False
         self.start_calls = 0
-        self.initialize_calls = 0
-
-    async def _do_initialize(self) -> None:
-        self._ready = True
-        self.initialize_calls += 1
+        self.prepare_calls = 0
 
     async def _do_start(self) -> None:
-        if not self._ready:
-            raise RuntimeError("源尚未初始化，请先调用 initialize()")
+        # start 自带资源准备（模拟麦克风每次启动重新解析设备）
+        self._ready = True
+        self.prepare_calls += 1
         self.start_calls += 1
 
     async def _do_stop(self) -> None:
@@ -480,7 +474,7 @@ class _ReinitSource(AudioStreamSource):
 
 
 async def test_router_switch_source_round_trip_reinitializes_source() -> None:
-    """来回切换（mic->tts->mic）应成功：切回的源会被重新 initialize 再 start。
+    """来回切换（mic->tts->mic）应成功：切回的源会被重新准备再 start。
 
     回归测试：修复前切回 mic 会因状态被 stop 清空而 RuntimeError。
     """
@@ -508,9 +502,7 @@ async def test_router_switch_source_round_trip_reinitializes_source() -> None:
     }
     router._active_source_kind = AudioSourceKind.MICROPHONE
     router._source_subscription = microphone.subscribe(queue_maxsize=4)
-    router._initialized = True
     router._mark_started()
-    await microphone.initialize()
     await microphone.start()
     router._forward_task = asyncio.create_task(router._forward_chunks())
 
@@ -519,9 +511,9 @@ async def test_router_switch_source_round_trip_reinitializes_source() -> None:
     assert router.active_source_kind is AudioSourceKind.TTS
     assert tts.is_started
 
-    # tts -> mic：切回应重新 initialize 并成功 start（修复前此处 RuntimeError）
+    # tts -> mic：切回应重新准备并成功 start（修复前此处 RuntimeError）
     await router.switch_source(AudioSourceKind.MICROPHONE)
     assert router.active_source_kind is AudioSourceKind.MICROPHONE
     assert microphone.is_started
-    assert microphone.initialize_calls >= 2  # 初次 + 切回各一次
+    assert microphone.prepare_calls >= 2  # 初次 + 切回各一次
     await router.stop()

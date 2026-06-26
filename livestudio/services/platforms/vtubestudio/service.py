@@ -70,7 +70,10 @@ class VTubeStudio(PlatformService):
             config_path("vtube_studio.yaml"),
         )
         self._client: VTubeStudioClient | None = None
-        self._discovery: VTubeStudioDiscovery | None = None
+        # discovery 随服务构造而建：LAN 发现用于「连接前」找地址，不依赖连接/配置加载。
+        # 传入返回最新配置的 provider，避免捕获构造期的陈旧快照（config_manager.load()
+        # 会在 start 时把配置替换为新对象）。
+        self._discovery = VTubeStudioDiscovery(lambda: self.config)
         self._model_config_service: PlatformModelConfigService[VTubeStudioModelConfig] | None = None
         self._semantic_adapter: SemanticActionAdapter | None = None
         self._expression_adapter: VTSExpressionAdapter | None = None
@@ -125,25 +128,57 @@ class VTubeStudio(PlatformService):
 
     @property
     def client(self) -> VTubeStudioClient:
-        """返回已初始化的底层客户端"""
+        """返回已启动的底层客户端"""
 
-        return _require(self._client, "VTubeStudio 尚未初始化，请先调用 initialize()")
+        return _require(self._client, "VTubeStudio 尚未启动，请先调用 start()")
 
     @property
     def discovery(self) -> VTubeStudioDiscovery:
-        """返回已经准备好的自动发现对象"""
+        """返回自动发现对象（随服务构造即可用，无需先启动）"""
 
-        return _require(self._discovery, "VTubeStudio 尚未初始化，请先调用 initialize()")
+        return self._discovery
 
-    async def _do_initialize(self) -> None:
-        """加载配置并创建内部依赖（幂等与标志维护由 Mixin 负责）"""
+    async def _do_start(self) -> None:
+        """准备依赖并连接认证，连接失败时自动重连直到成功。
 
+        资源准备（重读配置、建 client/model_config_service）与连接启动合并在这里
+        完成；幂等与标志维护由 Mixin 负责。VTube Studio 的连接需在不可达时无限重试。
+        """
+
+        await self._ensure_dependencies_built()
+
+        retry_delay = 3.0
+        max_delay = 30.0
+        backoff_factor = 1.5
+
+        while True:
+            try:
+                await self.connect()
+                await self.authenticate()
+                await self.tween.start()
+                logger.success("VTube Studio 已连接并完成认证")
+            except VTubeStudioConnectionError as exc:
+                logger.warning(f"连接 VTube Studio 失败: {exc}，{retry_delay:.1f}秒后重试...")
+                # 认证阶段失败时连接可能已建立，重试前先断开，避免每轮泄漏一条 websocket
+                await self._safe_disconnect()
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * backoff_factor, max_delay)
+            else:
+                return
+
+    async def _ensure_dependencies_built(self) -> None:
+        """重读配置并构建 client 与模型配置服务（幂等：client 已存在则跳过）。
+
+        资源准备并入启动流程；start 时重读配置使每次启动都以最新状态部署。
+        """
+
+        if self._client is not None:
+            return
         await self.config_manager.load()
         self._client = VTubeStudioClient(
             config=self.config,
             plugin_info=self.config.plugin,
         )
-        self._discovery = VTubeStudioDiscovery(self.config)
         self._model_config_service = PlatformModelConfigService(
             config_model=VTubeStudioModelConfig,
             model_config_dir=self.config.model_config_dir,
@@ -158,17 +193,16 @@ class VTubeStudio(PlatformService):
         if self._model_config_service is not None:
             await self._model_config_service.save()
         self._client = None
-        self._discovery = None
         self._model_config_service = None
         self._semantic_adapter = None
         self._expression_adapter = None
 
     async def _do_restart(self) -> None:
-        """软重启：断开并重新连接认证，保留已初始化依赖与模型配置。
+        """以新状态重新部署：断开并重连认证，保留对外契约。
 
-        区别于 stop：不销毁 client/discovery/model_config_service、不复位
-        _initialized，因此重启后无需重新 initialize。重连不做无限重试——restart
-        是显式操作，失败时由 Mixin 的 restart() 统一回滚到 stop()。
+        区别于 stop：不销毁 client/model_config_service，因此重启后无需重建依赖。
+        重连不做无限重试——restart 是显式操作，失败时由 Mixin 的 restart() 统一
+        回滚到 stop()。
         """
 
         await self.tween.stop()
@@ -177,43 +211,6 @@ class VTubeStudio(PlatformService):
         await self.authenticate()
         await self.tween.start()
         logger.success("VTube Studio 已重连并完成认证")
-
-    async def start(self) -> None:
-        """启动连接与认证流程，连接失败时自动重连直到成功。
-
-        VTube Studio 的连接需在不可达时无限重试，且失败清理刻意比 stop 轻量
-        （不落盘配置），故保留对 Mixin start() 的覆盖；initialize/stop/restart
-        均已统一走 Mixin 的 _do_* 模板方法。
-        """
-
-        if self._started:
-            return
-        if not self._initialized:
-            await self.initialize()
-
-        retry_delay = 3.0
-        max_delay = 30.0
-        backoff_factor = 1.5
-
-        while True:
-            try:
-                await self.connect()
-                await self.authenticate()
-                await self.tween.start()
-                self._mark_started()
-                logger.success("VTube Studio 已连接并完成认证")
-            except VTubeStudioConnectionError as exc:
-                logger.warning(f"连接 VTube Studio 失败: {exc}，{retry_delay:.1f}秒后重试...")
-                # 认证阶段失败时连接可能已建立，重试前先断开，避免每轮泄漏一条 websocket
-                await self._safe_disconnect()
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * backoff_factor, max_delay)
-            except Exception:
-                await self.tween.stop()
-                await self._safe_disconnect()
-                raise
-            else:
-                return
 
     async def reload_model_config(
         self,

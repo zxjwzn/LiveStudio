@@ -11,9 +11,6 @@ class TTSAudioStreamSource(AudioStreamSource):
         super().__init__()
         self.config = config
 
-    async def _do_initialize(self) -> None:
-        """初始化 TTS 音频流占位资源"""
-
     async def _do_start(self) -> None:
         """启动 TTS 音频流占位资源"""
 

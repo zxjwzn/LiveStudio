@@ -13,8 +13,8 @@ from .models import AudioChunk, AudioChunkSubscription
 class AudioStreamSource(AsyncServiceLifecycleMixin, ABC):
     """统一音频流来源抽象。
 
-    生命周期统一走 ``AsyncServiceLifecycleMixin`` 的 initialize/start/restart/stop
-    四件套：子类只实现 ``_do_initialize`` / ``_do_start`` / ``_do_stop``（按需重写
+    生命周期统一走 ``AsyncServiceLifecycleMixin`` 的 start/restart/stop
+    三件套：子类只实现 ``_do_start`` / ``_do_stop``（按需重写
     ``_do_restart``）副作用，幂等守卫、标志维护与失败回滚由 Mixin 统一处理。
     其中 ``stop`` 是唯一真正释放资源的终止入口（会清空订阅）。
     """
