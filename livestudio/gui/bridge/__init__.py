@@ -1,0 +1,22 @@
+"""GUI 与后端之间的桥接层
+
+视图只依赖本层的信号与方法,不直接 import 后端类型。桥接负责在 qasync 事件循环上
+调度后端协程,并把跨线程回调(音频/日志)marshal 回 Qt。
+"""
+
+from .audio_bridge import AudioController
+from .log_bridge import LogController, LogEntry
+from .platform_bridge import ConnectionState, ModelConfigEntry, PlatformBridge
+from .service_bridge import ServiceBridge
+from .vtubestudio_bridge import VTubeStudioPlatformBridge
+
+__all__ = [
+    "AudioController",
+    "ConnectionState",
+    "LogController",
+    "LogEntry",
+    "ModelConfigEntry",
+    "PlatformBridge",
+    "ServiceBridge",
+    "VTubeStudioPlatformBridge",
+]

@@ -83,6 +83,34 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
         await self.platform.start()
         await self.load_current_model()
 
+    async def connect(self) -> None:
+        """连接 VTube Studio 并加载当前模型，但不启动动画控制器。
+
+        供 GUI 把「连接」与「控制器启停」拆成两个独立动作:连接只建立平台会话与
+        模型配置,动画待机由 start_controllers 单独开启。语义同
+        start_platform_for_expression_test,以更贴合 GUI 的命名暴露。
+        """
+
+        await self.platform.start()
+        await self.load_current_model()
+
+    async def disconnect(self) -> None:
+        """断开 VTube Studio:先停动画控制器,再停平台(镜像 _do_stop 顺序)。"""
+
+        await self.animation_manager.stop()
+        await self.platform.stop()
+        self._model_subscription = None
+
+    async def start_controllers(self) -> None:
+        """启动动画控制器(待机动画)。需平台已连接。"""
+
+        await self.animation_manager.start()
+
+    async def stop_controllers(self) -> None:
+        """停止动画控制器(幂等,未运行时为空操作)。"""
+
+        await self.animation_manager.stop()
+
     async def load_current_model(self) -> None:
         """订阅模型事件并加载当前模型配置"""
 
@@ -257,8 +285,6 @@ class VTubeStudioApp(AsyncServiceLifecycleMixin):
             controllers.append(existing if existing is not None and existing.config is cfg else factory())
 
         # 表情解算控制器（一次性，额外依赖 expression_profile，单列于表外）
-        controllers.append(
-            ExpressionController(runtime, "expression", ctrls.expression, config.expression_profile)
-        )
+        controllers.append(ExpressionController(runtime, "expression", ctrls.expression, config.expression_profile))
 
         await runtime.reload_controllers(controllers)
