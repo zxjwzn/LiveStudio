@@ -6,10 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.services.platforms.model import PlatformModelConfig, PlatformModelIdentity
 
-from .defaults import (
-    default_vtube_studio_parameter_specs,
-    default_vtube_studio_semantic_profile,
-)
+from .defaults import default_vtube_studio_semantic_profile
 
 
 class VTubeStudioExpressionStateConfig(BaseModel):
@@ -42,9 +39,7 @@ class VTubeStudioModelConfig(PlatformModelConfig):
         base = PlatformModelConfig.create_default(identity)
         data = base.model_dump()
         data.pop("semantic_profile", None)
-        data.pop("parameter_specs", None)
         return cls(
             **data,
             semantic_profile=default_vtube_studio_semantic_profile(),
-            parameter_specs=default_vtube_studio_parameter_specs(),
         )

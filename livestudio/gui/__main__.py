@@ -10,11 +10,13 @@ import qasync
 from PySide6.QtWidgets import QApplication
 
 from livestudio.gui.app import GuiApplication
+from livestudio.gui.core.resources import app_icon
 
 
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("LiveStudio")
+    app.setWindowIcon(app_icon())
 
     event_loop = qasync.QEventLoop(app)
 

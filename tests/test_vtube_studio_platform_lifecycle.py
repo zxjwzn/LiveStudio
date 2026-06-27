@@ -8,8 +8,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from livestudio.clients.vtube_studio.models import InputParameterListResponse
+from livestudio.config import ConfigManager
 from livestudio.services.platforms.vtubestudio import VTubeStudio
 from livestudio.services.semantic_actions import (
+    PlatformParameterSpec,
     SemanticAction,
     SemanticTweenRequest,
 )
@@ -122,12 +124,9 @@ async def test_vtube_studio_restart_reconnects_without_destroying_deps() -> None
     await platform.stop()
 
 
-async def test_reload_model_config_keeps_configured_parameter_specs(
+async def test_reload_model_config_syncs_and_saves_vtube_studio_parameter_specs(
     tmp_path,
 ) -> None:
-    """已有参数范围（首次创建即由 create_default 种入的 VTS 默认）时，
-    平台探测结果不得覆盖：parameter_specs 完全以配置为准。
-    """
     platform = VTubeStudio()
     platform._client = cast(  # noqa: SLF001
         Any,
@@ -137,11 +136,9 @@ async def test_reload_model_config_keeps_configured_parameter_specs(
 
     model_config = await platform.reload_model_config("model-1", "avatar")
 
-    # create_default 已种入 VTS 默认参数范围，MouthOpen 为 0..1，
-    # 探测返回的 -2..2 不会覆盖它。
     mouth_open = next(spec for spec in model_config.parameter_specs if spec.name == "MouthOpen")
-    assert mouth_open.minimum == 0.0
-    assert mouth_open.maximum == 1.0
+    assert mouth_open.minimum == -2.0
+    assert mouth_open.maximum == 2.0
     request = platform.semantic_adapter.to_tween_requests(  # type: ignore[union-attr]
         [
             SemanticTweenRequest(
@@ -152,15 +149,33 @@ async def test_reload_model_config_keeps_configured_parameter_specs(
             )
         ]
     )[0]
-    assert request.end_value == 1.0
+    assert request.end_value == 2.0
+
+    manager = ConfigManager(type(model_config), platform.model_config_manager.path)
+    saved_config = await manager.load()
+    saved_mouth_open = next(spec for spec in saved_config.parameter_specs if spec.name == "MouthOpen")
+    assert saved_mouth_open.minimum == -2.0
+    assert saved_mouth_open.maximum == 2.0
 
 
-async def test_reload_model_config_keeps_defaults_when_vtube_studio_query_fails(
+async def test_reload_model_config_keeps_file_specs_when_vtube_studio_query_fails(
     tmp_path,
 ) -> None:
     platform = VTubeStudio()
     platform._client = cast(Any, _InputParameterClient())  # noqa: SLF001
     platform.config.model_config_dir = str(tmp_path)
+
+    first_config = await platform.reload_model_config("model-1", "avatar")
+    assert first_config.parameter_specs == []
+
+    first_config.parameter_specs = [
+        PlatformParameterSpec(
+            name="MouthOpen",
+            minimum=0.0,
+            maximum=1.0,
+        )
+    ]
+    await platform.model_config_manager.save()
 
     model_config = await platform.reload_model_config("model-1", "avatar")
 

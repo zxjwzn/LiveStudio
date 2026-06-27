@@ -12,13 +12,17 @@ from pydantic import ValidationError
 from livestudio.services.animations.templates import AnimationTemplatePlayer
 from livestudio.services.animations.templates.models import AnimationTemplate
 from livestudio.services.platforms import PlatformService
-from livestudio.services.platforms.vtubestudio import (
-    default_vtube_studio_parameter_specs,
-    default_vtube_studio_semantic_profile,
-)
-from livestudio.services.semantic_actions import SemanticAction, SemanticActionAdapter
+from livestudio.services.platforms.vtubestudio import default_vtube_studio_semantic_profile
+from livestudio.services.semantic_actions import PlatformParameterSpec, SemanticAction, SemanticActionAdapter
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 from tests.conftest import _SemanticPlatform
+
+
+def _parameter_specs() -> list[PlatformParameterSpec]:
+    return [
+        PlatformParameterSpec(name="MouthOpen", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="MouthSmile", minimum=0.0, maximum=1.0),
+    ]
 
 
 class _AdapterBackedSemanticPlatform(_SemanticPlatform):
@@ -28,7 +32,7 @@ class _AdapterBackedSemanticPlatform(_SemanticPlatform):
         self._tween = ParameterTweenEngine(self.send_parameter_states)
         self._semantic_adapter = SemanticActionAdapter(
             default_vtube_studio_semantic_profile(),
-            parameter_specs=default_vtube_studio_parameter_specs(),
+            parameter_specs=_parameter_specs(),
             engine=self._tween,
         )
 

@@ -8,11 +8,9 @@ from typing import Literal
 import pytest
 from pydantic import ValidationError
 
-from livestudio.services.platforms.vtubestudio import (
-    default_vtube_studio_parameter_specs,
-    default_vtube_studio_semantic_profile,
-)
+from livestudio.services.platforms.vtubestudio import default_vtube_studio_semantic_profile
 from livestudio.services.semantic_actions import (
+    PlatformParameterSpec,
     SemanticAction,
     SemanticActionAdapter,
     SemanticActionBinding,
@@ -20,6 +18,21 @@ from livestudio.services.semantic_actions import (
     SemanticTweenRequest,
 )
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
+
+
+def _parameter_specs() -> list[PlatformParameterSpec]:
+    return [
+        PlatformParameterSpec(name="FaceAngleZ", minimum=-90.0, maximum=90.0),
+        PlatformParameterSpec(name="MouthOpen", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="MouthSmile", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="Brows", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="BrowLeftY", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="BrowRightY", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeLeftX", minimum=-1.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeRightX", minimum=-1.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeOpenLeft", minimum=0.0, maximum=1.0),
+        PlatformParameterSpec(name="EyeOpenRight", minimum=0.0, maximum=1.0),
+    ]
 
 
 class _TweenRecorder:
@@ -40,7 +53,7 @@ def _default_adapter() -> SemanticActionAdapter:
     engine = ParameterTweenEngine(recorder)
     return SemanticActionAdapter(
         default_vtube_studio_semantic_profile(),
-        parameter_specs=default_vtube_studio_parameter_specs(),
+        parameter_specs=_parameter_specs(),
         engine=engine,
     )
 
@@ -121,7 +134,7 @@ def test_semantic_adapter_can_bind_common_brow_height_to_shared_platform_paramet
                 ),
             ],
         ),
-        parameter_specs=default_vtube_studio_parameter_specs(),
+        parameter_specs=_parameter_specs(),
         engine=engine,
     )
 

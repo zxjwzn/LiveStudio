@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow, NavigationItemPosition
 
 from livestudio.gui.core import icons
+from livestudio.gui.core.resources import app_icon
 
 # 关闭请求回调:窗口把「用户想关闭」上报给 GuiApplication,由后者编排异步停机。
 CloseRequestHandler = Callable[[], None]
@@ -32,6 +33,7 @@ class MainWindow(FluentWindow):
     ) -> None:
         super().__init__()
         self.setWindowTitle("LiveStudio")
+        self.setWindowIcon(app_icon())
         self.resize(1100, 720)
 
         self._close_requested = False

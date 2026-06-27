@@ -251,13 +251,7 @@ class VTubeStudio(PlatformService):
         self,
         model_config: VTubeStudioModelConfig,
     ) -> None:
-        """用 VTube Studio 当前可注入输入参数补全平台参数范围。
-
-        探测结果属于运行时瞬态，只在用户尚未配置（parameter_specs 为空）时
-        填充进内存，作为开箱即用的默认；一旦用户在配置文件里配过参数范围，
-        就完全尊重其取值，探测结果仅用于发现缺失项时告警，绝不覆盖。
-        本方法不主动落盘——首次创建的默认已由 create_default 写入文件。
-        """
+        """从 VTube Studio 当前可注入输入参数同步平台参数范围。"""
 
         try:
             response = await self.client.get_input_parameters()
@@ -282,19 +276,8 @@ class VTubeStudio(PlatformService):
         if not specs:
             return
 
-        if model_config.parameter_specs:
-            # 用户已配过参数范围：完全尊重，只对探测发现的缺失项告警，不覆盖。
-            configured = {spec.name for spec in model_config.parameter_specs}
-            missing = [name for name in specs_by_name if name not in configured]
-            if missing:
-                logger.warning(
-                    "VTube Studio 可注入参数未在模型配置中声明，已忽略: {}",
-                    missing,
-                )
-            return
-
-        # 用户未配置：用平台探测结果填充内存运行态。
         model_config.parameter_specs = specs
+        await self.model_config_manager.save()
 
     async def _safe_disconnect(self) -> None:
         """断开底层客户端连接（若已建立），吞掉断连自身异常。
