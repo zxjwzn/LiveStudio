@@ -1,8 +1,10 @@
 """平台服务抽象"""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from livestudio.services.expression.models import NativeExpressionTrigger
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
@@ -12,6 +14,10 @@ from livestudio.services.semantic_actions import (
 )
 from livestudio.services.tween import ControlledParameterState, ParameterTweenEngine
 
+if TYPE_CHECKING:
+    # 仅用于类型注解;运行时导入会触发 platforms → base → model → animations → platforms 循环。
+    from livestudio.services.platforms.model import PlatformModelIdentity
+
 
 class PlatformService(AsyncServiceLifecycleMixin, ABC):
     """所有平台服务必须实现的统一生命周期接口"""
@@ -20,6 +26,16 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
     @abstractmethod
     def name(self) -> str:
         """平台唯一名称"""
+
+    @property
+    def current_model(self) -> PlatformModelIdentity:
+        """返回当前已加载模型身份。
+
+        基类默认视作「无模型概念/未加载」而抛 RuntimeError;有模型概念的平台覆盖此属性,
+        在未加载时同样按约定抛 RuntimeError。app 层的 current_model 据此收敛为可空返回。
+        """
+
+        raise RuntimeError(f"平台 {self.name} 当前没有已加载的模型")
 
     @property
     @abstractmethod

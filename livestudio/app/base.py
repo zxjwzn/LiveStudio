@@ -11,13 +11,28 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from livestudio.services.animations import AnimationManager
+from livestudio.services.animations.controllers import AnimationType
 from livestudio.services.audio_stream import AudioStreamSource
+from livestudio.services.expression.models import EmotionKind
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms import PlatformModelConfig, PlatformService
 from livestudio.utils.log import logger
+
+# 情绪解算控制器的约定名:各平台在 _apply_model_config 里统一以此名注册一次性表情控制器。
+_EXPRESSION_CONTROLLER = "expression"
+
+
+@dataclass(frozen=True, slots=True)
+class ControllerStatus:
+    """一个待机动画控制器的运行态快照(供上层消费者展示/决策)"""
+
+    name: str  # 控制器内部名(如 "blink"),启停时回传
+    running: bool  # 当前是否运行中
+    enabled: bool  # 模型配置中是否启用(禁用的控制器 start 会被守卫跳过)
 
 # 模型变更监听器：参数为 (model_id, model_name)。后端只负责广播「模型已就绪/已切换」，
 # 不关心由谁消费——GUI 适配器等外部观察者据此自我刷新，从而与本应用解耦。
@@ -104,6 +119,77 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         """停止动画控制器(幂等,未运行时为空操作)。"""
 
         await self.animation_manager.stop()
+
+    # --- 平台无关语义动作(供 GUI / MCP 等上层消费者直接调用,不下探 runtime/platform) ---
+
+    @property
+    def current_model(self) -> tuple[str, str] | None:
+        """返回当前已加载模型的 (model_id, model_name);未连接/未加载模型时为 None。
+
+        收敛上层「读当前模型身份」的需求:此前消费者直接访问 platform.current_model 并自行
+        捕获 RuntimeError,这里统一为可空返回,免去越界与异常处理。
+        """
+
+        try:
+            identity = self.platform.current_model
+        except RuntimeError:
+            return None
+        return identity.model_id, identity.model_name
+
+    def list_controllers(self) -> list[ControllerStatus]:
+        """列出当前可独立启停的待机控制器及其运行态;未连接/未加载模型时为空。
+
+        控制器实例在「连接并加载模型」后才由 _apply_model_config 建出,故未就绪时
+        runtime.controllers 为空,这里返回空列表。一次性控制器(expression)不在此列。
+        """
+
+        runtime = self.animation_manager.get_runtime(self.platform.name)
+        statuses: list[ControllerStatus] = []
+        for name, controller in runtime.controllers.items():
+            if controller.animation_type is not AnimationType.IDLE:
+                continue
+            statuses.append(
+                ControllerStatus(name=name, running=controller.is_running, enabled=controller.enabled)
+            )
+        return statuses
+
+    async def set_controller(self, name: str, running: bool) -> bool:
+        """启停单个待机控制器(仅运行态,不改模型配置),返回操作后该控制器是否运行中。
+
+        running=True 时启动:被模型配置禁用的控制器会被 start 守卫跳过,此时返回 False。
+        running=False 时停止(幂等)。控制器不存在时抛 KeyError,由调用方处理。
+        """
+
+        runtime = self.animation_manager.get_runtime(self.platform.name)
+        if running:
+            await runtime.start_controller(name)
+        else:
+            await runtime.stop_controller(name)
+        return runtime.get_controller(name).is_running
+
+    def available_emotions(self) -> list[str]:
+        """返回可触发的情绪标识列表(EmotionKind 值,如 "joy"/"anger"/...)。
+
+        情绪解算为平台通用能力,清单与连接态无关,恒定返回全部 EmotionKind。
+        """
+
+        return [kind.value for kind in EmotionKind]
+
+    async def play_emotion(self, emotion: str) -> None:
+        """触发一次情绪表情解算(过渡→保持→自动回中性)。需已连接并加载模型。
+
+        emotion 须为 available_emotions 中的值;非法值抛 ValueError。表情控制器未就绪
+        (未连接/未加载模型)时抛 RuntimeError。
+        """
+
+        try:
+            kind = EmotionKind(emotion)
+        except ValueError as exc:
+            raise ValueError(f"未知情绪: {emotion}") from exc
+        runtime = self.animation_manager.get_runtime(self.platform.name)
+        if _EXPRESSION_CONTROLLER not in runtime.controllers:
+            raise RuntimeError("表情控制器未就绪(请先连接并加载模型)")
+        await runtime.execute_controller(_EXPRESSION_CONTROLLER, emotion=kind.value)
 
     async def load_current_model(self) -> None:
         """订阅模型事件并加载当前模型配置"""

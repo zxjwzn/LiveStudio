@@ -27,6 +27,7 @@ class MainWindow(FluentWindow):
         platform: QWidget,
         audio: QWidget,
         logs: QWidget,
+        mcp: QWidget,
         settings: QWidget,
     ) -> None:
         super().__init__()
@@ -40,6 +41,7 @@ class MainWindow(FluentWindow):
         self.addSubInterface(platform, icons.NAV_PLATFORM, "平台")
         self.addSubInterface(audio, icons.NAV_AUDIO, "音频")
         self.addSubInterface(logs, icons.NAV_LOGS, "日志")
+        self.addSubInterface(mcp, icons.NAV_MCP, "MCP")
         self.addSubInterface(
             settings,
             icons.NAV_SETTINGS,

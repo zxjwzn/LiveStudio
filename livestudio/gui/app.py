@@ -14,7 +14,7 @@ import asyncio
 from qfluentwidgets import InfoBar, InfoBarPosition
 
 from livestudio.app import VTubeStudioApp
-from livestudio.gui.bridge import PlatformRegistration, ServiceBridge, VTubeStudioPlatformBridge
+from livestudio.gui.bridge import McpBridge, PlatformRegistration, ServiceBridge, VTubeStudioPlatformBridge
 from livestudio.gui.bridge.log_bridge import LogEntry
 from livestudio.gui.core import (
     GuiSettings,
@@ -28,8 +28,11 @@ from livestudio.gui.views.audio_view import AudioView
 from livestudio.gui.views.dashboard_view import DashboardView
 from livestudio.gui.views.logs_view import LogsView
 from livestudio.gui.views.main_window import MainWindow
+from livestudio.gui.views.mcp_view import McpView
 from livestudio.gui.views.platform_view import PlatformView
 from livestudio.gui.views.settings_view import SettingsView
+from livestudio.mcp import LiveStudioMcpServer, PlatformToolsetRegistration
+from livestudio.mcp.platforms import VTubeStudioToolset
 from livestudio.services import AudioStreamRouter
 from livestudio.services.animations import AnimationManager
 from livestudio.utils.log import logger
@@ -39,24 +42,31 @@ def _build_platform_registrations(
     *,
     animation_manager: AnimationManager,
     audio_router: AudioStreamRouter,
-) -> list[PlatformRegistration]:
-    """平台登记单一入口:构造各平台后端 app 与对应 GUI 桥接,成对登记。
+) -> tuple[list[PlatformRegistration], list[PlatformToolsetRegistration]]:
+    """平台登记单一入口:构造各平台后端 app,成对登记 GUI 桥接与 MCP 工具集。
 
-    新增平台只需在此再 append 一项 PlatformRegistration —— ServiceBridge 的
-    startup/shutdown 与仪表盘/平台页渲染都按登记列表自动覆盖,无需改动别处。
+    后端 app 是 GUI 桥接与 MCP 工具集共享的同一实例(MCP 不另建后端,只调 app 公开方法)。
+    新增平台只需在此再 append 一对登记 —— ServiceBridge 与 MCP server 都按各自列表自动覆盖。
     """
 
     vtubestudio_app = VTubeStudioApp(
         animation_manager=animation_manager,
         audio_stream=audio_router,
     )
-    return [
+    platform_registrations = [
         PlatformRegistration(
             name="VTubeStudioApp",
             app=vtubestudio_app,
             bridge=VTubeStudioPlatformBridge(vtubestudio_app),
         ),
     ]
+    mcp_registrations = [
+        PlatformToolsetRegistration(
+            name=vtubestudio_app.platform.name,
+            toolset=VTubeStudioToolset(vtubestudio_app),
+        ),
+    ]
+    return platform_registrations, mcp_registrations
 
 
 class GuiApplication:
@@ -70,10 +80,12 @@ class GuiApplication:
         # 各平台后端 app + GUI 桥接在工厂集中登记,新增平台只改工厂。
         self.audio_router = AudioStreamRouter()
         self.animation_manager = AnimationManager()
-        self._platforms = _build_platform_registrations(
+        self._platforms, mcp_registrations = _build_platform_registrations(
             animation_manager=self.animation_manager,
             audio_router=self.audio_router,
         )
+        # MCP 服务与 GUI 共享同一批后端 app(只调 app 公开方法,不另建后端)。
+        self._mcp_server = LiveStudioMcpServer(platforms=mcp_registrations)
         self._service_bridge: ServiceBridge | None = None
         self._audio_view: AudioView | None = None
         # 日志告警通知:WARNING/ERROR 弹 InfoBar,按 (级别,消息) 去重节流避免刷屏
@@ -95,12 +107,17 @@ class GuiApplication:
         )
         self._service_bridge = bridge
 
+        # 先启动 MCP 服务,使 MCP 页构建时就能反映真实运行态与已加载的监听配置。
+        await self._start_mcp_server()
+
         self._audio_view = AudioView(bridge.audio)
+        self._mcp_bridge = McpBridge(self._mcp_server)
         self._window = MainWindow(
             dashboard=DashboardView(bridge.audio, bridge.platforms),
             platform=PlatformView(bridge.platforms),
             audio=self._audio_view,
             logs=LogsView(bridge.logs),
+            mcp=McpView(self._mcp_bridge),
             settings=SettingsView(self.settings, self._on_settings_changed),
         )
         self._window.set_close_request_handler(self._on_close_requested)
@@ -112,6 +129,14 @@ class GuiApplication:
         await bridge.startup()
         await self._init_audio_view()
         await self._close_event.wait()
+
+    async def _start_mcp_server(self) -> None:
+        """启动 MCP 服务(失败不阻断 GUI:仅记录告警,LLM 控制不可用而已)。"""
+
+        try:
+            await self._mcp_server.start()
+        except Exception:
+            logger.exception("MCP 服务启动失败，已隔离(GUI 不受影响，LLM 控制不可用)")
 
     async def _init_audio_view(self) -> None:
         """音频页按当前音源初始化切换条与对应配置编辑器"""
@@ -157,6 +182,10 @@ class GuiApplication:
         run_guarded(self._shutdown_and_quit(), on_error=self._log_shutdown_error)
 
     async def _shutdown_and_quit(self) -> None:
+        try:
+            await self._mcp_server.stop()
+        except Exception:
+            logger.exception("停止 MCP 服务失败，已隔离继续关闭")
         if self._service_bridge is not None:
             await self._service_bridge.shutdown()
         if self._window is not None:

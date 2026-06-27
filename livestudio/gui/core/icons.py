@@ -6,11 +6,12 @@
 
 from qfluentwidgets import FluentIcon
 
-# 导航项图标(仪表盘 / 平台 / 音频 / 日志 / 设置)
+# 导航项图标(仪表盘 / 平台 / 音频 / 日志 / MCP / 设置)
 NAV_DASHBOARD = FluentIcon.HOME
 NAV_PLATFORM = FluentIcon.ROBOT
 NAV_AUDIO = FluentIcon.MUSIC
 NAV_LOGS = FluentIcon.HISTORY
+NAV_MCP = FluentIcon.COMMAND_PROMPT
 NAV_SETTINGS = FluentIcon.SETTING
 
 # 日志级别图标
