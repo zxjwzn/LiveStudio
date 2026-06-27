@@ -7,6 +7,7 @@ import random
 from livestudio.services.semantic_actions.models import (
     FacialRegion,
     clamp_semantic_value,
+    neutral_value,
 )
 
 from .history import ExpressionHistory
@@ -260,6 +261,9 @@ class ExpressionSolver:
             if isinstance(unit, SemanticExpressionUnit):
                 for target in unit.targets:
                     value = self._rng.uniform(target.min_value, target.max_value)
+                    # 从静息基准按强度插值：intensity→0 时回归 neutral，→1 时取完整采样值
+                    neutral = neutral_value(target.action)
+                    value = neutral + (value - neutral) * request.intensity
                     value = clamp_semantic_value(target.action, value)
                     semantic_targets.append(ResolvedSemanticTarget(action=target.action, value=value, easing=unit.easing))
             else:

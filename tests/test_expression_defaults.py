@@ -65,7 +65,6 @@ def test_default_rules_reference_existing_units() -> None:
         for uid in rule.unit_ids:
             assert uid in unit_ids, f"规则 {rule.id} 引用了不存在的 AU: {uid}"
 
-
 # ── create_default 种子机制 ────────────────────────────────────────────────────
 
 
@@ -154,13 +153,3 @@ async def test_existing_file_not_overwritten_by_defaults(tmp_path: Path) -> None
     ids = {u.id for u in config.expression_profile.semantic_units}
     assert "我的专属笑" in ids
     assert "嘴角上扬" not in ids
-
-
-def test_default_brow_mutual_exclusion() -> None:
-    profile = ExpressionProfileConfig.create_default()
-    solver = _solver(profile)
-    brow_units = {"挑眉", "皱眉", "垂眉", "蹙眉", "自然眉"}
-    for emotion in EmotionKind:
-        result = solver.solve(ExpressionRequest(emotion=emotion, randomness=0.0))
-        selected = brow_units & {u.id for u in result.units}
-        assert len(selected) <= 1

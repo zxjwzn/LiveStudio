@@ -35,7 +35,7 @@ class _ExpressionPlatform(_SemanticPlatform):
         triggers: Iterable[NativeExpressionTrigger],
         *,
         fade_time: float | None = None,
-        scope: str = "default",
+        scope: str = "default",  # noqa: ARG002
     ) -> None:
         self.native_calls.append(list(triggers))
         self.native_fade_times.append(fade_time)
@@ -278,7 +278,9 @@ async def test_controller_emits_transition_then_hold() -> None:
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        ExpressionControllerSettings(au_priority=99, transition_duration=0.5, hold_duration=1.5),
+        ExpressionControllerSettings(
+            au_priority=99, transition_duration=0.5, hold_duration=1.5, return_to_neutral=False
+        ),
         profile,
     )
     await controller.execute(emotion=EmotionKind.JOY)
@@ -311,7 +313,7 @@ async def test_controller_skips_hold_when_zero() -> None:
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        ExpressionControllerSettings(hold_duration=0.0),
+        ExpressionControllerSettings(hold_duration=0.0, return_to_neutral=False),
         profile,
     )
     await controller.execute(emotion=EmotionKind.JOY)
@@ -336,6 +338,33 @@ async def test_controller_accepts_string_emotion() -> None:
     produced_semantic = bool(platform.requests)
     produced_native = any(call for call in platform.native_calls)
     assert produced_semantic or produced_native
+
+
+async def test_controller_intensity_zero_drives_neutral() -> None:
+    """execute 透传 intensity=0：本次驱动的 mouth.smile 直接落到静息基准 0.5"""
+    platform = _ExpressionPlatform()
+    profile = ExpressionProfileConfig.model_validate(
+        {
+            "semantic_units": [
+                {
+                    "id": "嘴角上扬",
+                    "targets": [{"action": "mouth.smile", "min_value": 0.9, "max_value": 0.9}],
+                    "emotions": {"joy": 0.95},
+                }
+            ],
+        }
+    )
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(transition_duration=0.0, hold_duration=0.0, return_to_neutral=False),
+        profile,
+    )
+    await controller.execute(emotion=EmotionKind.JOY, intensity=0.0)
+    await _drain(controller)
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert smile
+    assert all(r.end_value == 0.5 for r in smile)
 
 
 async def test_controller_ignores_invalid_emotion() -> None:
@@ -475,11 +504,11 @@ async def test_pure_native_deactivated_via_sleep() -> None:
     assert platform.native_calls[-1] == []  # 收尾停用
 
 
-# ── 回归自然表情 ───────────────────────────────────────────────────────────────
+# ── 回归静息 ───────────────────────────────────────────────────────────────────
 
 
-def _joy_and_neutral_profile() -> ExpressionProfileConfig:
-    """同时含 JOY 与 NEUTRAL 语义 AU，且驱动不同 action 便于区分"""
+def _joy_return_profile() -> ExpressionProfileConfig:
+    """单个 JOY 语义 AU，驱动 mouth.smile，便于验证回归静息"""
     return ExpressionProfileConfig.model_validate(
         {
             "semantic_units": [
@@ -488,82 +517,107 @@ def _joy_and_neutral_profile() -> ExpressionProfileConfig:
                     "targets": [{"action": "mouth.smile", "min_value": 0.6, "max_value": 0.6}],
                     "emotions": {"joy": 0.95},
                 },
-                {
-                    "id": "自然眉",
-                    "targets": [{"action": "brow.height", "min_value": 0.5, "max_value": 0.5}],
-                    "emotions": {"neutral": 0.9},
-                },
             ],
         }
     )
 
 
 async def test_returns_to_neutral_after_hold() -> None:
-    """非中性情绪保持结束后，应解算 NEUTRAL 并缓动回自然表情"""
+    """非中性情绪保持结束后，应把本次驱动过的参数缓动回各自静息基准"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
         _runtime(platform),
         "expression",
         ExpressionControllerSettings(transition_duration=0.0, hold_duration=0.0),
-        _joy_and_neutral_profile(),
+        _joy_return_profile(),
     )
     await controller.execute(emotion=EmotionKind.JOY)
     await _drain(controller)
 
-    actions = [req.action_parameter_name for req in platform.requests]
-    # 先有 JOY 的 mouth.smile，最后回归 NEUTRAL 的 brow.height
-    assert SemanticAction.MOUTH_SMILE.value in actions
-    assert SemanticAction.BROW_HEIGHT.value in actions
-    assert actions[-1] == SemanticAction.BROW_HEIGHT.value
-
-
-async def test_neutral_emotion_does_not_loop_return() -> None:
-    """本次就是 NEUTRAL 时不应再触发一次回归"""
-    platform = _ExpressionPlatform()
-    controller = ExpressionController(
-        _runtime(platform),
-        "expression",
-        ExpressionControllerSettings(transition_duration=0.0, hold_duration=0.0),
-        _joy_and_neutral_profile(),
-    )
-    await controller.execute(emotion=EmotionKind.NEUTRAL)
-    await _drain(controller)
-
-    actions = [req.action_parameter_name for req in platform.requests]
-    # 只解算了一次 NEUTRAL（brow.height），不应出现重复的回归段
-    assert actions == [SemanticAction.BROW_HEIGHT.value]
+    # JOY 驱动 mouth.smile=0.6；回归段把它拉回静息基准 0.5
+    smile_reqs = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert smile_reqs
+    assert smile_reqs[-1].end_value == 0.5
 
 
 async def test_return_to_neutral_disabled() -> None:
-    """return_to_neutral=False 时保持结束后不回归"""
+    """return_to_neutral=False 时保持结束后不回归静息"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        ExpressionControllerSettings(
-            transition_duration=0.0, hold_duration=0.0, return_to_neutral=False
-        ),
-        _joy_and_neutral_profile(),
+        ExpressionControllerSettings(transition_duration=0.0, hold_duration=0.0, return_to_neutral=False),
+        _joy_return_profile(),
     )
     await controller.execute(emotion=EmotionKind.JOY)
     await _drain(controller)
 
-    actions = [req.action_parameter_name for req in platform.requests]
-    # 只有 JOY，不应出现 NEUTRAL 的 brow.height
-    assert SemanticAction.BROW_HEIGHT.value not in actions
+    # mouth.smile 只停在 JOY 目标值 0.6，不应被拉回静息 0.5
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert smile
+    assert all(r.end_value == 0.6 for r in smile)
 
 
 async def test_return_to_neutral_not_held() -> None:
-    """回归段只过渡、不保持：NEUTRAL 的 action 只下发一段"""
+    """回归段只过渡、不保持：driven 动作在过渡+保持两段后，回归段只再下发一段到静息"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
         _runtime(platform),
         "expression",
         ExpressionControllerSettings(transition_duration=0.0, hold_duration=1.5),
-        _joy_and_neutral_profile(),
+        _joy_return_profile(),
     )
     await controller.execute(emotion=EmotionKind.JOY)
     await _drain(controller)
 
+    # mouth.smile：过渡段 + 保持段 + 回归段 = 3 段；末段为回归，落到静息基准 0.5
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert len(smile) == 3
+    assert smile[-1].end_value == 0.5
+
+
+def _joy_then_sadness_profile() -> ExpressionProfileConfig:
+    """JOY 驱动 mouth.smile、SADNESS 驱动 brow.height（不同 action），用于验证差集回归"""
+    return ExpressionProfileConfig.model_validate(
+        {
+            "semantic_units": [
+                {
+                    "id": "嘴角上扬",
+                    "targets": [{"action": "mouth.smile", "min_value": 0.9, "max_value": 0.9}],
+                    "emotions": {"joy": 0.95},
+                },
+                {
+                    "id": "皱眉",
+                    "targets": [{"action": "brow.height", "min_value": 0.1, "max_value": 0.1}],
+                    "emotions": {"sadness": 0.95},
+                },
+            ],
+        }
+    )
+
+
+async def test_interrupt_resets_orphaned_action() -> None:
+    """旧表情驱动过、新表情不再覆盖的动作，应被新表情一并拉回静息，不残留"""
+    platform = _ExpressionPlatform()
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        # hold 较长，确保第一次 _drive 仍在进行时被第二次 execute 打断
+        ExpressionControllerSettings(transition_duration=0.0, hold_duration=10.0),
+        _joy_then_sadness_profile(),
+    )
+
+    # 先播 JOY（驱动 mouth.smile=0.9），保持段挂起
+    await controller.execute(emotion=EmotionKind.JOY)
+    # 再播 SADNESS（只驱动 brow.height）—— mouth.smile 成为差集，应被补成静息回归
+    await controller.execute(emotion=EmotionKind.SADNESS)
+    await _drain(controller)
+
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
     brow = [r for r in platform.requests if r.action_parameter_name == SemanticAction.BROW_HEIGHT.value]
-    assert len(brow) == 1  # 回归只过渡一段，无保持段
+    # mouth.smile 不再被新表情驱动，但应出现一段回静息基准 0.5 的缓动（不被遗弃在 0.9）
+    assert smile
+    assert smile[-1].end_value == 0.5
+    # brow.height 被新表情正常驱动
+    assert brow
+    assert abs(brow[0].end_value - 0.1) < 1e-6

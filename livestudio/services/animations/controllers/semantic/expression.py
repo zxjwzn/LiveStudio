@@ -13,7 +13,11 @@ from livestudio.services.expression import (
     ResolvedSemanticTarget,
     SelectedExpression,
 )
-from livestudio.services.semantic_actions import SemanticTweenRequest
+from livestudio.services.semantic_actions import (
+    SemanticAction,
+    SemanticTweenRequest,
+    neutral_value,
+)
 from livestudio.utils.log import logger
 
 from ..base import AnimationController
@@ -55,6 +59,9 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             top_candidates=config.top_candidates,
         )
         self._finishing_task: asyncio.Task[None] | None = None
+        # 上一次表情驱动过的语义动作集合：新表情若不再覆盖其中某些动作，
+        # 需把它们一并拉回静息，避免旧表情参数被遗弃在原位。
+        self._last_actions: set[SemanticAction] = set()
 
     @property
     def animation_type(self) -> AnimationType:
@@ -79,6 +86,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
 
         kwargs:
             emotion: EmotionKind | str，本次要表达的情绪
+            intensity: float，可选，表情强度 [0,1]，缺省 1.0；0 时全脸回归 neutral
         """
 
         emotion = self._coerce_emotion(kwargs.get("emotion"))
@@ -86,11 +94,24 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             logger.warning("表情控制器未收到合法 emotion，跳过")
             return
 
+        intensity = self._coerce_intensity(kwargs.get("intensity"))
+
         # 先取消上一次尚未结束的收尾任务，避免它到点 apply([]) 停用本次要激活
         # 的原生表情。语义参数交给 engine 同优先级接管，无需在此释放。
         await self._cancel_finishing()
 
-        selected = self._solver.solve(ExpressionRequest(emotion=emotion))
+        selected = self._solver.solve(ExpressionRequest(emotion=emotion, intensity=intensity))
+
+        # 把「上一次驱动过、但本次不再覆盖」的动作补成静息目标并入本次表情：
+        # 这些参数会随本次过渡段一起从当前值平滑回到 neutral，避免被旧表情遗弃在原位。
+        new_actions = {target.action for target in selected.semantic_targets}
+        orphaned = self._last_actions - new_actions
+        if orphaned:
+            selected.semantic_targets.extend(
+                ResolvedSemanticTarget(action=action, value=neutral_value(action)) for action in orphaned
+            )
+        # 记录本次实际驱动的全部动作（含补入的静息回归），供下一次解算计算差集。
+        self._last_actions = {target.action for target in selected.semantic_targets}
 
         # 原生表情立即激活，淡入时长与语义过渡一致。diff 会顺带停用上一次
         # 仍激活、但本次不再需要的原生表情。
@@ -113,9 +134,9 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         )
 
     async def _drive(self, selected: SelectedExpression) -> None:
-        """后台收尾：推进过渡段+保持段缓动，结束后停用原生表情并回归自然表情。
+        """后台收尾：推进过渡段+保持段缓动，结束后停用原生表情并回归静息。
 
-        流程：过渡 → 保持 → 停用本次原生表情 → （可选）回归 NEUTRAL 自然表情。
+        流程：过渡 → 保持 → 停用本次原生表情 → （可选）回归静息。
         被取消时（新 execute 到来或控制器停止），级联取消在途缓动任务并释放
         参数，且不会执行后续阶段——新的表情状态由新 execute 接管。
         """
@@ -128,9 +149,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             await self._tween_targets(selected.semantic_targets, transition_duration)
             # 保持段：停在目标值，期间高优先级持续占用，低优先级缓动无法接管
             if hold_duration > 0:
-                await self._tween_targets(
-                    selected.semantic_targets, hold_duration, easing="linear"
-                )
+                await self._tween_targets(selected.semantic_targets, hold_duration, easing="linear")
         else:
             # 纯原生表情：没有语义缓动驱动计时，显式等待整个窗口
             await asyncio.sleep(transition_duration + hold_duration)
@@ -143,30 +162,19 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
                 scope=_NATIVE_SCOPE,
             )
 
-        # 回归自然表情：解算 NEUTRAL 并缓动回去，不保持（回归后交还给待机控制器）。
-        # 本次本就是 NEUTRAL 时不再回归，避免自然表情后又触发一次自然表情。
-        await self._return_to_neutral(selected.emotion)
-
-    async def _return_to_neutral(self, emotion: EmotionKind) -> None:
-        """解算 NEUTRAL 表情并缓动回归，仅过渡、不保持。
-
-        用 preview() 解算（不写历史，自然回归不应影响重复惩罚）。
-        """
-
-        if not self.config.return_to_neutral or emotion is EmotionKind.NEUTRAL:
+        if not selected.semantic_targets:
             return
 
-        neutral = self._solver.preview(ExpressionRequest(emotion=EmotionKind.NEUTRAL))
-        if neutral.native_triggers:
-            await self.runtime.platform.apply_native_expressions(
-                neutral.native_triggers,
-                fade_time=self.config.neutral_transition_duration,
-                scope=_NATIVE_SCOPE,
+        # solver 保证同一 action 不会被多个单元重复占用，故 driven 列表 action 无重复。
+        targets = [
+            ResolvedSemanticTarget(
+                action=driven.action,
+                value=neutral_value(driven.action),
+                easing=driven.easing,
             )
-        if neutral.semantic_targets:
-            await self._tween_targets(
-                neutral.semantic_targets, self.config.neutral_transition_duration
-            )
+            for driven in selected.semantic_targets
+        ]
+        await self._tween_targets(targets, self.config.neutral_transition_duration)
 
     async def _tween_targets(
         self,
@@ -207,12 +215,14 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         """停止控制器时一并取消后台收尾任务"""
 
         await self._cancel_finishing()
+        self._last_actions.clear()
         await super().stop()
 
     async def cancel(self) -> None:
         """取消控制器时一并取消后台收尾任务"""
 
         await self._cancel_finishing()
+        self._last_actions.clear()
         await super().cancel()
 
     @staticmethod
@@ -227,3 +237,13 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             except ValueError:
                 return None
         return None
+
+    @staticmethod
+    def _coerce_intensity(value: object) -> float:
+        """把外部传入的强度值转换为 [0,1] 浮点，非法/缺省时回退 1.0"""
+
+        if isinstance(value, bool):  # bool 是 int 子类，需先排除
+            return 1.0
+        if isinstance(value, (int, float)):
+            return max(0.0, min(1.0, float(value)))
+        return 1.0

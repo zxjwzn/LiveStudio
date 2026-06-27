@@ -110,6 +110,7 @@ class SemanticActionSpec:
     maximum: float
     region: FacialRegion
     description: str = ""
+    neutral: float = 0.0  # 静息基准值；intensity→0 时该动作回归到这里
 
 
 DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
@@ -119,6 +120,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.BROW,
         description="整体眉毛从低到高的程度",
+        neutral=0.5,
     ),
     SemanticActionSpec(
         id=SemanticAction.BROW_HEIGHT_LEFT,
@@ -126,6 +128,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.BROW,
         description="左眉毛从低到高的程度",
+        neutral=0.5,
     ),
     SemanticActionSpec(
         id=SemanticAction.BROW_HEIGHT_RIGHT,
@@ -133,6 +136,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.BROW,
         description="右眉毛从低到高的程度",
+        neutral=0.5,
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_OPEN,
@@ -140,6 +144,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.EYE,
         description="双眼从闭上到睁大的程度",
+        neutral=0.8,
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_OPEN_LEFT,
@@ -147,6 +152,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.EYE,
         description="左眼从闭上到睁大的程度",
+        neutral=0.8,
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_OPEN_RIGHT,
@@ -154,6 +160,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.EYE,
         description="右眼从闭上到睁大的程度",
+        neutral=0.8,
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_GAZE_X,
@@ -182,6 +189,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.MOUTH,
         description="嘴角往上扬的程度",
+        neutral=0.5,
     ),
     SemanticActionSpec(
         id=SemanticAction.MOUTH_X,
@@ -247,3 +255,9 @@ def clamp_semantic_value(action: str, value: float) -> float:
     if spec is None:
         return max(-1.0, min(1.0, value))
     return max(spec.minimum, min(spec.maximum, value))
+
+
+def neutral_value(action: str) -> float:
+    """返回语义动作的静息基准值；未知动作回退 0.0"""
+    spec = _SPEC_BY_ACTION.get(action)
+    return spec.neutral if spec is not None else 0.0

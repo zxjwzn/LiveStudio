@@ -18,7 +18,7 @@ from livestudio.services.expression.models import (
     SemanticExpressionUnit,
 )
 from livestudio.services.expression.solver import ExpressionSolver
-from livestudio.services.semantic_actions.models import FacialRegion, SemanticAction
+from livestudio.services.semantic_actions.models import FacialRegion, SemanticAction, neutral_value
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -413,3 +413,60 @@ def test_unit_extra_fields_forbidden() -> None:
                 "bogus": 1,
             }
         )
+
+
+# ── intensity（强度）插值 ───────────────────────────────────────────────────────
+
+
+def _fixed_unit(uid: str, action: SemanticAction, value: float) -> SemanticExpressionUnit:
+    """min==max 的固定值单元，消除随机采样以确定性验证插值"""
+    return SemanticExpressionUnit(
+        id=uid,
+        targets=[ExpressionTarget(action=action, min_value=value, max_value=value)],
+        emotions={EmotionKind.JOY: 0.95},
+    )
+
+
+def test_neutral_value_defaults() -> None:
+    assert neutral_value(SemanticAction.EYE_OPEN) == 0.8
+    assert neutral_value(SemanticAction.EYE_OPEN_LEFT) == 0.8
+    assert neutral_value(SemanticAction.BROW_HEIGHT) == 0.5
+    assert neutral_value(SemanticAction.MOUTH_SMILE) == 0.5
+    assert neutral_value(SemanticAction.HEAD_YAW) == 0.0
+    assert neutral_value(SemanticAction.MOUTH_OPEN) == 0.0
+    assert neutral_value("不存在的动作") == 0.0
+
+
+def test_request_intensity_default_is_one() -> None:
+    assert ExpressionRequest(emotion=EmotionKind.JOY).intensity == 1.0
+
+
+def test_intensity_zero_returns_neutral() -> None:
+    """intensity=0：动作回归到各自静息基准，与采样值无关"""
+    solver = _make_solver(_fixed_unit("大笑", SemanticAction.MOUTH_SMILE, 0.9))
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0, intensity=0.0))
+    target = result.semantic_targets[0]
+    assert target.value == neutral_value(SemanticAction.MOUTH_SMILE)  # 0.5
+
+
+def test_intensity_half_interpolates_from_neutral() -> None:
+    """intensity=0.5：value == neutral + (sampled - neutral) * 0.5"""
+    solver = _make_solver(_fixed_unit("大笑", SemanticAction.MOUTH_SMILE, 0.9))
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0, intensity=0.5))
+    target = result.semantic_targets[0]
+    neutral = neutral_value(SemanticAction.MOUTH_SMILE)  # 0.5
+    assert target.value == pytest.approx(neutral + (0.9 - neutral) * 0.5)  # 0.7
+
+
+def test_intensity_one_takes_full_sample() -> None:
+    """intensity=1（默认）：保留完整采样值，不受 neutral 影响"""
+    solver = _make_solver(_fixed_unit("大笑", SemanticAction.MOUTH_SMILE, 0.9))
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0, intensity=1.0))
+    assert result.semantic_targets[0].value == pytest.approx(0.9)
+
+
+def test_intensity_zero_on_zero_neutral_action() -> None:
+    """neutral=0 的动作（head.yaw），intensity=0 时回归到 0"""
+    solver = _make_solver(_fixed_unit("转头", SemanticAction.HEAD_YAW, 0.7))
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0, intensity=0.0))
+    assert result.semantic_targets[0].value == 0.0

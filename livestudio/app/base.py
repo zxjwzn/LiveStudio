@@ -175,11 +175,12 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
 
         return [kind.value for kind in EmotionKind]
 
-    async def play_emotion(self, emotion: str) -> None:
+    async def play_emotion(self, emotion: str, intensity: float = 1.0) -> None:
         """触发一次情绪表情解算(过渡→保持→自动回中性)。需已连接并加载模型。
 
         emotion 须为 available_emotions 中的值;非法值抛 ValueError。表情控制器未就绪
-        (未连接/未加载模型)时抛 RuntimeError。
+        (未连接/未加载模型)时抛 RuntimeError。intensity 为表情强度 [0,1],缺省 1.0;
+        0 时所有被控参数回归 neutral。
         """
 
         try:
@@ -189,7 +190,9 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         runtime = self.animation_manager.get_runtime(self.platform.name)
         if _EXPRESSION_CONTROLLER not in runtime.controllers:
             raise RuntimeError("表情控制器未就绪(请先连接并加载模型)")
-        await runtime.execute_controller(_EXPRESSION_CONTROLLER, emotion=kind.value)
+        await runtime.execute_controller(
+            _EXPRESSION_CONTROLLER, emotion=kind.value, intensity=intensity
+        )
 
     async def load_current_model(self) -> None:
         """订阅模型事件并加载当前模型配置"""

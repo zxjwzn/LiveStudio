@@ -32,7 +32,6 @@ class EmotionKind(StrEnum):
     FEAR = "fear"
     SURPRISE = "surprise"
     DISGUST = "disgust"
-    NEUTRAL = "neutral"
 
 
 class _FrozenModel(BaseModel):
@@ -164,6 +163,7 @@ class ExpressionRequest:
     """solver 的解算输入；时序参数（过渡/保持时长）属于控制器，不在此处"""
 
     emotion: EmotionKind
+    intensity: float = 1.0  # 表情强度：0→全脸回 neutral，1→完整表情
     randomness: float = 0.5
     diversity: float = 0.6
     history_avoidance: float = 0.7

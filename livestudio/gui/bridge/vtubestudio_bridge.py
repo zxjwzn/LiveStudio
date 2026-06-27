@@ -48,7 +48,7 @@ _CONTROLLER_SPECS: tuple[ControllerSpec, ...] = (
 )
 
 # 情绪表情(AU 解算)静态规格:EmotionKind 值 / 中文名 / emoji。触发 expression 控制器
-# 解算对应情绪(一次性:过渡→保持→自动回 neutral)。
+# 解算对应情绪(一次性:过渡→保持→自动回静息)。
 _EMOTION_SPECS: tuple[EmotionSpec, ...] = (
     EmotionSpec(EmotionKind.JOY.value, "喜悦", "😊"),
     EmotionSpec(EmotionKind.ANGER.value, "愤怒", "😠"),
@@ -56,7 +56,6 @@ _EMOTION_SPECS: tuple[EmotionSpec, ...] = (
     EmotionSpec(EmotionKind.SURPRISE.value, "惊讶", "😮"),
     EmotionSpec(EmotionKind.FEAR.value, "恐惧", "😨"),
     EmotionSpec(EmotionKind.DISGUST.value, "厌恶", "🤢"),
-    EmotionSpec(EmotionKind.NEUTRAL.value, "中性", "😐"),
 )
 
 _EXPRESSION_CONTROLLER = "expression"

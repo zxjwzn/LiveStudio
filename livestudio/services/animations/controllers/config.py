@@ -253,28 +253,28 @@ class ExpressionControllerSettings(ControllerSettings):
         description="解算后从当前值切换到目标表情的过渡时长",
     )
     hold_duration: float = Field(
-        default=1.5,
+        default=1,
         ge=0.0,
         description="到达目标后保持时长，期间高优先级占用参数，<=0 时跳过保持段",
     )
     history_capacity: int = Field(
-        default=20,
+        default=10,
         ge=0,
         description="解算历史保留条数，用于重复惩罚",
     )
     top_candidates: int = Field(
-        default=14,
+        default=15,
         ge=1,
         description="评分后保留进入排序阶段的候选数量上限",
     )
     return_to_neutral: bool = Field(
         default=True,
-        description="保持结束后是否自动解算 NEUTRAL 表情并过渡回自然状态",
+        description="保持结束后是否把本次驱动过的参数缓动回各自静息基准值",
     )
     neutral_transition_duration: float = Field(
-        default=0.6,
+        default=0.5,
         ge=0.0,
-        description="保持结束后过渡回自然表情的时长",
+        description="保持结束后回归静息的过渡时长",
     )
 
 
