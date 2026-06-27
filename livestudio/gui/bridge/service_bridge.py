@@ -1,20 +1,38 @@
 """服务桥接:聚合后端生命周期
 
-持有后端三件套与各子桥接,提供 startup/shutdown 的统一编排。startup 让音频即时可用
-(默认仪表盘电平有信号);shutdown 有序停机且隔离异常,不阻塞窗口关闭。
+持有音频/日志子桥接与一组「平台登记」(后端 app + 对应 GUI 桥接成对)。startup 让
+音频即时可用(默认仪表盘电平有信号);shutdown 有序停机且隔离异常,不阻塞窗口关闭。
+
+平台以 PlatformRegistration 列表注入(由 app.py 工厂构造),本类不认识任何具体平台:
+新增平台只在工厂多登记一项,startup/shutdown/platforms 全自动覆盖。
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
+
 from PySide6.QtCore import QObject
 
-from livestudio.app import VTubeStudioApp
 from livestudio.services import AudioSourceKind, AudioStreamRouter
+from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.utils.log import logger
 
 from .audio_bridge import AudioController
 from .log_bridge import LogController
-from .vtubestudio_bridge import VTubeStudioPlatformBridge
+from .platform_bridge import PlatformBridge
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformRegistration:
+    """一个平台的登记项:后端应用 + 对应 GUI 桥接(成对,生命周期一起编排)。
+
+    app 须实现统一异步生命周期(stop());bridge 是视图层消费的平台抽象。
+    """
+
+    name: str  # 停机日志用的可读名(如 "VTubeStudioApp")
+    app: AsyncServiceLifecycleMixin
+    bridge: PlatformBridge
 
 
 class ServiceBridge(QObject):
@@ -24,35 +42,39 @@ class ServiceBridge(QObject):
         self,
         *,
         audio_router: AudioStreamRouter,
-        vtubestudio_app: VTubeStudioApp,
-        log_level: str = "INFO",
+        platforms: Sequence[PlatformRegistration],
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._audio_router = audio_router
-        self._vtubestudio_app = vtubestudio_app
+        self._registrations = list(platforms)
 
         self.audio = AudioController(audio_router, self)
         self.logs = LogController(self)
-        self.vtubestudio = VTubeStudioPlatformBridge(vtubestudio_app, self)
-        self._log_level = log_level
+
+        # 平台登记单一事实源:仪表盘/平台页按此列表渲染。
+        self.platforms: list[PlatformBridge] = [reg.bridge for reg in self._registrations]
 
     async def startup(self) -> None:
         """注册日志 sink 并 eager 启动音频(切到麦克风,使电平即时可见)"""
 
-        self.logs.start(self._log_level)
+        self.logs.start()
         await self._audio_router.start()
         await self._audio_router.switch_source(AudioSourceKind.MICROPHONE)
         self.audio.start_metering()
 
     async def shutdown(self) -> None:
-        """有序停机:停电平推送 → 停 VTS 应用 → 停音频路由 → 停日志 sink"""
+        """有序停机:停电平推送 → 逐个停平台应用 → 停音频路由 → 停日志 sink。
+
+        每个服务独立 try/except 隔离,单个停机失败不阻塞其余与窗口关闭。
+        """
 
         self.audio.stop_metering()
-        for name, service in (
-            ("VTubeStudioApp", self._vtubestudio_app),
-            ("AudioStreamRouter", self._audio_router),
-        ):
+        services: list[tuple[str, AsyncServiceLifecycleMixin]] = [
+            (reg.name, reg.app) for reg in self._registrations
+        ]
+        services.append(("AudioStreamRouter", self._audio_router))
+        for name, service in services:
             try:
                 await service.stop()
             except Exception:

@@ -1,9 +1,12 @@
 """GUI 应用编排
 
-持有后端三件套(音频路由 / 动画管理器 / VTS 应用)与主窗口,把后端异步生命周期
+持有后端服务(音频路由 / 动画管理器 / 各平台应用)与主窗口,把后端异步生命周期
 绑定到窗口的打开与关闭。后端构造顺序镜像根 main.py,确保与 CLI 行为一致。
 
-仪表盘/平台页已移除,导航项保留但内容为空(EmptyView);音频/日志/设置为真实页面。
+平台在 _build_platform_registrations() 工厂集中登记(后端 app + GUI 桥接成对):新增
+平台只在该工厂多加一项,ServiceBridge 的 startup/shutdown 与各页渲染全自动覆盖。
+
+五页均为真实页面:仪表盘(音频电平+控制器开关)/ 平台(连接+模型配置)/ 音频 / 日志 / 设置。
 """
 
 import asyncio
@@ -11,7 +14,7 @@ import asyncio
 from qfluentwidgets import InfoBar, InfoBarPosition
 
 from livestudio.app import VTubeStudioApp
-from livestudio.gui.bridge import ServiceBridge
+from livestudio.gui.bridge import PlatformRegistration, ServiceBridge, VTubeStudioPlatformBridge
 from livestudio.gui.bridge.log_bridge import LogEntry
 from livestudio.gui.core import (
     GuiSettings,
@@ -22,13 +25,38 @@ from livestudio.gui.core import (
     run_guarded,
 )
 from livestudio.gui.views.audio_view import AudioView
-from livestudio.gui.views.empty_view import EmptyView
+from livestudio.gui.views.dashboard_view import DashboardView
 from livestudio.gui.views.logs_view import LogsView
 from livestudio.gui.views.main_window import MainWindow
+from livestudio.gui.views.platform_view import PlatformView
 from livestudio.gui.views.settings_view import SettingsView
 from livestudio.services import AudioStreamRouter
 from livestudio.services.animations import AnimationManager
 from livestudio.utils.log import logger
+
+
+def _build_platform_registrations(
+    *,
+    animation_manager: AnimationManager,
+    audio_router: AudioStreamRouter,
+) -> list[PlatformRegistration]:
+    """平台登记单一入口:构造各平台后端 app 与对应 GUI 桥接,成对登记。
+
+    新增平台只需在此再 append 一项 PlatformRegistration —— ServiceBridge 的
+    startup/shutdown 与仪表盘/平台页渲染都按登记列表自动覆盖,无需改动别处。
+    """
+
+    vtubestudio_app = VTubeStudioApp(
+        animation_manager=animation_manager,
+        audio_stream=audio_router,
+    )
+    return [
+        PlatformRegistration(
+            name="VTubeStudioApp",
+            app=vtubestudio_app,
+            bridge=VTubeStudioPlatformBridge(vtubestudio_app),
+        ),
+    ]
 
 
 class GuiApplication:
@@ -38,12 +66,13 @@ class GuiApplication:
         self._settings_manager = create_gui_settings_manager()
         self.settings = GuiSettings()
 
-        # 后端三件套(构造顺序与 main.py 一致),此处不启动,生命周期由本类编排。
+        # 后端服务(构造顺序与 main.py 一致),此处不启动,生命周期由本类编排。
+        # 各平台后端 app + GUI 桥接在工厂集中登记,新增平台只改工厂。
         self.audio_router = AudioStreamRouter()
         self.animation_manager = AnimationManager()
-        self.vtubestudio_app = VTubeStudioApp(
+        self._platforms = _build_platform_registrations(
             animation_manager=self.animation_manager,
-            audio_stream=self.audio_router,
+            audio_router=self.audio_router,
         )
         self._service_bridge: ServiceBridge | None = None
         self._audio_view: AudioView | None = None
@@ -62,15 +91,14 @@ class GuiApplication:
 
         bridge = ServiceBridge(
             audio_router=self.audio_router,
-            vtubestudio_app=self.vtubestudio_app,
-            log_level=self.settings.log_level,
+            platforms=self._platforms,
         )
         self._service_bridge = bridge
 
         self._audio_view = AudioView(bridge.audio)
         self._window = MainWindow(
-            dashboard=EmptyView("dashboardView"),
-            platform=EmptyView("platformView"),
+            dashboard=DashboardView(bridge.audio, bridge.platforms),
+            platform=PlatformView(bridge.platforms),
             audio=self._audio_view,
             logs=LogsView(bridge.logs),
             settings=SettingsView(self.settings, self._on_settings_changed),
@@ -110,13 +138,9 @@ class GuiApplication:
         )
 
     def _on_settings_changed(self, settings: GuiSettings) -> None:
-        """设置变更:持久化并把日志级别同步到 sink"""
+        """设置变更:持久化"""
 
-        # 保留折叠记忆(设置页不涉及该字段,合并以免被覆盖)
-        settings = settings.model_copy(update={"collapsed_platforms": self.settings.collapsed_platforms})
         self.settings = settings
-        if self._service_bridge is not None:
-            self._service_bridge.logs.set_level(settings.log_level)
         run_guarded(self._persist_settings(settings), on_error=self._log_shutdown_error)
 
     async def _persist_settings(self, settings: GuiSettings) -> None:

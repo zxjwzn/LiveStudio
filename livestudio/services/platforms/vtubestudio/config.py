@@ -15,7 +15,7 @@ from .defaults import (
 class VTubeStudioExpressionStateConfig(BaseModel):
     """VTube Studio 表情激活状态配置"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"title_field": "name", "icon": "EMOJI_TAB_SYMBOLS"})
 
     name: str = Field(default="", description="表情名称")
     file: str = Field(default="", description="表情文件名")
@@ -25,7 +25,7 @@ class VTubeStudioExpressionStateConfig(BaseModel):
 class VTubeStudioModelConfig(PlatformModelConfig):
     """按 VTube Studio 模型持久化的完整平台配置"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SETTING"})
 
     expressions: list[VTubeStudioExpressionStateConfig] = Field(
         default_factory=list,

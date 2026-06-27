@@ -26,7 +26,7 @@ class ExpressionProfileConfig(BaseModel):
     AU 自带 id，semantic_units / native_units 以列表存储。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "HEART"})
 
     semantic_units: list[SemanticExpressionUnit] = Field(default_factory=list)
     native_units: list[NativeExpressionUnit] = Field(default_factory=list)

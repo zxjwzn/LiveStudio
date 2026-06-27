@@ -17,7 +17,7 @@ from qfluentwidgets import LineEdit, PushButton
 from ._base import FieldEditor
 from ._expandable import _ContainerEditor, indent_for_depth
 from ._factory import create_editor, create_editor_for_annotation
-from ._schema import iter_field_specs
+from ._schema import iter_field_specs, title_field_of
 from ._schema_types import FieldSpec
 
 
@@ -31,6 +31,11 @@ class ModelEditor(_ContainerEditor):
         self._model_type = spec.model_type
         self._value: dict[str, Any] = {}
         self._children: dict[str, FieldEditor] = {}
+        # 模型标了 title_field 时,卡片标题显示该字段的「值」(而非 [0] 等索引名),副标题清空。
+        self._title_field = title_field_of(self._model_type)
+        if self._title_field is not None:
+            self._card.setContent("")
+            self._refresh_title()
 
     def _ensure_built(self) -> None:
         body = self._card.body_layout()
@@ -38,6 +43,9 @@ class ModelEditor(_ContainerEditor):
         for child_spec in iter_field_specs(self._model_type):
             editor = create_editor(child_spec, self._card)
             editor.valueChanged.connect(self.valueChanged.emit)
+            # 标题字段的子编辑器变化时,实时刷新卡片标题
+            if child_spec.name == self._title_field:
+                editor.valueChanged.connect(self._refresh_title)
             self._children[child_spec.name] = editor
             body.addWidget(editor)
         # 推入持有值(抑制 valueChanged,避免展开即显示为"已修改")
@@ -46,6 +54,16 @@ class ModelEditor(_ContainerEditor):
                 blocker = QSignalBlocker(editor)
                 editor.set_value(self._value[name])
                 del blocker
+
+    def _refresh_title(self) -> None:
+        """按 title_field 当前值更新卡片标题(已建则取子编辑器值,未建则取持有值)"""
+
+        if self._title_field is None:
+            return
+        editor = self._children.get(self._title_field)
+        value = editor.get_value() if editor is not None else self._value.get(self._title_field)
+        text = str(value) if value not in (None, "") else self.spec.label
+        self._card.setTitle(text)
 
     def get_value(self) -> Any:
         # 未建:持有值即权威;已建:子 widget 值覆盖持有值(保留 hidden/未建模的 dump 键)
@@ -61,6 +79,7 @@ class ModelEditor(_ContainerEditor):
                 blocker = QSignalBlocker(editor)
                 editor.set_value(self._value[name])
                 del blocker
+        self._refresh_title()
 
     def child_by_key(self, key: Any) -> FieldEditor | None:
         return self._children.get(key)

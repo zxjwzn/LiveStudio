@@ -53,19 +53,38 @@ def _extra_flag(info: FieldInfo, key: str) -> bool:
     return isinstance(extra, Mapping) and bool(extra.get(key))
 
 
-def _icon_of(info: FieldInfo) -> FluentIcon | None:
-    """读取 json_schema_extra["icon"] 并按名查 FluentIcon(不用 getattr);未知名告警并回退 None"""
+def _icon_by_name(name: object) -> FluentIcon | None:
+    """按字符串名查 FluentIcon(不用 getattr);非字符串返回 None,未知名告警并回退 None"""
 
-    extra = info.json_schema_extra
-    if not isinstance(extra, Mapping):
-        return None
-    name = extra.get("icon")
     if not isinstance(name, str):
         return None
     icon = FluentIcon.__members__.get(name)
     if icon is None:
         logger.warning("未知 FluentIcon 名称 {!r}(图标回退为占位)", name)
     return icon
+
+
+def _icon_of(info: FieldInfo) -> FluentIcon | None:
+    """读取字段级 json_schema_extra["icon"] 并按名查 FluentIcon;无则 None"""
+
+    extra = info.json_schema_extra
+    if not isinstance(extra, Mapping):
+        return None
+    return _icon_by_name(extra.get("icon"))
+
+
+def _model_icon_of(model_type: type[BaseModel]) -> FluentIcon | None:
+    """读取模型级 json_schema_extra["icon"] 并按名查 FluentIcon;无则 None。
+
+    在 model_config = ConfigDict(json_schema_extra={"icon": "名称"}) 上标注。
+    用作字段未显式标 icon 时的回退:嵌套模型字段与 list 元素模型(经合成 FieldInfo
+    渲染、永远拿不到字段级 icon)都能据此显示模型自带的图标。
+    """
+
+    extra = model_type.model_config.get("json_schema_extra")
+    if not isinstance(extra, Mapping):
+        return None
+    return _icon_by_name(extra.get("icon"))
 
 
 def is_hidden(info: FieldInfo) -> bool:
@@ -92,6 +111,24 @@ def _label_of(name: str, info: FieldInfo) -> str:
         if isinstance(label, str) and label:
             return label
     return name.replace("_", " ").strip().capitalize()
+
+
+def title_field_of(model_type: type[BaseModel]) -> str | None:
+    """读取模型级 json_schema_extra["title_field"]:容器卡用该字段的「值」作标题。
+
+    在 model_config = ConfigDict(json_schema_extra={"title_field": "字段名"}) 上标注。
+    用于列表元素等场景:让卡片标题显示元素内某字段的值(如 action 名),而非 [0] 索引。
+    返回字段名;未标注或字段不存在则 None。
+    """
+
+    extra = model_type.model_config.get("json_schema_extra")
+    if not isinstance(extra, Mapping):
+        return None
+    field = extra.get("title_field")
+    if isinstance(field, str) and field in model_type.model_fields:
+        return field
+    return None
+
 
 
 def _as_number(value: object) -> float | None:
@@ -329,6 +366,10 @@ def build_field_spec(
         )
 
     kind = _classify(annotation)
+    # 字段未显式标 icon 且为嵌套模型时,回退到该模型 model_config 上的 icon。
+    # list/dict 元素模型经合成 FieldInfo 渲染、永远无字段级 icon,靠这条拿到模型自带图标。
+    if icon is None and kind is FieldKind.MODEL:
+        icon = _model_icon_of(_unwrap_annotated(annotation))
     spec = FieldSpec(
         name=name,
         label=label,
@@ -357,6 +398,14 @@ def build_field_spec(
         tagged = _tagged_union_members(annotation)
         if tagged is not None:
             spec.discriminator, spec.union_members = tagged
+            # 判别联合渲染为单卡(ComboBox 切 kind);字段无 icon 时回退到成员模型自带 icon。
+            # 成员各自标 icon 时取第一个作代表(本项目规则模型共用同一 icon,无歧义)。
+            if spec.icon is None:
+                for _, member in spec.union_members:
+                    member_icon = _model_icon_of(member)
+                    if member_icon is not None:
+                        spec.icon = member_icon
+                        break
 
     return spec
 

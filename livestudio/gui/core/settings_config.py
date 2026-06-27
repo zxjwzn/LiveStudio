@@ -17,13 +17,6 @@ class ThemeMode(StrEnum):
     AUTO = "auto"
 
 
-class UiLanguage(StrEnum):
-    """界面语言"""
-
-    ZH_CN = "zh_CN"
-    EN = "en"
-
-
 class GuiSettings(BaseModel):
     """GUI 个性化配置(界面外观与交互偏好)"""
 
@@ -36,26 +29,4 @@ class GuiSettings(BaseModel):
     accent_color: str = Field(
         default="#22C55E",
         description="Fluent 强调色(十六进制,如 #22C55E)",
-    )
-    font_point_size: int = Field(
-        default=10,
-        ge=8,
-        le=24,
-        description="界面正文字号(磅)",
-    )
-    language: UiLanguage = Field(
-        default=UiLanguage.ZH_CN,
-        description="界面语言",
-    )
-    log_level: str = Field(
-        default="DEBUG",
-        description="日志页 sink 接收级别",
-    )
-    restore_collapse_state: bool = Field(
-        default=True,
-        description="启动时恢复仪表盘平台栏的折叠状态",
-    )
-    collapsed_platforms: list[str] = Field(
-        default_factory=list,
-        description="记忆为折叠状态的平台名(restore_collapse_state 开启时生效)",
     )

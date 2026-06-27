@@ -2,17 +2,15 @@
 
 from .async_utils import run_guarded
 from .notifier import ThrottledNotifier
-from .settings_config import GuiSettings, ThemeMode, UiLanguage
+from .settings_config import GuiSettings, ThemeMode
 from .settings_store import create_gui_settings_manager, create_gui_settings_manager_with
-from .theme import apply_all, apply_font, apply_theme
+from .theme import apply_all, apply_theme
 
 __all__ = [
     "GuiSettings",
     "ThemeMode",
     "ThrottledNotifier",
-    "UiLanguage",
     "apply_all",
-    "apply_font",
     "apply_theme",
     "create_gui_settings_manager",
     "create_gui_settings_manager_with",

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class TTSAudioStreamConfig(BaseModel):
     """TTS 音频流配置占位"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SPEAKERS"})
 
     stream_url: str | None = Field(default=None, description="TTS 流地址，占位字段")
     format: str = Field(default="pcm16", description="TTS 流编码格式，占位字段")

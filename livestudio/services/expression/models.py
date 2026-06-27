@@ -44,6 +44,8 @@ class _FrozenModel(BaseModel):
 class ExpressionTarget(_FrozenModel):
     """单个语义动作目标，值域 [min_value, max_value]，解算时随机采样"""
 
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "action", "icon": "ASTERISK"})
+
     action: SemanticAction
     min_value: float
     max_value: float
@@ -55,6 +57,8 @@ class SemanticExpressionUnit(_FrozenModel):
     id 通常由 ExpressionProfileConfig.semantic_units 的字典键注入，
     直接构造时可省略（保持空串），solver 仍可独立使用。
     """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "EMOJI_TAB_SYMBOLS"})
 
     id: str = ""
     enabled: bool = True
@@ -76,6 +80,8 @@ class SemanticExpressionUnit(_FrozenModel):
 class NativeExpressionUnit(_FrozenModel):
     """直接触发平台原生表情（如 VTS .exp3.json）的 AU"""
 
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "ALBUM"})
+
     id: str = ""
     enabled: bool = True
     platform: str
@@ -93,6 +99,8 @@ ExpressionUnit = SemanticExpressionUnit | NativeExpressionUnit
 class MutualExclusionRule(_FrozenModel):
     """unit_ids 中的 AU 不能同时出现"""
 
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "CANCEL"})
+
     kind: Literal["mutual_exclusion"] = "mutual_exclusion"
     id: str
     unit_ids: frozenset[str]
@@ -101,6 +109,8 @@ class MutualExclusionRule(_FrozenModel):
 
 class BonusRule(_FrozenModel):
     """unit_ids 中的 AU 全部出现时，组合得分 +value"""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "ADD"})
 
     kind: Literal["bonus"] = "bonus"
     id: str
@@ -112,6 +122,8 @@ class BonusRule(_FrozenModel):
 class PenaltyRule(_FrozenModel):
     """unit_ids 中的 AU 全部出现时，组合得分 -value"""
 
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "REMOVE"})
+
     kind: Literal["penalty"] = "penalty"
     id: str
     unit_ids: frozenset[str]
@@ -121,6 +133,8 @@ class PenaltyRule(_FrozenModel):
 
 class BindingRule(_FrozenModel):
     """unit_ids 中任意 AU 出现时，其余 AU 也应出现；否则扣 penalty 分"""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "LINK"})
 
     kind: Literal["binding"] = "binding"
     id: str

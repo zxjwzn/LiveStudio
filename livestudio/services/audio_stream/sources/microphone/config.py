@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class MicrophoneAudioStreamConfig(BaseModel):
     """麦克风输入配置"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "MICROPHONE"})
 
     device_name: str | None = Field(
         default=None,

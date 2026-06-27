@@ -12,6 +12,8 @@ class ControllerSettings(BaseModel):
 class BlinkControllerSettings(ControllerSettings):
     """眨眼控制器配置"""
 
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "VIEW"})
+
     min_interval: float = Field(
         default=2.0,
         gt=0,
@@ -36,6 +38,8 @@ class BlinkControllerSettings(ControllerSettings):
 class BreathingControllerSettings(ControllerSettings):
     """呼吸控制器配置"""
 
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "LEAF"})
+
     pitch_amplitude: float = Field(
         default=0.1,
         ge=0.0,
@@ -52,6 +56,8 @@ class GazeControllerSettings(ControllerSettings):
     统一驱动 eye.gaze.x/y 与 head.yaw/head.roll：眼睛扫视到新注视点，头部延迟
     较慢地按比例跟随，到位后凝视一段随机时长。head.pitch 仍归 breathing 控制器。
     """
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SEARCH"})
 
     gaze_x_amplitude: float = Field(
         default=1.0,
@@ -183,6 +189,8 @@ class GazeControllerSettings(ControllerSettings):
 class MouthExpressionControllerSettings(ControllerSettings):
     """嘴部表情控制器配置"""
 
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "EMOJI_TAB_SYMBOLS"})
+
     smile_amplitude: float = Field(
         default=0.8,
         ge=0.0,
@@ -201,6 +209,8 @@ class MouthExpressionControllerSettings(ControllerSettings):
 
 class MouthSyncControllerSettings(ControllerSettings):
     """基于响度的嘴部开合同步控制器配置"""
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "MICROPHONE"})
 
     open_amplitude: float = Field(
         default=1.0,
@@ -230,6 +240,8 @@ class MouthSyncControllerSettings(ControllerSettings):
 
 class ExpressionControllerSettings(ControllerSettings):
     """表情解算控制器配置"""
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "HEART"})
 
     au_priority: int = Field(
         default=99,
@@ -269,7 +281,7 @@ class ExpressionControllerSettings(ControllerSettings):
 class AnimationControllerSettingsConfig(BaseModel):
     """随模型切换的全平台通用动画控制器配置"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "MOVIE"})
 
     blink: BlinkControllerSettings = Field(
         default_factory=BlinkControllerSettings,

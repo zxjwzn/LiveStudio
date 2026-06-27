@@ -10,9 +10,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
-from qfluentwidgets import BodyLabel, CaptionLabel, CardWidget, IconWidget, TransparentToolButton
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon, QPainter, QPixmap, QTransform
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from qfluentwidgets import CardWidget, FluentStyleSheet, IconWidget, TransparentToolButton, qconfig
 from qfluentwidgets import FluentIcon as FIF
 
 from ._base import FieldEditor
@@ -21,6 +22,23 @@ from ._schema_types import FieldSpec, resolve_icon
 _ERROR_COLOR = "#EF4444"
 _INDENT_STEP = 16  # 每层缩进像素
 _INDENT_MAX = 64  # 缩进封顶,避免深层控件溢出
+
+
+def _rotated_chevron_down() -> QIcon:
+    """把细线 CHEVRON_RIGHT 顺时针旋转 90° 得到「下箭头」,与折叠态右箭头同款同粗。
+
+    qfluentwidgets 无细线版 CHEVRON_DOWN(只有粗体 *_MED),ARROW_DOWN 也比 CHEVRON_RIGHT
+    略粗;用同一图标旋转,保证展开/折叠两态箭头粗细完全一致。按当前主题渲染。
+    """
+
+    size = 64
+    src = QPixmap(size, size)
+    src.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(src)
+    FIF.CHEVRON_RIGHT.icon().paint(painter, 0, 0, size, size)
+    painter.end()
+    rotated = src.transformed(QTransform().rotate(90), Qt.TransformationMode.SmoothTransformation)
+    return QIcon(rotated)
 
 
 class _ExpandableCard(CardWidget):
@@ -48,8 +66,13 @@ class _ExpandableCard(CardWidget):
 
         text_box = QVBoxLayout()
         text_box.setSpacing(0)
-        text_box.addWidget(BodyLabel(spec.label, header))
-        self._content = CaptionLabel(self._default_content, header)
+        # 标题/副标题用裸 QLabel + SettingCard 同款 objectName,并 apply SETTING_CARD 样式,
+        # 使字体/字号/字色与音频页等叶子 SettingCard 完全一致(协调),字色交全局 QSS 随主题。
+        self._title = QLabel(spec.label, header)
+        self._title.setObjectName("titleLabel")
+        text_box.addWidget(self._title)
+        self._content = QLabel(self._default_content, header)
+        self._content.setObjectName("contentLabel")
         self._content.setWordWrap(True)
         text_box.addWidget(self._content)
         header_layout.addLayout(text_box, 1)
@@ -57,6 +80,8 @@ class _ExpandableCard(CardWidget):
         self._toggle = TransparentToolButton(FIF.CHEVRON_RIGHT, header)
         self._toggle.clicked.connect(lambda: self.set_expanded(not self._expanded))
         header_layout.addWidget(self._toggle)
+        # 旋转图标是固定色的 QPixmap,不随主题自动重绘;展开态下切主题时重设箭头跟随明暗
+        qconfig.themeChanged.connect(self._refresh_toggle_icon)
 
         # 整个头部可点击切换(头部任意处点击=展开/收起)
         header.mousePressEvent = self._on_header_clicked
@@ -69,6 +94,8 @@ class _ExpandableCard(CardWidget):
         self._body.setVisible(False)
         outer.addWidget(self._body)
 
+        FluentStyleSheet.SETTING_CARD.apply(self)
+
     def _on_header_clicked(self, event: object) -> None:
         _ = event
         self.set_expanded(not self._expanded)
@@ -79,11 +106,21 @@ class _ExpandableCard(CardWidget):
     def set_expanded(self, expanded: bool) -> None:
         self._expanded = expanded
         self._body.setVisible(expanded)
-        self._toggle.setIcon(FIF.CHEVRON_DOWN_MED if expanded else FIF.CHEVRON_RIGHT)
+        # 展开=旋转 90° 的细 CHEVRON_RIGHT(下箭头),折叠=细 CHEVRON_RIGHT(右箭头),两态同款同粗
+        self._toggle.setIcon(_rotated_chevron_down() if expanded else FIF.CHEVRON_RIGHT)
         self.expandedChanged.emit(expanded)
+
+    def _refresh_toggle_icon(self) -> None:
+        """主题切换后,展开态的旋转箭头(固定色 QPixmap)需按新主题重绘"""
+
+        if self._expanded:
+            self._toggle.setIcon(_rotated_chevron_down())
 
     def is_expanded(self) -> bool:
         return self._expanded
+
+    def setTitle(self, text: str) -> None:
+        self._title.setText(text)
 
     def setContent(self, text: str) -> None:
         self._default_content = text
@@ -93,8 +130,9 @@ class _ExpandableCard(CardWidget):
     def set_error_text(self, message: str | None) -> None:
         if message:
             self._content.setText("存在校验错误,展开查看")
-            self._content.setStyleSheet(f"color: {_ERROR_COLOR};")
+            self._content.setStyleSheet(f"#contentLabel {{ color: {_ERROR_COLOR}; }}")
         else:
+            # 清空内联样式即回到 SETTING_CARD 全局 QSS 控制的副标题色(随主题)
             self._content.setStyleSheet("")
             self._content.setText(self._default_content)
 

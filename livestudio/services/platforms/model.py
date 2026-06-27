@@ -15,7 +15,7 @@ from livestudio.services.semantic_actions import (
 class PlatformModelIdentity(BaseModel):
     """平台当前加载模型的运行时身份"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "FINGERPRINT"})
 
     platform_name: str = Field(description="平台唯一名称")
     model_id: str = Field(description="平台模型唯一 ID")
@@ -25,7 +25,7 @@ class PlatformModelIdentity(BaseModel):
 class PlatformModelConfig(BaseModel):
     """每个模型都会保存的基础配置"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SETTING"})
 
     model: PlatformModelIdentity = Field(
         default_factory=lambda: PlatformModelIdentity(

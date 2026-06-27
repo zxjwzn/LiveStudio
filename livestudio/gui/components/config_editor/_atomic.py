@@ -65,6 +65,7 @@ class _CardEditor(FieldEditor):
             self._card.setContent(message)
             self._card.contentLabel.setStyleSheet(f"color: {_ERROR_COLOR};")
         else:
+            # contentLabel 是裸 QLabel,字色由 SettingCard 全局 QSS 按主题控制;清空内联样式即回到跟随主题
             self._card.contentLabel.setStyleSheet("")
             self._card.setContent(self._default_content)
 

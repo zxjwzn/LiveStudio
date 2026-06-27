@@ -10,7 +10,7 @@ from .sources.tts.config import TTSAudioStreamConfig
 class AudioStreamRouterConfig(BaseModel):
     """音频流路由配置（即音频流配置文件的根模型，无额外包装层）"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "MEDIA"})
 
     source: AudioSourceKind = Field(
         default=AudioSourceKind.MICROPHONE,

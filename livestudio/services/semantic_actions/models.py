@@ -50,7 +50,7 @@ class SemanticAction(StrEnum):
 class PlatformParameterSpec(BaseModel):
     """这里记录平台参数能用的数值范围"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"title_field": "name", "icon": "UNIT"})
 
     name: str
     minimum: float
@@ -60,7 +60,7 @@ class PlatformParameterSpec(BaseModel):
 class SemanticActionBinding(BaseModel):
     """这里说明一个通用动作对应哪些平台参数"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"title_field": "action", "icon": "LINK"})
 
     action: SemanticAction
     platform_params: list[str]
@@ -72,7 +72,7 @@ class SemanticActionBinding(BaseModel):
 class SemanticActionProfile(BaseModel):
     """这里放通用动作到平台参数的对应关系"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "MOVE"})
 
     bindings: list[SemanticActionBinding] = Field(
         default_factory=list,
