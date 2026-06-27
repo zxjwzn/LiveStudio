@@ -34,6 +34,8 @@ class MainWindow(FluentWindow):
         super().__init__()
         self.setWindowTitle("LiveStudio")
         self.setWindowIcon(app_icon())
+        self.setMicaEffectEnabled(False)
+        self.setMinimumSize(960, 640)
         self.resize(1100, 720)
 
         self._close_requested = False
