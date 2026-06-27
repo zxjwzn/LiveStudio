@@ -75,9 +75,8 @@ async def test_vtube_studio_start_disconnects_when_authentication_fails() -> Non
     platform.connect = connect  # type: ignore[method-assign]
     platform.authenticate = authenticate  # type: ignore[method-assign]
 
-    with patch.object(platform.config_manager, "save", AsyncMock()):
-        with pytest.raises(RuntimeError, match="auth failed"):
-            await platform.start()
+    with patch.object(platform.config_manager, "save", AsyncMock()), pytest.raises(RuntimeError, match="auth failed"):
+        await platform.start()
 
     assert client.disconnect_calls == 1
     assert not platform.is_started
