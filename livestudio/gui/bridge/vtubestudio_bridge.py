@@ -61,6 +61,8 @@ _EMOTION_SPECS: tuple[EmotionSpec, ...] = (
 
 _EXPRESSION_CONTROLLER = "expression"
 _CAP_NATIVE_EXPRESSIONS = "native_expressions"
+# 手动 toggle 的常驻原生表情独占一组作用域，与情绪解算(emotion)互不干扰。
+_NATIVE_SCOPE = "manual"
 
 
 class VTubeStudioPlatformBridge(PlatformBridge):
@@ -332,7 +334,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         """把目标激活集合下发给 adapter(diff 增删),成功后更新 GUI 镜像"""
 
         triggers = [NativeExpressionTrigger(platform=_PLATFORM_NAME, native_ref=name) for name in target]
-        await self._app.platform.apply_native_expressions(triggers)
+        await self._app.platform.apply_native_expressions(triggers, scope=_NATIVE_SCOPE)
         self._active_native = target
 
     def _on_model_changed(self, model_id: str, model_name: str) -> None:

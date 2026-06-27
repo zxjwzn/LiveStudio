@@ -35,6 +35,7 @@ class _ExpressionPlatform(_SemanticPlatform):
         triggers: Iterable[NativeExpressionTrigger],
         *,
         fade_time: float | None = None,
+        scope: str = "default",
     ) -> None:
         self.native_calls.append(list(triggers))
         self.native_fade_times.append(fade_time)
@@ -176,6 +177,53 @@ async def test_adapter_clears_when_empty() -> None:
     await adapter.apply([], client)
     assert client.calls == [("A.exp3.json", True), ("A.exp3.json", False)]
     assert adapter.active_files == frozenset()
+
+
+async def test_adapter_scopes_do_not_interfere() -> None:
+    """不同作用域各管各的：情绪解算清空自己那组时不应关掉手动点亮的表情"""
+    client = _FakeExpressionClient()
+    adapter = VTSExpressionAdapter(name_to_file={"A": "A.exp3.json", "B": "B.exp3.json"})
+    # 手动点亮 A（manual 作用域）
+    await adapter.apply(
+        [NativeExpressionTrigger(platform="vtubestudio", native_ref="A")],
+        client,
+        scope="manual",
+    )
+    # 情绪解算激活 B（emotion 作用域）
+    await adapter.apply(
+        [NativeExpressionTrigger(platform="vtubestudio", native_ref="B")],
+        client,
+        scope="emotion",
+    )
+    # 情绪解算收尾清空自己那组（空列表）
+    await adapter.apply([], client, scope="emotion")
+    # A 始终保持激活，只有 B 经历了激活→停用
+    assert client.calls == [
+        ("A.exp3.json", True),
+        ("B.exp3.json", True),
+        ("B.exp3.json", False),
+    ]
+    assert adapter.active_files == frozenset({"A.exp3.json"})
+
+
+async def test_adapter_union_no_redundant_deactivate_across_scopes() -> None:
+    """两个作用域想要同一文件时，单个作用域清空不应停用仍被另一作用域需要的文件"""
+    client = _FakeExpressionClient()
+    adapter = VTSExpressionAdapter(name_to_file={"A": "A.exp3.json"})
+    await adapter.apply(
+        [NativeExpressionTrigger(platform="vtubestudio", native_ref="A")],
+        client,
+        scope="manual",
+    )
+    await adapter.apply(
+        [NativeExpressionTrigger(platform="vtubestudio", native_ref="A")],
+        client,
+        scope="emotion",
+    )
+    # emotion 清空，但 manual 仍要 A，故不应有停用调用
+    await adapter.apply([], client, scope="emotion")
+    assert client.calls == [("A.exp3.json", True)]
+    assert adapter.active_files == frozenset({"A.exp3.json"})
 
 
 # ── ExpressionController ──────────────────────────────────────────────────────

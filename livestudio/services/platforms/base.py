@@ -53,6 +53,7 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
         triggers: Iterable[NativeExpressionTrigger],
         *,
         fade_time: float | None = None,
+        scope: str = "default",
     ) -> None:
         """应用平台原生表情触发（如 VTS .exp3.json）
 
@@ -61,9 +62,12 @@ class PlatformService(AsyncServiceLifecycleMixin, ABC):
 
         fade_time：原生表情淡入/淡出时长，None 时由平台决定默认值。
         表情控制器会传入与语义过渡一致的 transition_duration。
+
+        scope：标识触发来源（如情绪解算 vs 手动 toggle）。支持原生表情的平台
+        按来源分别管理期望集，使不同来源点亮的表情互不误关。
         """
 
-        _ = triggers, fade_time
+        _ = triggers, fade_time, scope
 
     @abstractmethod
     async def send_parameter_states(

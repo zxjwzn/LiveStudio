@@ -20,6 +20,9 @@ from ..base import AnimationController
 from ..config import ExpressionControllerSettings
 from ..models import AnimationType
 
+# 原生表情作用域：情绪解算的临时触发独占一组，收尾清空时不影响用户手动点亮的常驻表情。
+_NATIVE_SCOPE = "emotion"
+
 
 class ExpressionController(AnimationController[ExpressionControllerSettings]):
     """接收单个情绪，调用表情解算层产出并下发一套表情
@@ -94,6 +97,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         await self.runtime.platform.apply_native_expressions(
             selected.native_triggers,
             fade_time=self.config.transition_duration,
+            scope=_NATIVE_SCOPE,
         )
 
         # 过渡缓动 + 保持 + 收尾停用丢到后台，execute 不阻塞调用方。
@@ -136,6 +140,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             await self.runtime.platform.apply_native_expressions(
                 [],
                 fade_time=transition_duration,
+                scope=_NATIVE_SCOPE,
             )
 
         # 回归自然表情：解算 NEUTRAL 并缓动回去，不保持（回归后交还给待机控制器）。
@@ -156,6 +161,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             await self.runtime.platform.apply_native_expressions(
                 neutral.native_triggers,
                 fade_time=self.config.neutral_transition_duration,
+                scope=_NATIVE_SCOPE,
             )
         if neutral.semantic_targets:
             await self._tween_targets(

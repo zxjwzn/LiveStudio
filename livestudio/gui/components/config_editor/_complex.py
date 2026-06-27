@@ -169,12 +169,15 @@ class ListEditor(_ContainerEditor):
 
     def set_value(self, value: Any) -> None:
         self._value = list(value or [])
-        if not self._built:
+        if not self._built or self._items_layout is None:
             self._update_summary()
             return
-        for editor in list(self._items):
-            editor.setParent(None)
-            editor.deleteLater()
+        # 删除整行 row(含 editor + 删除按钮),只删 editor 会留下持旧引用的孤儿删除按钮
+        while self._items_layout.count():
+            item = self._items_layout.takeAt(0)
+            row = item.widget() if item is not None else None
+            if row is not None:
+                row.deleteLater()
         self._items.clear()
         self._populating = True
         for element in self._value:
@@ -274,12 +277,15 @@ class DictEditor(_ContainerEditor):
 
     def set_value(self, value: Any) -> None:
         self._value = dict(value) if isinstance(value, dict) else {}
-        if not self._built:
+        if not self._built or self._rows_layout is None:
             self._update_summary()
             return
-        for _, value_editor in list(self._rows):
-            value_editor.setParent(None)
-            value_editor.deleteLater()
+        # 删除整行 row(含 键输入框 + value editor + 删除按钮),只删 editor 会留孤儿控件
+        while self._rows_layout.count():
+            item = self._rows_layout.takeAt(0)
+            row = item.widget() if item is not None else None
+            if row is not None:
+                row.deleteLater()
         self._rows.clear()
         self._populating = True
         for key, element in self._value.items():

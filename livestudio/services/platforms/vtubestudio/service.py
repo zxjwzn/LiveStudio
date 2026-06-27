@@ -425,9 +425,12 @@ class VTubeStudio(PlatformService):
         triggers: Iterable[NativeExpressionTrigger],
         *,
         fade_time: float | None = None,
+        scope: str = "default",
     ) -> None:
         """把表情解算层产出的原生触发翻译为 VTube Studio 表情激活/停用"""
 
         if self._expression_adapter is None:
             return
-        await self._expression_adapter.apply(list(triggers), self.client, fade_time=fade_time)
+        await self._expression_adapter.apply(
+            list(triggers), self.client, fade_time=fade_time, scope=scope
+        )
