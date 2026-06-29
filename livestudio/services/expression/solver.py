@@ -9,6 +9,7 @@ from livestudio.services.semantic_actions.models import (
     clamp_semantic_value,
     neutral_value,
 )
+from livestudio.utils.log import logger
 
 from .history import ExpressionHistory
 from .models import (
@@ -56,6 +57,7 @@ class ExpressionSolver:
         """执行完整选择算法并更新历史"""
         result = self._run(request)
         self._history.record(ExpressionSignature(unit_ids=frozenset(u.id for u in result.units), emotion=request.emotion))
+        logger.debug("AU 解算历史已记录: emotion={}, signature={}", request.emotion, [unit.id for unit in result.units])
         return result
 
     def preview(self, request: ExpressionRequest) -> SelectedExpression:
@@ -66,13 +68,48 @@ class ExpressionSolver:
 
     def _run(self, request: ExpressionRequest) -> SelectedExpression:
         recent_ids = self._history.recent_unit_ids
+        logger.debug(
+            "AU 解算开始: emotion={}, intensity={}, max_units={}, core_score={}, randomness={}, diversity={}, history_avoidance={}, recent={}",
+            request.emotion,
+            request.intensity,
+            request.max_units,
+            request.core_score,
+            request.randomness,
+            request.diversity,
+            request.history_avoidance,
+            sorted(recent_ids),
+        )
         candidates = self._score_units(request, recent_ids)
         if not candidates:
+            logger.debug("AU 解算无候选: emotion={}", request.emotion)
             return _empty(request.emotion)
 
-        ranked = sorted(candidates, key=lambda s: self._rank(s, request), reverse=True)
+        ranked_pairs = [(candidate, self._rank(candidate, request)) for candidate in candidates]
+        logger.debug("AU 候选评分: {}", [_scored_unit_log(candidate) for candidate in candidates])
+        logger.debug(
+            "AU 排序评分: {}",
+            [
+                {
+                    "id": candidate.unit.id,
+                    "rank": round(rank, 4),
+                    "score": round(candidate.score, 4),
+                    "correlation": round(candidate.correlation, 4),
+                }
+                for candidate, rank in ranked_pairs
+            ],
+        )
+        ranked = [candidate for candidate, _ in sorted(ranked_pairs, key=lambda pair: pair[1], reverse=True)]
         combo = self._build_combo(ranked, request)
-        return self._make_result(combo, request)
+        result = self._make_result(combo, request)
+        logger.debug(
+            "AU 解算完成: emotion={}, units={}, score={}, semantic_targets={}, native_triggers={}",
+            result.emotion,
+            [unit.id for unit in result.units],
+            round(result.score, 4),
+            [_semantic_target_log(target) for target in result.semantic_targets],
+            [trigger.native_ref for trigger in result.native_triggers],
+        )
+        return result
 
     def _score_units(self, request: ExpressionRequest, recent_ids: frozenset[str]) -> list[ScoredExpressionUnit]:
         result: list[ScoredExpressionUnit] = []
@@ -92,13 +129,17 @@ class ExpressionSolver:
         return scored.score + self._rng.uniform(-1.0, 1.0) * request.randomness * request.diversity * 0.30
 
     def _should_select(self, scored: ScoredExpressionUnit, request: ExpressionRequest) -> bool:
+        selected, _ = self._selection_decision(scored, request)
+        return selected
+
+    def _selection_decision(self, scored: ScoredExpressionUnit, request: ExpressionRequest) -> tuple[bool, float]:
         if scored.score >= request.core_score or scored.correlation >= 0.80 or request.randomness <= 0.0:
-            return True
+            return True, 1.0
         p = min(
             1.0,
             max(0.05, scored.score) * (0.55 + request.diversity * 0.55) + scored.correlation * 0.20,
         )
-        return self._rng.random() <= p
+        return self._rng.random() <= p, p
 
     def _build_combo(self, ranked: list[ScoredExpressionUnit], request: ExpressionRequest) -> list[ScoredExpressionUnit]:
         combo: list[ScoredExpressionUnit] = []
@@ -107,8 +148,21 @@ class ExpressionSolver:
 
         for candidate in ranked:
             if len(combo) >= request.max_units:
+                logger.debug(
+                    "AU 选择停止: 原因=max_units, max_units={}, combo={}",
+                    request.max_units,
+                    [selected.unit.id for selected in combo],
+                )
                 break
-            if not self._should_select(candidate, request):
+            accepted_by_probability, probability = self._selection_decision(candidate, request)
+            if not accepted_by_probability:
+                logger.debug(
+                    "AU 候选跳过: id={}, 原因=概率未命中, probability={}, score={}, correlation={}",
+                    candidate.unit.id,
+                    round(probability, 4),
+                    round(candidate.score, 4),
+                    round(candidate.correlation, 4),
+                )
                 continue
 
             # 互斥冲突检查（显式规则 + 隐式 action 冲突）。
@@ -118,7 +172,19 @@ class ExpressionSolver:
             if conflicts:
                 strongest = max(c.score for c in conflicts)
                 if candidate.score <= strongest + 0.03:
+                    logger.debug(
+                        "AU 候选跳过: id={}, 原因=互斥冲突, conflicts={}, candidate_score={}, strongest_conflict={}",
+                        candidate.unit.id,
+                        [conflict.unit.id for conflict in conflicts],
+                        round(candidate.score, 4),
+                        round(strongest, 4),
+                    )
                     continue  # 不足以顶替最强冲突者，丢弃候选
+                logger.debug(
+                    "AU 冲突替换: candidate={}, victims={}",
+                    candidate.unit.id,
+                    [victim.unit.id for victim in conflicts],
+                )
                 for victim in conflicts:
                     combo.remove(victim)
                     if isinstance(victim.unit, SemanticExpressionUnit):
@@ -127,11 +193,23 @@ class ExpressionSolver:
             # BINDING 合法性检查（强制绑定）
             new_ids = {s.unit.id for s in combo} | {candidate.unit.id}
             if not self._binding_legal(new_ids, request.emotion):
+                logger.debug(
+                    "AU 候选跳过: id={}, 原因=强制绑定未满足, combo={}",
+                    candidate.unit.id,
+                    sorted(new_ids),
+                )
                 continue
 
             combo.append(candidate)
             if isinstance(candidate.unit, SemanticExpressionUnit):
                 occupied_actions.update(t.action for t in candidate.unit.targets)
+            logger.debug(
+                "AU 候选选中: id={}, probability={}, combo={}, occupied_actions={}",
+                candidate.unit.id,
+                round(probability, 4),
+                [selected.unit.id for selected in combo],
+                sorted(occupied_actions),
+            )
 
             # 情绪饱和提前收手（多样性来源）：累计满足度足够后，按 (1 - diversity) 概率停手，
             # 让「单个完整表情」与「多 AU 叠加」都能出现。randomness<=0 时保持确定性，不提前停。
@@ -141,8 +219,15 @@ class ExpressionSolver:
                 and 1.0 - unmet >= 0.90
                 and self._rng.random() > request.diversity
             ):
+                logger.debug(
+                    "AU 选择停止: 原因=情绪满足度已达阈值, fulfillment={}, diversity={}, combo={}",
+                    round(1.0 - unmet, 4),
+                    request.diversity,
+                    [selected.unit.id for selected in combo],
+                )
                 break
 
+        logger.debug("AU 组合结果: {}", [_scored_unit_log(selected) for selected in combo])
         return combo
 
     def _find_conflicts(
@@ -227,7 +312,18 @@ class ExpressionSolver:
             ExpressionSignature(unit_ids=frozenset(combo_ids), emotion=request.emotion),
             request.history_avoidance,
         )
-        return fulfillment + variety - size_penalty + rule_score - hist_penalty
+        total = fulfillment + variety - size_penalty + rule_score - hist_penalty
+        logger.debug(
+            "AU 组合评分: units={}, fulfillment={}, variety={}, size_penalty={}, rule_score={}, history_penalty={}, total={}",
+            sorted(combo_ids),
+            round(fulfillment, 4),
+            round(variety, 4),
+            round(size_penalty, 4),
+            round(rule_score, 4),
+            round(hist_penalty, 4),
+            round(total, 4),
+        )
+        return total
 
     def _rule_score(self, combo_ids: set[str], emotion: EmotionKind) -> float:
         score = 0.0
@@ -260,13 +356,26 @@ class ExpressionSolver:
 
             if isinstance(unit, SemanticExpressionUnit):
                 for target in unit.targets:
-                    value = self._rng.uniform(target.min_value, target.max_value)
+                    sampled_value = self._rng.uniform(target.min_value, target.max_value)
                     # 从静息基准按强度插值：intensity→0 时回归 neutral，→1 时取完整采样值
                     neutral = neutral_value(target.action)
-                    value = neutral + (value - neutral) * request.intensity
+                    value = neutral + (sampled_value - neutral) * request.intensity
                     value = clamp_semantic_value(target.action, value)
+                    logger.debug(
+                        "AU 目标生成: unit={}, action={}, range=[{}, {}], sampled={}, neutral={}, intensity={}, value={}, easing={}",
+                        unit.id,
+                        target.action,
+                        target.min_value,
+                        target.max_value,
+                        round(sampled_value, 4),
+                        round(neutral, 4),
+                        request.intensity,
+                        round(value, 4),
+                        unit.easing,
+                    )
                     semantic_targets.append(ResolvedSemanticTarget(action=target.action, value=value, easing=unit.easing))
             else:
+                logger.debug("AU 原生触发生成: unit={}, platform={}, native_ref={}", unit.id, unit.platform, unit.native_ref)
                 native_triggers.append(NativeExpressionTrigger(platform=unit.platform, native_ref=unit.native_ref))
 
         total_score = self._combo_score(combo, request)
@@ -289,3 +398,23 @@ def _empty(emotion: EmotionKind) -> SelectedExpression:
         native_triggers=[],
         units_by_region={},
     )
+
+
+def _scored_unit_log(scored: ScoredExpressionUnit) -> dict[str, object]:
+    unit = scored.unit
+    item: dict[str, object] = {
+        "id": unit.id,
+        "type": "semantic" if isinstance(unit, SemanticExpressionUnit) else "native",
+        "score": round(scored.score, 4),
+        "correlation": round(scored.correlation, 4),
+        "regions": sorted(region.value for region in unit.regions),
+    }
+    if isinstance(unit, SemanticExpressionUnit):
+        item["actions"] = [target.action for target in unit.targets]
+    else:
+        item["native_ref"] = unit.native_ref
+    return item
+
+
+def _semantic_target_log(target: ResolvedSemanticTarget) -> dict[str, object]:
+    return {"action": target.action, "value": round(target.value, 4), "easing": target.easing}

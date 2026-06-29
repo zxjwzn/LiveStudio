@@ -9,7 +9,8 @@ import pytest
 
 from livestudio.clients.vtube_studio.models import InputParameterListResponse
 from livestudio.config import ConfigManager
-from livestudio.services.platforms.vtubestudio import VTubeStudio
+from livestudio.services.expression.models import NativeExpressionTrigger
+from livestudio.services.platforms.vtubestudio import VTubeStudio, VTubeStudioExpressionStateConfig
 from livestudio.services.semantic_actions import (
     PlatformParameterSpec,
     SemanticAction,
@@ -33,6 +34,16 @@ class _InputParameterClient:
         if self.response is None:
             raise RuntimeError("api failed")
         return self.response
+
+
+class _ExpressionClient(_InputParameterClient):
+    def __init__(self) -> None:
+        super().__init__(_input_parameter_response())
+        self.calls: list[tuple[str, bool]] = []
+
+    async def set_expression_active(self, request: Any) -> object:
+        self.calls.append((request.data.expression_file, request.data.active))
+        return object()
 
 
 def _input_parameter_response() -> InputParameterListResponse:
@@ -180,3 +191,22 @@ async def test_reload_model_config_keeps_file_specs_when_vtube_studio_query_fail
     model_config = await platform.reload_model_config("model-1", "avatar")
 
     assert any(spec.name == "MouthOpen" for spec in model_config.parameter_specs)
+
+
+async def test_refresh_expression_adapter_uses_latest_expression_config(tmp_path) -> None:
+    platform = VTubeStudio()
+    client = _ExpressionClient()
+    platform._client = cast(Any, client)  # noqa: SLF001
+    platform.config.model_config_dir = str(tmp_path)
+
+    model_config = await platform.reload_model_config("model-1", "avatar")
+    model_config.expressions.append(
+        VTubeStudioExpressionStateConfig(name="2脸黑", file="2脸黑.exp3.json")
+    )
+    platform.refresh_expression_adapter(model_config)
+
+    await platform.apply_native_expressions(
+        [NativeExpressionTrigger(platform="vtubestudio", native_ref="2脸黑")]
+    )
+
+    assert client.calls == [("2脸黑.exp3.json", True)]

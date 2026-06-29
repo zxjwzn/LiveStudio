@@ -124,7 +124,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="嘴巴张大",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_OPEN, min_value=0.60, max_value=1.00)],
-            emotions={EmotionKind.SURPRISE: 0.92, EmotionKind.FEAR: 0.55, EmotionKind.JOY: 0.25},
+            emotions={EmotionKind.SURPRISE: 0.92, EmotionKind.FEAR: 0.75, EmotionKind.JOY: 0.9},
         ),
         SemanticExpressionUnit(
             id="抿嘴",

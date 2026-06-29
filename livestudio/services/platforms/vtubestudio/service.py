@@ -237,7 +237,7 @@ class VTubeStudio(PlatformService):
             engine=self.tween,
         )
         self._expression_adapter = VTSExpressionAdapter(
-            name_to_file={expression.name: expression.file for expression in model_config.expressions},
+            name_to_file=self._expression_name_to_file(model_config),
         )
         logger.info(
             "已加载 VTube Studio 模型配置: {} ({}) -> {}",
@@ -246,6 +246,21 @@ class VTubeStudio(PlatformService):
             self.model_config_manager.path,
         )
         return model_config
+
+    def refresh_expression_adapter(self, model_config: VTubeStudioModelConfig) -> None:
+        """用最新模型配置刷新 VTS 原生表情名到文件名的映射。"""
+
+        self._expression_adapter = VTSExpressionAdapter(
+            name_to_file=self._expression_name_to_file(model_config),
+        )
+
+    @staticmethod
+    def _expression_name_to_file(model_config: VTubeStudioModelConfig) -> dict[str, str]:
+        name_to_file: dict[str, str] = {}
+        for expression in model_config.expressions:
+            name_to_file[expression.name] = expression.file
+            name_to_file[expression.file] = expression.file
+        return name_to_file
 
     async def _refresh_parameter_specs(
         self,

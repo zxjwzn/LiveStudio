@@ -191,6 +191,7 @@ class VTubeStudioApp(BasePlatformApp[VTubeStudio, VTubeStudioModelConfig]):
 
         if changed:
             await self.platform.model_config_manager.save()
+        self.platform.refresh_expression_adapter(config)
 
     async def _apply_model_config(self, config: VTubeStudioModelConfig) -> None:
         """把模型配置用到 VTube Studio 动画运行流程里"""

@@ -8,9 +8,19 @@ from __future__ import annotations
 
 from collections import deque
 
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QHBoxLayout, QHeaderView, QTableWidgetItem, QVBoxLayout, QWidget
-from qfluentwidgets import CheckBox, PushButton, SearchLineEdit, SubtitleLabel, TableWidget, isDarkTheme, qconfig
+from PySide6.QtGui import QColor, QGuiApplication
+from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QTableWidgetItem, QVBoxLayout, QWidget
+from qfluentwidgets import (
+    CheckBox,
+    InfoBar,
+    InfoBarPosition,
+    PushButton,
+    SearchLineEdit,
+    SubtitleLabel,
+    TableWidget,
+    isDarkTheme,
+    qconfig,
+)
 
 from livestudio.gui.bridge import LogController, LogEntry
 from livestudio.gui.core import colors
@@ -73,6 +83,10 @@ class LogsView(QWidget):
         self._clear_button = PushButton("清空", controls)
         self._clear_button.clicked.connect(self._clear)
         controls_layout.addWidget(self._clear_button)
+
+        self._copy_button = PushButton("复制选中", controls)
+        self._copy_button.clicked.connect(self._copy_selected)
+        controls_layout.addWidget(self._copy_button)
         layout.addWidget(controls)
 
         self._table = TableWidget(self)
@@ -80,6 +94,8 @@ class LogsView(QWidget):
         self._table.setHorizontalHeaderLabels(["时间", "级别", "来源", "消息"])
         self._table.verticalHeader().hide()
         self._table.setEditTriggers(TableWidget.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._table, 1)
@@ -135,3 +151,24 @@ class LogsView(QWidget):
     def _clear(self) -> None:
         self._entries.clear()
         self._table.setRowCount(0)
+
+    def _copy_selected(self) -> None:
+        rows = sorted({index.row() for index in self._table.selectedIndexes()})
+        if not rows:
+            return
+
+        lines: list[str] = []
+        for row in rows:
+            values = []
+            for column in range(self._table.columnCount()):
+                item = self._table.item(row, column)
+                values.append(item.text() if item is not None else "")
+            lines.append("\t".join(values))
+        QGuiApplication.clipboard().setText("\n".join(lines))
+        InfoBar.success(
+            "已复制",
+            f"已复制 {len(lines)} 条日志",
+            duration=2000,
+            position=InfoBarPosition.TOP_RIGHT,
+            parent=self.window(),
+        )
