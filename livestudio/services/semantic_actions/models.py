@@ -111,6 +111,7 @@ class SemanticActionSpec:
     region: FacialRegion
     description: str = ""
     neutral: float = 0.0  # 静息基准值；intensity→0 时该动作回归到这里
+    overlaps: frozenset[SemanticAction] = frozenset()
 
 
 DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
@@ -121,6 +122,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         region=FacialRegion.BROW,
         description="整体眉毛从低到高的程度",
         neutral=0.5,
+        overlaps=frozenset({SemanticAction.BROW_HEIGHT_LEFT, SemanticAction.BROW_HEIGHT_RIGHT}),
     ),
     SemanticActionSpec(
         id=SemanticAction.BROW_HEIGHT_LEFT,
@@ -129,6 +131,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         region=FacialRegion.BROW,
         description="左眉毛从低到高的程度",
         neutral=0.5,
+        overlaps=frozenset({SemanticAction.BROW_HEIGHT}),
     ),
     SemanticActionSpec(
         id=SemanticAction.BROW_HEIGHT_RIGHT,
@@ -137,6 +140,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         region=FacialRegion.BROW,
         description="右眉毛从低到高的程度",
         neutral=0.5,
+        overlaps=frozenset({SemanticAction.BROW_HEIGHT}),
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_OPEN,
@@ -145,6 +149,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         region=FacialRegion.EYE,
         description="双眼从闭上到睁大的程度",
         neutral=0.8,
+        overlaps=frozenset({SemanticAction.EYE_OPEN_LEFT, SemanticAction.EYE_OPEN_RIGHT}),
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_OPEN_LEFT,
@@ -153,6 +158,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         region=FacialRegion.EYE,
         description="左眼从闭上到睁大的程度",
         neutral=0.8,
+        overlaps=frozenset({SemanticAction.EYE_OPEN}),
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_OPEN_RIGHT,
@@ -161,6 +167,7 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         region=FacialRegion.EYE,
         description="右眼从闭上到睁大的程度",
         neutral=0.8,
+        overlaps=frozenset({SemanticAction.EYE_OPEN}),
     ),
     SemanticActionSpec(
         id=SemanticAction.EYE_GAZE_X,
@@ -247,6 +254,17 @@ class SemanticTweenRequest:
 
 # 按 action id 查找的字典
 _SPEC_BY_ACTION: dict[str, SemanticActionSpec] = {spec.id: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS}
+
+
+def semantic_actions_overlap(left: str, right: str) -> bool:
+    """判断两个语义动作是否会控制同一物理部位"""
+    if left == right:
+        return True
+    left_spec = _SPEC_BY_ACTION.get(left)
+    right_spec = _SPEC_BY_ACTION.get(right)
+    left_overlaps = {action.value for action in left_spec.overlaps} if left_spec is not None else set()
+    right_overlaps = {action.value for action in right_spec.overlaps} if right_spec is not None else set()
+    return right in left_overlaps or left in right_overlaps
 
 
 def clamp_semantic_value(action: str, value: float) -> float:

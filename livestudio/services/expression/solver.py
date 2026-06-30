@@ -8,6 +8,7 @@ from livestudio.services.semantic_actions.models import (
     FacialRegion,
     clamp_semantic_value,
     neutral_value,
+    semantic_actions_overlap,
 )
 from livestudio.utils.log import logger
 
@@ -214,9 +215,11 @@ class ExpressionSolver:
             # 情绪饱和提前收手（多样性来源）：累计满足度足够后，按 (1 - diversity) 概率停手，
             # 让「单个完整表情」与「多 AU 叠加」都能出现。randomness<=0 时保持确定性，不提前停。
             unmet *= 1.0 - max(0.0, min(1.0, candidate.correlation))
+            covered_regions = {region for selected in combo for region in selected.unit.regions}
             if (
                 request.randomness > 0.0
                 and 1.0 - unmet >= 0.90
+                and len(covered_regions) >= 2
                 and self._rng.random() > request.diversity
             ):
                 logger.debug(
@@ -266,7 +269,7 @@ class ExpressionSolver:
             if (
                 candidate_actions
                 and isinstance(existing.unit, SemanticExpressionUnit)
-                and {t.action for t in existing.unit.targets} & candidate_actions
+                and _actions_overlap(candidate_actions, {t.action for t in existing.unit.targets})
             ):
                 conflicts.append(existing)
 
@@ -418,3 +421,7 @@ def _scored_unit_log(scored: ScoredExpressionUnit) -> dict[str, object]:
 
 def _semantic_target_log(target: ResolvedSemanticTarget) -> dict[str, object]:
     return {"action": target.action, "value": round(target.value, 4), "easing": target.easing}
+
+def _actions_overlap(left: set[str], right: set[str]) -> bool:
+    return any(semantic_actions_overlap(left_action, right_action) for left_action in left for right_action in right)
+

@@ -159,6 +159,7 @@ class VTubeStudioApp(BasePlatformApp[VTubeStudio, VTubeStudioModelConfig]):
                 for expr in expressions
             ]
             await self.platform.model_config_manager.save()
+            self.platform.refresh_expression_adapter(config)
             return
 
         current_by_file = {expression.file: expression for expression in expressions}

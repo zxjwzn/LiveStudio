@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from livestudio.clients.vtube_studio.models import InputParameterListResponse
+from livestudio.app import VTubeStudioApp
+from livestudio.clients.vtube_studio.models import ExpressionStateResponse, InputParameterListResponse
 from livestudio.config import ConfigManager
 from livestudio.services.expression.models import NativeExpressionTrigger
 from livestudio.services.platforms.vtubestudio import VTubeStudio, VTubeStudioExpressionStateConfig
@@ -45,6 +46,9 @@ class _ExpressionClient(_InputParameterClient):
         self.calls.append((request.data.expression_file, request.data.active))
         return object()
 
+    async def get_expression_state(self, request: Any) -> ExpressionStateResponse:
+        return _expression_state_response()
+
 
 def _input_parameter_response() -> InputParameterListResponse:
     return InputParameterListResponse.model_validate(
@@ -69,6 +73,35 @@ def _input_parameter_response() -> InputParameterListResponse:
                     }
                 ],
                 "customParameters": [],
+            },
+        }
+    )
+
+
+def _expression_state_response() -> ExpressionStateResponse:
+    return ExpressionStateResponse.model_validate(
+        {
+            "apiName": "VTubeStudioPublicAPI",
+            "apiVersion": "1.0",
+            "timestamp": 1,
+            "messageType": "ExpressionStateResponse",
+            "requestID": "test",
+            "data": {
+                "modelLoaded": True,
+                "modelName": "avatar",
+                "modelID": "model-1",
+                "expressions": [
+                    {
+                        "name": "1抱枕",
+                        "file": "1抱枕.exp3.json",
+                        "active": False,
+                        "deactivateWhenKeyIsLetGo": False,
+                        "autoDeactivateAfterSeconds": False,
+                        "secondsRemaining": 0.0,
+                        "usedInHotkeys": [],
+                        "parameters": [],
+                    }
+                ],
             },
         }
     )
@@ -210,3 +243,22 @@ async def test_refresh_expression_adapter_uses_latest_expression_config(tmp_path
     )
 
     assert client.calls == [("2脸黑.exp3.json", True)]
+
+
+async def test_initial_expression_sync_refreshes_adapter_mapping(tmp_path) -> None:
+    platform = VTubeStudio()
+    client = _ExpressionClient()
+    platform._client = cast(Any, client)  # noqa: SLF001
+    platform.config.model_config_dir = str(tmp_path)
+    app = object.__new__(VTubeStudioApp)
+    app.platform = platform
+
+    model_config = await platform.reload_model_config("model-1", "avatar")
+    assert model_config.expressions == []
+
+    await app._sync_native_state(model_config)  # noqa: SLF001
+    await platform.apply_native_expressions(
+        [NativeExpressionTrigger(platform="vtubestudio", native_ref="1抱枕")]
+    )
+
+    assert client.calls == [("1抱枕.exp3.json", True)]

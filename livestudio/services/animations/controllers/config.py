@@ -267,10 +267,6 @@ class ExpressionControllerSettings(ControllerSettings):
         ge=1,
         description="评分后保留进入排序阶段的候选数量上限",
     )
-    return_to_neutral: bool = Field(
-        default=True,
-        description="保持结束后是否把本次驱动过的参数缓动回各自静息基准值",
-    )
     neutral_transition_duration: float = Field(
         default=0.5,
         ge=0.0,

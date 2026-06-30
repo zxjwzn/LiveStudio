@@ -17,6 +17,7 @@ from livestudio.services.semantic_actions import (
     SemanticAction,
     SemanticTweenRequest,
     neutral_value,
+    semantic_actions_overlap,
 )
 from livestudio.utils.log import logger
 
@@ -105,7 +106,11 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         # 把「上一次驱动过、但本次不再覆盖」的动作补成静息目标并入本次表情：
         # 这些参数会随本次过渡段一起从当前值平滑回到 neutral，避免被旧表情遗弃在原位。
         new_actions = {target.action for target in selected.semantic_targets}
-        orphaned = self._last_actions - new_actions
+        orphaned = {
+            old_action
+            for old_action in self._last_actions
+            if not any(semantic_actions_overlap(old_action, new_action) for new_action in new_actions)
+        }
         if orphaned:
             selected.semantic_targets.extend(
                 ResolvedSemanticTarget(action=action, value=neutral_value(action)) for action in orphaned

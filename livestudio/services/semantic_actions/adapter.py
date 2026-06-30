@@ -16,6 +16,7 @@ from .models import (
     SemanticActionProfile,
     SemanticTweenRequest,
     clamp_semantic_value,
+    neutral_value,
 )
 
 
@@ -117,12 +118,14 @@ class SemanticActionAdapter:
 
             end_value = _semantic_to_platform(req.end_value, spec, req.action_parameter_name)
 
-            # 确定起始值: 请求指定时做映射，否则留 None 让引擎自行决定
+            # 确定起始值: 请求指定时做映射；否则已有受控值由引擎接续，首次控制从语义静息值开始。
             start_value: float | None
             if req.start_value is not None:
                 start_value = _semantic_to_platform(req.start_value, spec, req.action_parameter_name)
-            else:
+            elif param_name in self._engine.controlled_params:
                 start_value = None
+            else:
+                start_value = _semantic_to_platform(neutral_value(req.action_parameter_name), spec, req.action_parameter_name)
             results.append(
                 TweenRequest(
                     parameter_name=param_name,

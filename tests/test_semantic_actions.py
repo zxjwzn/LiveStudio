@@ -234,6 +234,48 @@ def test_semantic_adapter_maps_semantic_start_values_to_platform_range() -> None
     assert requests[0].end_value == pytest.approx(45.0)
 
 
+def test_semantic_adapter_uses_neutral_start_value_without_controlled_state() -> None:
+    adapter = _default_adapter()
+
+    requests = adapter.to_tween_requests(
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.EYE_OPEN.value,
+                end_value=0.3,
+                duration=0.1,
+                easing="linear",
+            ),
+        ],
+    )
+
+    assert {request.parameter_name for request in requests} == {"EyeOpenLeft", "EyeOpenRight"}
+    assert [request.start_value for request in requests] == [pytest.approx(0.8), pytest.approx(0.8)]
+
+
+def test_semantic_adapter_keeps_engine_start_value_with_controlled_state() -> None:
+    adapter = _default_adapter()
+    adapter._engine._controlled_params["EyeOpenLeft"] = ControlledParameterState(  # noqa: SLF001
+        name="EyeOpenLeft",
+        value=0.4,
+        mode="set",
+    )
+
+    requests = adapter.to_tween_requests(
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.EYE_OPEN.value,
+                end_value=0.3,
+                duration=0.1,
+                easing="linear",
+            ),
+        ],
+    )
+
+    by_name = {request.parameter_name: request for request in requests}
+    assert by_name["EyeOpenLeft"].start_value is None
+    assert by_name["EyeOpenRight"].start_value == pytest.approx(0.8)
+
+
 def test_semantic_adapter_query_returns_instant_value() -> None:
     adapter = _default_adapter()
     adapter._engine._controlled_params["FaceAngleZ"] = ControlledParameterState(  # noqa: SLF001
@@ -282,3 +324,4 @@ def test_semantic_binding_rejects_unknown_fields() -> None:
                 "unknown": True,
             },
         )
+

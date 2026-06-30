@@ -58,12 +58,39 @@ def test_create_default_builds_solvable_profile() -> None:
         assert len(result.units) > 0, f"{emotion} 未解算出 AU"
 
 
+def test_default_anger_emphasizes_brow_and_eye() -> None:
+    profile = ExpressionProfileConfig.create_default()
+    solver = _solver(profile)
+
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.ANGER, randomness=0.0))
+    ids = {unit.id for unit in result.units}
+
+    assert {"皱眉", "眯眼", "抿嘴"} <= ids
+
+
+def test_default_sadness_emphasizes_downcast_face() -> None:
+    profile = ExpressionProfileConfig.create_default()
+    solver = _solver(profile)
+
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.SADNESS, randomness=0.0))
+    ids = {unit.id for unit in result.units}
+
+    assert "嘴角下压" in ids
+    assert "眼睛下看" in ids or "低头" in ids
+
+
 def test_default_rules_reference_existing_units() -> None:
     """默认规则引用的 unit_id 必须都在默认 AU 中存在"""
     unit_ids = {unit.id for unit in default_semantic_units()}
     for rule in default_rules():
         for uid in rule.unit_ids:
             assert uid in unit_ids, f"规则 {rule.id} 引用了不存在的 AU: {uid}"
+
+
+def test_default_rules_make_left_and_right_wink_mutex() -> None:
+    rule = next(rule for rule in default_rules() if rule.id == "wink 左右互斥")
+    assert rule.unit_ids == frozenset({"wink 左眼", "wink 右眼"})
+
 
 # ── create_default 种子机制 ────────────────────────────────────────────────────
 

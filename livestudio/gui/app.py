@@ -183,15 +183,30 @@ class GuiApplication:
 
     async def _shutdown_and_quit(self) -> None:
         try:
-            await self._mcp_server.stop()
-        except Exception:
-            logger.exception("停止 MCP 服务失败，已隔离继续关闭")
-        if self._service_bridge is not None:
-            await self._service_bridge.shutdown()
-        if self._window is not None:
-            self._window.confirm_close()
-        self._close_event.set()
+            try:
+                await self._mcp_server.stop()
+            except BaseExceptionGroup as exc:
+                _log_exception_group("停止 MCP 服务失败，已隔离继续关闭", exc)
+            except Exception:
+                logger.exception("停止 MCP 服务失败，已隔离继续关闭")
+            if self._service_bridge is not None:
+                try:
+                    await self._service_bridge.shutdown()
+                except BaseExceptionGroup as exc:
+                    _log_exception_group("停止后端服务失败，已隔离继续关闭", exc)
+                except Exception:
+                    logger.exception("停止后端服务失败，已隔离继续关闭")
+            if self._window is not None:
+                self._window.confirm_close()
+        finally:
+            self._close_event.set()
 
     @staticmethod
     def _log_shutdown_error(exc: BaseException) -> None:
-        logger.error("GUI 停机流程异常: {}", exc)
+        logger.opt(exception=exc).error("GUI 停机流程异常: {}", exc)
+
+
+def _log_exception_group(message: str, exc: BaseExceptionGroup) -> None:
+    logger.error("{}: {}", message, exc)
+    for index, sub_exc in enumerate(exc.exceptions, start=1):
+        logger.opt(exception=sub_exc).error("{} 子异常 #{}: {}", message, index, sub_exc)

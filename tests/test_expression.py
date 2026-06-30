@@ -224,6 +224,38 @@ def test_solver_action_conflict_implicit_mutex() -> None:
     assert len(smile_units) <= 1
 
 
+def test_solver_action_overlap_implicit_mutex() -> None:
+    """整体 action 与左右细分 action 互斥，避免同一部位被双重控制"""
+    smile = SemanticExpressionUnit(
+        id="嘴角上扬",
+        targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.7, max_value=1.0)],
+        emotions={EmotionKind.JOY: 0.95},
+    )
+    squint = SemanticExpressionUnit(
+        id="眯眼",
+        targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.2, max_value=0.4)],
+        emotions={EmotionKind.JOY: 0.90},
+    )
+    wink_left = SemanticExpressionUnit(
+        id="wink 左眼",
+        targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN_LEFT, min_value=0.0, max_value=0.0)],
+        emotions={EmotionKind.JOY: 0.88},
+    )
+    wink_right = SemanticExpressionUnit(
+        id="wink 右眼",
+        targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN_RIGHT, min_value=0.0, max_value=0.0)],
+        emotions={EmotionKind.JOY: 0.87},
+    )
+    solver = _make_solver(smile, squint, wink_left, wink_right)
+
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0, max_units=4))
+    ids = {unit.id for unit in result.units}
+
+    assert "眯眼" in ids
+    assert "wink 左眼" not in ids
+    assert "wink 右眼" not in ids
+
+
 def test_solver_bonus_rule_score_increases() -> None:
     u1 = _joy_unit("嘴角上扬")
     u2 = SemanticExpressionUnit(

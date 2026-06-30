@@ -14,6 +14,7 @@ from .models import (
     SemanticTweenRequest,
     clamp_semantic_value,
     neutral_value,
+    semantic_actions_overlap,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "SemanticTweenRequest",
     "clamp_semantic_value",
     "neutral_value",
+    "semantic_actions_overlap",
 ]

@@ -278,23 +278,23 @@ async def test_controller_emits_transition_then_hold() -> None:
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        ExpressionControllerSettings(
-            au_priority=99, transition_duration=0.5, hold_duration=1.5, return_to_neutral=False
-        ),
+        ExpressionControllerSettings(au_priority=99, transition_duration=0.5, hold_duration=1.5),
         profile,
     )
     await controller.execute(emotion=EmotionKind.JOY)
     await _drain(controller)
 
     smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
-    assert len(smile) == 2
-    transition, hold = smile
+    assert len(smile) == 3
+    transition, hold, neutral = smile
     assert transition.duration == 0.5
     assert hold.duration == 1.5
-    # 两段同一目标值，且都用配置的高优先级锁定
+    assert neutral.duration == 0.5
     assert transition.end_value == hold.end_value
+    assert neutral.end_value == 0.5
     assert transition.priority == 99
     assert hold.priority == 99
+    assert neutral.priority == 99
 
 
 async def test_controller_skips_hold_when_zero() -> None:
@@ -313,13 +313,14 @@ async def test_controller_skips_hold_when_zero() -> None:
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        ExpressionControllerSettings(hold_duration=0.0, return_to_neutral=False),
+        ExpressionControllerSettings(hold_duration=0.0),
         profile,
     )
     await controller.execute(emotion=EmotionKind.JOY)
     await _drain(controller)
     smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
-    assert len(smile) == 1  # 只有过渡段
+    assert len(smile) == 2  # 过渡段 + 回归段
+    assert smile[-1].end_value == 0.5
 
 
 async def test_controller_accepts_string_emotion() -> None:
@@ -357,7 +358,7 @@ async def test_controller_intensity_zero_drives_neutral() -> None:
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        ExpressionControllerSettings(transition_duration=0.0, hold_duration=0.0, return_to_neutral=False),
+        ExpressionControllerSettings(transition_duration=0.0, hold_duration=0.0),
         profile,
     )
     await controller.execute(emotion=EmotionKind.JOY, intensity=0.0)
@@ -540,25 +541,7 @@ async def test_returns_to_neutral_after_hold() -> None:
     assert smile_reqs[-1].end_value == 0.5
 
 
-async def test_return_to_neutral_disabled() -> None:
-    """return_to_neutral=False 时保持结束后不回归静息"""
-    platform = _ExpressionPlatform()
-    controller = ExpressionController(
-        _runtime(platform),
-        "expression",
-        ExpressionControllerSettings(transition_duration=0.0, hold_duration=0.0, return_to_neutral=False),
-        _joy_return_profile(),
-    )
-    await controller.execute(emotion=EmotionKind.JOY)
-    await _drain(controller)
-
-    # mouth.smile 只停在 JOY 目标值 0.6，不应被拉回静息 0.5
-    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
-    assert smile
-    assert all(r.end_value == 0.6 for r in smile)
-
-
-async def test_return_to_neutral_not_held() -> None:
+async def test_neutral_return_not_held() -> None:
     """回归段只过渡、不保持：driven 动作在过渡+保持两段后，回归段只再下发一段到静息"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
@@ -621,3 +604,47 @@ async def test_interrupt_resets_orphaned_action() -> None:
     # brow.height 被新表情正常驱动
     assert brow
     assert abs(brow[0].end_value - 0.1) < 1e-6
+
+def _left_wink_then_squint_profile() -> ExpressionProfileConfig:
+    return ExpressionProfileConfig.model_validate(
+        {
+            "semantic_units": [
+                {
+                    "id": "wink 左眼",
+                    "targets": [{"action": "eye.open.left", "min_value": 0.0, "max_value": 0.0}],
+                    "emotions": {"joy": 0.95},
+                },
+                {
+                    "id": "眯眼",
+                    "targets": [{"action": "eye.open", "min_value": 0.3, "max_value": 0.3}],
+                    "emotions": {"sadness": 0.95},
+                },
+            ],
+        }
+    )
+
+
+async def test_interrupt_does_not_reset_overlapped_old_action() -> None:
+    platform = _ExpressionPlatform()
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(transition_duration=0.0, hold_duration=10.0),
+        _left_wink_then_squint_profile(),
+    )
+
+    await controller.execute(emotion=EmotionKind.JOY)
+    await controller.execute(emotion=EmotionKind.SADNESS)
+    await _drain(controller)
+
+    left_eye = [r for r in platform.requests if r.action_parameter_name == SemanticAction.EYE_OPEN_LEFT.value]
+    both_eye = [r for r in platform.requests if r.action_parameter_name == SemanticAction.EYE_OPEN.value]
+
+    assert not left_eye
+    assert both_eye
+    assert abs(both_eye[0].end_value - 0.3) < 1e-6
+
+
+
+
+
