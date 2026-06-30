@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 
 from livestudio.services.semantic_actions.models import (
@@ -172,7 +173,9 @@ class ExpressionSolver:
             conflicts = self._find_conflicts(candidate, combo, request.emotion)
             if conflicts:
                 strongest = max(c.score for c in conflicts)
-                if candidate.score <= strongest + 0.03:
+                strongest_weight = max(_unit_control_weight(c.unit) for c in conflicts)
+                replace_margin = 0.03 + max(0.0, strongest_weight - _unit_control_weight(candidate.unit)) * 0.08
+                if candidate.score <= strongest + replace_margin:
                     logger.debug(
                         "AU 候选跳过: id={}, 原因=互斥冲突, conflicts={}, candidate_score={}, strongest_conflict={}",
                         candidate.unit.id,
@@ -307,8 +310,9 @@ class ExpressionSolver:
             unmet *= 1.0 - max(0.0, min(1.0, s.correlation))
         fulfillment = 1.0 - unmet
 
-        # 多区域覆盖只作小额「锦上添花」，分母随 FacialRegion 成员数自适应（不再写死 4）。
-        variety = min(1.0, len(covered) / len(FacialRegion)) * 0.10
+        # 多区域覆盖用对数曲线：单一区域不加分，跨区组合递增变慢。
+        region_steps = max(0, len(covered) - 1)
+        variety = math.log1p(region_steps) / math.log(len(FacialRegion)) * 0.22 if region_steps else 0.0
         size_penalty = max(0, len(combo) - 1) * 0.04
         rule_score = self._rule_score(combo_ids, request.emotion)
         hist_penalty = self._history.penalty(
@@ -425,3 +429,9 @@ def _semantic_target_log(target: ResolvedSemanticTarget) -> dict[str, object]:
 def _actions_overlap(left: set[str], right: set[str]) -> bool:
     return any(semantic_actions_overlap(left_action, right_action) for left_action in left for right_action in right)
 
+
+
+def _unit_control_weight(unit: ExpressionUnit) -> int:
+    if isinstance(unit, SemanticExpressionUnit):
+        return len(unit.targets)
+    return max(1, len(unit.regions))

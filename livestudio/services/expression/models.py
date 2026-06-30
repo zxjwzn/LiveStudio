@@ -29,9 +29,6 @@ class EmotionKind(StrEnum):
     JOY = "joy"
     SADNESS = "sadness"
     ANGER = "anger"
-    FEAR = "fear"
-    SURPRISE = "surprise"
-    DISGUST = "disgust"
 
 
 class _FrozenModel(BaseModel):

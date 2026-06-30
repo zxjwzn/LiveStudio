@@ -131,6 +131,15 @@ def test_history_penalty_different_emotion() -> None:
     assert 0.0 < penalty < 0.7
 
 
+def test_history_penalty_similarity_is_exponential() -> None:
+    h = ExpressionHistory(capacity=5)
+    h.record(ExpressionSignature(unit_ids=frozenset(["a"]), emotion=EmotionKind.JOY))
+
+    candidate = ExpressionSignature(unit_ids=frozenset(["a", "b"]), emotion=EmotionKind.ANGER)
+
+    assert h.penalty(candidate, 1.0) == pytest.approx(0.325**2)
+
+
 def test_history_recent_unit_ids() -> None:
     h = ExpressionHistory()
     h.record(ExpressionSignature(unit_ids=frozenset(["a", "b"]), emotion=EmotionKind.JOY))

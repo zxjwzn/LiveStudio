@@ -63,8 +63,6 @@ def test_builtin_units_present() -> None:
         EmotionKind.JOY,
         EmotionKind.SADNESS,
         EmotionKind.ANGER,
-        EmotionKind.SURPRISE,
-        EmotionKind.FEAR,
     ],
 )
 def test_each_emotion_produces_expression(emotion: EmotionKind) -> None:

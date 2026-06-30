@@ -53,8 +53,8 @@ class BreathingControllerSettings(ControllerSettings):
 class GazeControllerSettings(ControllerSettings):
     """眼神注视控制器配置
 
-    统一驱动 eye.gaze.x/y 与 head.yaw/head.roll：眼睛扫视到新注视点，头部延迟
-    较慢地按比例跟随，到位后凝视一段随机时长。head.pitch 仍归 breathing 控制器。
+    统一驱动 eye.gaze.x/y 与 head.yaw/head.pitch/head.roll：眼睛以中心高频轻微扰动为主，
+    偶尔随机注视到一处，头部可跟随、不跟随或反向移动。
     """
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SEARCH"})
@@ -90,6 +90,12 @@ class GazeControllerSettings(ControllerSettings):
         le=1.0,
         description="头部侧倾跟随眼神方向的比例（head_roll = gaze_x * ratio）",
     )
+    head_pitch_ratio: float = Field(
+        default=0.18,
+        ge=0.0,
+        le=1.0,
+        description="头部俯仰跟随眼神上下方向的比例（head_pitch = gaze_y * ratio）",
+    )
     head_follow_delay: float = Field(
         default=0.12,
         ge=0.0,
@@ -117,14 +123,36 @@ class GazeControllerSettings(ControllerSettings):
         description="小幅度眼动相对风格基准时长的最小缩放：移动幅度趋近 0 时按此比例缩短，"
         "幅度趋近最大时用满基准时长，使小幅看得快、大幅看得慢",
     )
-    min_fixation: float = Field(default=1.0, ge=0, description="凝视停留最短时长")
-    max_fixation: float = Field(default=4.0, ge=0, description="凝视停留最长时长")
+    min_fixation: float = Field(default=0.45, ge=0, description="随机注视停留最短时长")
+    max_fixation: float = Field(default=1.6, ge=0, description="随机注视停留最长时长")
     center_bias: float = Field(
         default=0.2,
         ge=0.0,
         le=1.0,
         description="每次扫视回到中心附近（而非边缘）的概率",
     )
+    center_micro_chance: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="本周期采用中心高频轻微扰动的概率；其余周期进入随机注视",
+    )
+    micro_gaze_x_amplitude: float = Field(
+        default=0.16,
+        ge=0.0,
+        le=1.0,
+        description="中心轻微扰动的水平幅度",
+    )
+    micro_gaze_y_amplitude: float = Field(
+        default=0.12,
+        ge=0.0,
+        le=1.0,
+        description="中心轻微扰动的垂直幅度",
+    )
+    min_micro_duration: float = Field(default=0.018, gt=0.0, description="中心扰动到位最短时长")
+    max_micro_duration: float = Field(default=0.045, gt=0.0, description="中心扰动到位最长时长")
+    min_micro_fixation: float = Field(default=0.015, ge=0.0, description="中心扰动停留最短时长")
+    max_micro_fixation: float = Field(default=0.025, ge=0.0, description="中心扰动停留最长时长")
     balance_window: int = Field(
         default=6,
         ge=0,
@@ -138,23 +166,23 @@ class GazeControllerSettings(ControllerSettings):
         description="头部反向跟随的概率：看一侧、头却朝另一侧偏/歪，制造俏皮歪头",
     )
     drift_chance: float = Field(
-        default=0.25,
+        default=0.75,
         ge=0.0,
         le=1.0,
         description="本次眼动为「缓慢漂移」的概率（慢移到新点，像走神/打量）",
     )
     min_drift_duration: float = Field(
-        default=0.6,
+        default=0.75,
         gt=0.0,
         description="缓慢漂移到位的最短时长",
     )
     max_drift_duration: float = Field(
-        default=1.4,
+        default=2.2,
         gt=0.0,
         description="缓慢漂移到位的最长时长",
     )
     dart_chance: float = Field(
-        default=0.2,
+        default=0.08,
         ge=0.0,
         le=1.0,
         description="本次眼动为「快速连扫」的概率（极短到位 + 极短凝视，连续瞟动）",
@@ -181,6 +209,10 @@ class GazeControllerSettings(ControllerSettings):
             raise ValueError("max_drift_duration 不能小于 min_drift_duration")
         if self.max_dart_fixation < self.min_dart_fixation:
             raise ValueError("max_dart_fixation 不能小于 min_dart_fixation")
+        if self.max_micro_duration < self.min_micro_duration:
+            raise ValueError("max_micro_duration 不能小于 min_micro_duration")
+        if self.max_micro_fixation < self.min_micro_fixation:
+            raise ValueError("max_micro_fixation 不能小于 min_micro_fixation")
         if self.drift_chance + self.dart_chance > 1.0:
             raise ValueError("drift_chance 与 dart_chance 之和不能大于 1.0")
         return self

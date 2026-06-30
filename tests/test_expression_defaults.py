@@ -75,7 +75,7 @@ def test_default_sadness_emphasizes_downcast_face() -> None:
     result = solver.solve(ExpressionRequest(emotion=EmotionKind.SADNESS, randomness=0.0))
     ids = {unit.id for unit in result.units}
 
-    assert "嘴角下压" in ids
+    assert "嘴角下撇" in ids
     assert "眼睛下看" in ids or "低头" in ids
 
 

@@ -30,6 +30,7 @@ class ExpressionHistory:
 
             emotion_match = 1.0 if candidate.emotion == hist.emotion else 0.0
             similarity = unit_jaccard * 0.65 + emotion_match * 0.35
+            similarity = similarity**2
             recency_weight = max(0.0, 1.0 - (index / capacity))
             weighted = similarity * recency_weight
             if weighted > max_weighted:

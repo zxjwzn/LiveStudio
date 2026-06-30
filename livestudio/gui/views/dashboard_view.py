@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from PySide6.QtCore import QSize
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
@@ -47,6 +48,28 @@ _STATE_COLOR = {
 }
 
 _CAP_NATIVE_EXPRESSIONS = "native_expressions"
+
+
+class _FlowHost(QWidget):
+    """把 FlowLayout 的按宽度高度暴露给父布局。"""
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        layout = self.layout()
+        if layout is None:
+            return super().heightForWidth(width)
+        return layout.heightForWidth(width)
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        width = max(self.width(), hint.width())
+        return QSize(width, self.heightForWidth(width))
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self.updateGeometry()
 
 
 class _PlatformCard(ExpandGroupSettingCard):
@@ -137,7 +160,7 @@ class _PlatformCard(ExpandGroupSettingCard):
         header.addWidget(self._native_clear)
         outer.addLayout(header)
 
-        self._native_chip_host = QWidget(row)
+        self._native_chip_host = _FlowHost(row)
         self._native_flow = FlowLayout(self._native_chip_host, needAni=False)
         self._native_flow.setContentsMargins(0, 0, 0, 0)
         self._native_flow.setHorizontalSpacing(8)
@@ -233,6 +256,8 @@ class _PlatformCard(ExpandGroupSettingCard):
             chip.clicked.connect(lambda _checked=False, n=name: self._bridge.toggle_native_expression(n))
             self._native_flow.addWidget(chip)
             self._native_chips[name] = chip
+        self._native_chip_host.updateGeometry()
+        self._native_row.updateGeometry()
 
     def _on_native_expr_state(self, name: str, active: bool) -> None:
         chip = self._native_chips.get(name)
