@@ -38,10 +38,15 @@ class SemanticAction(StrEnum):
     EYE_OPEN_RIGHT = "eye.open.right"
     EYE_GAZE_X = "eye.gaze.x"
     EYE_GAZE_Y = "eye.gaze.y"
+    EYE_WIDE = "eye.wide"
     MOUTH_OPEN = "mouth.open"
     MOUTH_SMILE = "mouth.smile"
     MOUTH_X = "mouth.x"
     MOUTH_Y = "mouth.y"
+    MOUTH_JAW_OPEN = "mouth.jaw.open"
+    MOUTH_FUNNEL = "mouth.funnel"
+    MOUTH_PUCKER = "mouth.pucker"
+    MOUTH_SHRUG = "mouth.shrug"
     HEAD_YAW = "head.yaw"
     HEAD_PITCH = "head.pitch"
     HEAD_ROLL = "head.roll"
@@ -184,6 +189,13 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         description="眼睛上下看的方向",
     ),
     SemanticActionSpec(
+        id=SemanticAction.EYE_WIDE,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.EYE,
+        description="眼睛在正常睁开之上再瞪大的程度",
+    ),
+    SemanticActionSpec(
         id=SemanticAction.MOUTH_OPEN,
         minimum=0.0,
         maximum=1.0,
@@ -211,6 +223,34 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.MOUTH,
         description="嘴部上下移动的位置",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.MOUTH_JAW_OPEN,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.MOUTH,
+        description="下颌往下张开的程度",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.MOUTH_FUNNEL,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.MOUTH,
+        description="嘴唇前突拢成 O 形的程度",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.MOUTH_PUCKER,
+        minimum=-1.0,
+        maximum=1.0,
+        region=FacialRegion.MOUTH,
+        description="嘴唇横向收拢或拉宽的程度（正值撅嘴，负值咧宽）",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.MOUTH_SHRUG,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.MOUTH,
+        description="下唇上顶耸起的程度",
     ),
     SemanticActionSpec(
         id=SemanticAction.HEAD_YAW,

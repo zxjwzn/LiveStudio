@@ -11,8 +11,14 @@ from livestudio.app import VTubeStudioApp
 from livestudio.clients.vtube_studio.models import ExpressionStateResponse, InputParameterListResponse
 from livestudio.config import ConfigManager
 from livestudio.services.expression.models import NativeExpressionTrigger
-from livestudio.services.platforms.vtubestudio import VTubeStudio, VTubeStudioExpressionStateConfig
+from livestudio.services.platforms.vtubestudio import (
+    VTubeStudio,
+    VTubeStudioExpressionStateConfig,
+    default_vtube_studio_semantic_profile,
+)
+from livestudio.services.platforms.vtubestudio.defaults import _PLUGIN_PARAMETER_TABLE
 from livestudio.services.semantic_actions import (
+    DEFAULT_SEMANTIC_ACTION_SPECS,
     PlatformParameterSpec,
     SemanticAction,
     SemanticTweenRequest,
@@ -58,7 +64,7 @@ class _ExpressionClient(_InputParameterClient):
         self.calls.append((request.data.expression_file, request.data.active))
         return object()
 
-    async def get_expression_state(self, request: Any) -> ExpressionStateResponse:
+    async def get_expression_state(self, _request: Any) -> ExpressionStateResponse:
         return _expression_state_response()
 
 
@@ -270,11 +276,11 @@ async def test_reload_model_config_creates_plugin_parameters_before_refresh(tmp_
     model_config = await platform.reload_model_config("model-1", "avatar")
 
     assert client.created_parameters == [
-        ("MouthFunnel", 0.0, 1.0, 0.0),
-        ("MouthShrug", 0.0, 1.0, 0.0),
-        ("JawOpen", 0.0, 1.0, 0.0),
-        ("MouthPucker", -1.0, 1.0, 0.0),
         ("EyeWide", 0.0, 1.0, 0.0),
+        ("JawOpen", 0.0, 1.0, 0.0),
+        ("MouthFunnel", 0.0, 1.0, 0.0),
+        ("MouthPucker", -1.0, 1.0, 0.0),
+        ("MouthShrug", 0.0, 1.0, 0.0),
     ]
     specs = {spec.name: spec for spec in model_config.parameter_specs}
     assert specs["MouthFunnel"].minimum == 0.0
@@ -336,3 +342,42 @@ async def test_initial_expression_sync_refreshes_adapter_mapping(tmp_path) -> No
     await platform.apply_native_expressions([NativeExpressionTrigger(platform="vtubestudio", native_ref="1抱枕")])
 
     assert client.calls == [("1抱枕.exp3.json", True)]
+
+
+def test_plugin_parameter_semantic_consistency() -> None:
+    """插件参数表与语义 spec / 默认绑定三处一致：一对一绑定、范围相等、静息值==默认值。"""
+
+    spec_by_action = {s.id: s for s in DEFAULT_SEMANTIC_ACTION_SPECS}
+    profile = default_vtube_studio_semantic_profile()
+    bindings = {b.action: b.platform_params for b in profile.bindings}
+    for action, plugin_spec in _PLUGIN_PARAMETER_TABLE:
+        semantic = spec_by_action[action]
+        assert bindings[action] == [plugin_spec.name]
+        assert (semantic.minimum, semantic.maximum) == (plugin_spec.minimum, plugin_spec.maximum)
+        assert semantic.neutral == plugin_spec.default
+
+
+async def test_plugin_parameter_pucker_maps_identity_through_adapter(tmp_path) -> None:
+    """mouth.pucker 经语义层恒等映射到 MouthPucker=-1.0 的 TweenRequest。"""
+
+    platform = VTubeStudio()
+    platform._client = cast(  # noqa: SLF001
+        Any,
+        _InputParameterClient(_input_parameter_response_with_plugin_parameters()),
+    )
+    platform.config.model_config_dir = str(tmp_path)
+
+    await platform.reload_model_config("model-1", "avatar")
+
+    request = platform.semantic_adapter.to_tween_requests(  # type: ignore[union-attr]
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.MOUTH_PUCKER.value,
+                end_value=-1.0,
+                duration=0.1,
+                easing="linear",
+            )
+        ]
+    )[0]
+    assert request.parameter_name == "MouthPucker"
+    assert request.end_value == -1.0

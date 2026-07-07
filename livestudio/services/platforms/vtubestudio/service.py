@@ -5,8 +5,6 @@ import contextlib
 from collections.abc import Iterable
 from typing import Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from livestudio.clients.vtube_studio.client import EventHandler as ListenerHandler
 from livestudio.clients.vtube_studio.client import VTubeStudioClient
 from livestudio.clients.vtube_studio.config import VTubeStudioConfig
@@ -45,60 +43,10 @@ from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path
 
 from .config import VTubeStudioModelConfig
+from .defaults import default_plugin_parameters
 from .expression_adapter import VTSExpressionAdapter
 
 _RequiredT = TypeVar("_RequiredT")
-
-
-class PluginParameterSpec(BaseModel):
-    """VTube Studio 插件自定义参数定义。"""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str = Field(min_length=4, max_length=32)
-    minimum: float = Field(ge=-1000000, le=1000000)
-    maximum: float = Field(ge=-1000000, le=1000000)
-    default: float = Field(ge=-1000000, le=1000000)
-    explanation: str | None = Field(default=None, max_length=255)
-
-
-_PLUGIN_PARAMETERS: tuple[PluginParameterSpec, ...] = (
-    PluginParameterSpec(
-        name="MouthFunnel",
-        minimum=0.0,
-        maximum=1.0,
-        default=0.0,
-        explanation="LiveStudio mouth funnel control",
-    ),
-    PluginParameterSpec(
-        name="MouthShrug",
-        minimum=0.0,
-        maximum=1.0,
-        default=0.0,
-        explanation="LiveStudio mouth shrug control",
-    ),
-    PluginParameterSpec(
-        name="JawOpen",
-        minimum=0.0,
-        maximum=1.0,
-        default=0.0,
-        explanation="LiveStudio jaw open control",
-    ),
-    PluginParameterSpec(
-        name="MouthPucker",
-        minimum=-1.0,
-        maximum=1.0,
-        default=0.0,
-        explanation="LiveStudio mouth pucker control",
-    ),
-    PluginParameterSpec(
-        name="EyeWide",
-        minimum=0.0,
-        maximum=1.0,
-        default=0.0,
-        explanation="LiveStudio eye wide control",
-    ),
-)
 
 
 def _require(value: _RequiredT | None, message: str) -> _RequiredT:
@@ -321,7 +269,7 @@ class VTubeStudio(PlatformService):
     async def _ensure_plugin_parameters(self) -> None:
         """确保归属于当前 VTS 插件身份的自定义参数已创建。"""
 
-        for spec in _PLUGIN_PARAMETERS:
+        for spec in default_plugin_parameters():
             try:
                 await self.client.create_parameter(
                     ParameterCreationRequest(
