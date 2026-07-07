@@ -9,7 +9,7 @@
 每个 AU 自带 id，以列表返回，可直接序列化进配置文件。
 
 v3 变化：
-- EmotionKind 扩充至 9 列（基础 4 + 演出 5），默认 AU 补齐新列打分。
+- EmotionKind 扩充至 7 列（基础 3 + 演出 4），默认 AU 补齐新列打分。
 - 姿态/调味 AU（歪头/转头/抬头）改用 baseline 百搭分，不再到处补零碎小分。
 - 新增复合 AU「阴险抬眼」（低头 + 抬眼的合取），替代旧 BindingRule「怒视依赖」。
 - 规则收缩：物理互斥已由 action 隐式冲突覆盖，身份错位由典型度门压制，
@@ -75,6 +75,11 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             id="睁眼",
             targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.75, max_value=1.00)],
             emotions={EmotionKind.JOY: 0.20, EmotionKind.SURPRISE: 0.90},
+        ),
+        SemanticExpressionUnit(
+            id="瞪眼",
+            targets=[ExpressionTarget(action=SemanticAction.EYE_WIDE, min_value=0.50, max_value=1.00)],
+            emotions={EmotionKind.SURPRISE: 0.80, EmotionKind.ANGER: 0.40},
         ),
         SemanticExpressionUnit(
             id="wink 左眼",
@@ -170,6 +175,11 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             emotions={EmotionKind.JOY: 0.25, EmotionKind.SURPRISE: 0.70},
         ),
         SemanticExpressionUnit(
+            id="下颌张开",
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_JAW_OPEN, min_value=0.50, max_value=1.00)],
+            emotions={EmotionKind.SURPRISE: 0.75, EmotionKind.JOY: 0.30},
+        ),
+        SemanticExpressionUnit(
             id="抿嘴",
             targets=[
                 ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.40, max_value=0.40),
@@ -179,6 +189,43 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
                 EmotionKind.ANGER: 0.86,
                 EmotionKind.SADNESS: 0.34,
             },
+        ),
+        # —— 唇形 ——（funnel / pucker± / shrug：与嘴角、嘴部开合各占独立 action，可叠加）
+        SemanticExpressionUnit(
+            id="拢嘴",
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_FUNNEL, min_value=0.50, max_value=1.00)],
+            emotions={EmotionKind.SMUG: 0.40},
+        ),
+        SemanticExpressionUnit(
+            id="撅嘴",
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_PUCKER, min_value=0.40, max_value=1.00)],
+            emotions={EmotionKind.SHY: 0.55, EmotionKind.SADNESS: 0.30, EmotionKind.WRY: 0.30},
+        ),
+        SemanticExpressionUnit(
+            id="咧嘴",
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_PUCKER, min_value=-1.00, max_value=-0.40)],
+            emotions={EmotionKind.JOY: 0.40, EmotionKind.SMUG: 0.35, EmotionKind.WRY: 0.30},
+        ),
+        SemanticExpressionUnit(
+            id="耸嘴",
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_SHRUG, min_value=0.40, max_value=1.00)],
+            emotions={
+                EmotionKind.WRY: 0.62,
+                EmotionKind.ANGER: 0.35,
+                EmotionKind.SADNESS: 0.28,
+                EmotionKind.SMUG: 0.30,
+            },
+        ),
+        # —— 颊 / 舌 ——
+        SemanticExpressionUnit(
+            id="鼓腮",
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_CHEEK_PUFF, min_value=0.50, max_value=1.00)],
+            emotions={EmotionKind.SHY: 0.40, EmotionKind.ANGER: 0.28},
+        ),
+        SemanticExpressionUnit(
+            id="吐舌",
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_TONGUE_OUT, min_value=0.40, max_value=1.00)],
+            emotions={EmotionKind.SMUG: 0.45, EmotionKind.JOY: 0.35, EmotionKind.SHY: 0.25},
         ),
         # —— 嘴部位移 ——
         SemanticExpressionUnit(
