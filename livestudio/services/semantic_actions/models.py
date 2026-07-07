@@ -47,6 +47,8 @@ class SemanticAction(StrEnum):
     MOUTH_FUNNEL = "mouth.funnel"
     MOUTH_PUCKER = "mouth.pucker"
     MOUTH_SHRUG = "mouth.shrug"
+    MOUTH_CHEEK_PUFF = "mouth.cheek.puff"
+    MOUTH_TONGUE_OUT = "mouth.tongue.out"
     HEAD_YAW = "head.yaw"
     HEAD_PITCH = "head.pitch"
     HEAD_ROLL = "head.roll"
@@ -251,6 +253,20 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.MOUTH,
         description="下唇上顶耸起的程度",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.MOUTH_CHEEK_PUFF,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.MOUTH,
+        description="脸颊鼓起的程度",
+    ),
+    SemanticActionSpec(
+        id=SemanticAction.MOUTH_TONGUE_OUT,
+        minimum=0.0,
+        maximum=1.0,
+        region=FacialRegion.MOUTH,
+        description="舌头伸出的程度",
     ),
     SemanticActionSpec(
         id=SemanticAction.HEAD_YAW,

@@ -88,7 +88,23 @@ def _input_parameter_response() -> InputParameterListResponse:
                         "min": -2.0,
                         "max": 2.0,
                         "defaultValue": 0.0,
-                    }
+                    },
+                    {
+                        "name": "CheekPuff",
+                        "addedBy": "VTube Studio",
+                        "value": 0.0,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "defaultValue": 0.0,
+                    },
+                    {
+                        "name": "TongueOut",
+                        "addedBy": "VTube Studio",
+                        "value": 0.0,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "defaultValue": 0.0,
+                    },
                 ],
                 "customParameters": [],
             },
@@ -381,3 +397,46 @@ async def test_plugin_parameter_pucker_maps_identity_through_adapter(tmp_path) -
     )[0]
     assert request.parameter_name == "MouthPucker"
     assert request.end_value == -1.0
+
+
+def test_builtin_parameter_semantic_consistency() -> None:
+    """VTS 内置参数 CheekPuff / TongueOut 在语义层有对应动作、[0,1] 范围、默认绑定齐全。"""
+
+    spec_by_action = {s.id: s for s in DEFAULT_SEMANTIC_ACTION_SPECS}
+    profile = default_vtube_studio_semantic_profile()
+    bindings = {b.action: b.platform_params for b in profile.bindings}
+    expected = {
+        SemanticAction.MOUTH_CHEEK_PUFF: "CheekPuff",
+        SemanticAction.MOUTH_TONGUE_OUT: "TongueOut",
+    }
+    for action, param_name in expected.items():
+        semantic = spec_by_action[action]
+        assert bindings[action] == [param_name]
+        assert (semantic.minimum, semantic.maximum) == (0.0, 1.0)
+        assert semantic.neutral == 0.0
+
+
+async def test_builtin_parameter_tongue_maps_identity_through_adapter(tmp_path) -> None:
+    """mouth.tongue.out 经语义层恒等映射到 TongueOut=1.0（内置参数，无需建参）。"""
+
+    platform = VTubeStudio()
+    platform._client = cast(  # noqa: SLF001
+        Any,
+        _InputParameterClient(_input_parameter_response_with_plugin_parameters()),
+    )
+    platform.config.model_config_dir = str(tmp_path)
+
+    await platform.reload_model_config("model-1", "avatar")
+
+    request = platform.semantic_adapter.to_tween_requests(  # type: ignore[union-attr]
+        [
+            SemanticTweenRequest(
+                action_parameter_name=SemanticAction.MOUTH_TONGUE_OUT.value,
+                end_value=1.0,
+                duration=0.1,
+                easing="linear",
+            )
+        ]
+    )[0]
+    assert request.parameter_name == "TongueOut"
+    assert request.end_value == 1.0

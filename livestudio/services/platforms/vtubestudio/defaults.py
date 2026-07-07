@@ -156,6 +156,16 @@ def default_vtube_studio_semantic_profile() -> SemanticActionProfile:
             action=SemanticAction.HEAD_ROLL,
             platform_params=["FaceAngleZ"],
         ),
+        # VTS 内置参数（出现在 default_parameters，无需 _ensure_plugin_parameters 建参；
+        # 范围由 _refresh_parameter_specs 从 VTS 实测同步）
+        SemanticActionBinding(
+            action=SemanticAction.MOUTH_CHEEK_PUFF,
+            platform_params=["CheekPuff"],
+        ),
+        SemanticActionBinding(
+            action=SemanticAction.MOUTH_TONGUE_OUT,
+            platform_params=["TongueOut"],
+        ),
         *(
             SemanticActionBinding(action=action, platform_params=[spec.name])
             for action, spec in _PLUGIN_PARAMETER_TABLE
