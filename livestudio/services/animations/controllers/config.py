@@ -299,6 +299,17 @@ class ExpressionControllerSettings(ControllerSettings):
         ge=1,
         description="评分后保留进入排序阶段的候选数量上限",
     )
+    typicality_floor: float = Field(
+        default=0.30,
+        ge=0.0,
+        le=1.0,
+        description="典型度硬门 τ：AU 在当前情绪的分低于其本职峰值该比例时直接剔除；0=关闭（退化旧行为）",
+    )
+    typicality_power: float = Field(
+        default=0.5,
+        ge=0.0,
+        description="典型度软折扣指数 α：客串 AU 入选概率乘 typicality^α；0=关闭折扣，越大越偏爱本职 AU",
+    )
     neutral_transition_duration: float = Field(
         default=0.5,
         ge=0.0,

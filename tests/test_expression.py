@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 import pytest
 from pydantic import ValidationError
 
@@ -511,3 +513,87 @@ def test_intensity_zero_on_zero_neutral_action() -> None:
     solver = _make_solver(_fixed_unit("转头", SemanticAction.HEAD_YAW, 0.7))
     result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0, intensity=0.0))
     assert result.semantic_targets[0].value == 0.0
+
+
+# ── 典型度门控（v3）──────────────────────────────────────────────────────────
+
+
+def _guest_unit(uid: str, home: EmotionKind, home_corr: float, guest: EmotionKind, guest_corr: float) -> SemanticExpressionUnit:
+    """本职 home 高分、客串 guest 低分的 AU"""
+    return SemanticExpressionUnit(
+        id=uid,
+        targets=[ExpressionTarget(action=SemanticAction.EYE_GAZE_X, min_value=-1.0, max_value=1.0)],
+        emotions={home: home_corr, guest: guest_corr},
+    )
+
+
+def test_typicality_hard_gate_blocks_guest_au() -> None:
+    """悲伤专业户（sad .72）客串 joy（.12）：典型度 0.17 < 0.30，任何随机度下都不入选"""
+    muyi = _guest_unit("目移", EmotionKind.SADNESS, 0.72, EmotionKind.JOY, 0.12)
+    smile = _joy_unit("嘴角上扬", 0.82)
+    for seed in range(30):
+        solver = ExpressionSolver(
+            units=[smile, muyi], rules=[], history=ExpressionHistory(capacity=10),
+            rng=random.Random(seed),
+        )
+        result = solver.preview(ExpressionRequest(emotion=EmotionKind.JOY))
+        assert "目移" not in {u.id for u in result.units}
+
+
+def test_typicality_gate_disabled_restores_reachability() -> None:
+    """τ=0 且 α=0 时完全退化：客串 AU 重新可达（回归旧行为的逃生门）"""
+    muyi = _guest_unit("目移", EmotionKind.SADNESS, 0.72, EmotionKind.JOY, 0.12)
+    solver = ExpressionSolver(
+        units=[muyi], rules=[], history=ExpressionHistory(capacity=10),
+        typicality_floor=0.0, typicality_power=0.0,
+    )
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
+    assert "目移" in {u.id for u in result.units}
+
+
+def test_baseline_unit_cannot_anchor() -> None:
+    """只有百搭候选时无锚可立，返回空表情"""
+    tilt = SemanticExpressionUnit(
+        id="歪头",
+        targets=[ExpressionTarget(action=SemanticAction.HEAD_ROLL, min_value=-0.5, max_value=0.5)],
+        emotions={},
+        baseline=0.9,
+    )
+    solver = _make_solver(tilt)
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
+    assert result.units == []
+
+
+def test_baseline_unit_rides_along_behind_anchor() -> None:
+    """有正主坐锚后，百搭候选正常搭车"""
+    tilt = SemanticExpressionUnit(
+        id="歪头",
+        targets=[ExpressionTarget(action=SemanticAction.HEAD_ROLL, min_value=-0.5, max_value=0.5)],
+        emotions={},
+        baseline=0.6,
+    )
+    solver = _make_solver(_joy_unit("嘴角上扬", 0.9), tilt)
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
+    ids = {u.id for u in result.units}
+    assert {"嘴角上扬", "歪头"} <= ids
+
+
+def test_explicit_zero_disables_baseline() -> None:
+    """显式打 0 优先于百搭分：该情绪彻底禁用"""
+    tilt = SemanticExpressionUnit(
+        id="歪头",
+        targets=[ExpressionTarget(action=SemanticAction.HEAD_ROLL, min_value=-0.5, max_value=0.5)],
+        emotions={EmotionKind.JOY: 0.0},
+        baseline=0.6,
+    )
+    solver = _make_solver(_joy_unit("嘴角上扬", 0.9), tilt)
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
+    assert "歪头" not in {u.id for u in result.units}
+
+
+def test_typical_home_emotion_passes_gate() -> None:
+    """本职情绪（典型度 1.0）不受门控影响"""
+    muyi = _guest_unit("目移", EmotionKind.SADNESS, 0.72, EmotionKind.JOY, 0.12)
+    solver = _make_solver(muyi)
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.SADNESS, randomness=0.0))
+    assert "目移" in {u.id for u in result.units}

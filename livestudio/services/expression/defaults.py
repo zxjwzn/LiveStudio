@@ -7,18 +7,21 @@
 原生表情绑定具体模型的 .exp3.json，应由各模型自行配置。
 
 每个 AU 自带 id，以列表返回，可直接序列化进配置文件。
+
+v3 变化：
+- EmotionKind 扩充至 9 列（基础 4 + 演出 5），默认 AU 补齐新列打分。
+- 姿态/调味 AU（歪头/转头/抬头）改用 baseline 百搭分，不再到处补零碎小分。
+- 新增复合 AU「阴险抬眼」（低头 + 抬眼的合取），替代旧 BindingRule「怒视依赖」。
+- 规则收缩：物理互斥已由 action 隐式冲突覆盖，身份错位由典型度门压制，
+  合取语义改由复合 AU 表达——默认规则为空，仅留作模型级例外通道。
 """
 
 from __future__ import annotations
 
 from livestudio.services.expression.models import (
-    BindingRule,
-    BonusRule,
     EmotionKind,
     ExpressionRule,
     ExpressionTarget,
-    MutualExclusionRule,
-    PenaltyRule,
     SemanticAction,
     SemanticExpressionUnit,
 )
@@ -32,33 +35,46 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="皱眉",
             targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.00, max_value=0.10)],
-            emotions={EmotionKind.ANGER: 0.92, EmotionKind.SADNESS: 0.42},
+            emotions={
+                EmotionKind.ANGER: 0.85,
+                EmotionKind.SADNESS: 0.42,
+                EmotionKind.WRY: 0.58,
+            },
         ),
         SemanticExpressionUnit(
             id="轻微抬眉",
             targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.50, max_value=0.70)],
-            emotions={EmotionKind.JOY: 0.28},
+            emotions={EmotionKind.JOY: 0.28, EmotionKind.SURPRISE: 0.30},
         ),
         SemanticExpressionUnit(
             id="抬眉",
             targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.70, max_value=1.00)],
-            emotions={EmotionKind.JOY: 0.15},
+            emotions={EmotionKind.JOY: 0.15, EmotionKind.SURPRISE: 0.85},
         ),
         # —— 眼睛开合 ——
         SemanticExpressionUnit(
             id="闭眼",
             targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.00, max_value=0.00)],
-            emotions={EmotionKind.JOY: 0.36, EmotionKind.SADNESS: 0.49},
+            emotions={
+                EmotionKind.JOY: 0.36,
+                EmotionKind.SADNESS: 0.49,
+                EmotionKind.WRY: 0.48,
+                EmotionKind.SHY: 0.30,
+            },
         ),
         SemanticExpressionUnit(
             id="眯眼",
             targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.20, max_value=0.40)],
-            emotions={EmotionKind.JOY: 0.76, EmotionKind.ANGER: 0.72},
+            emotions={
+                EmotionKind.JOY: 0.76,
+                EmotionKind.ANGER: 0.72,
+                EmotionKind.SMUG: 0.70,
+            },
         ),
         SemanticExpressionUnit(
             id="睁眼",
             targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.75, max_value=1.00)],
-            emotions={EmotionKind.JOY: 0.20},
+            emotions={EmotionKind.JOY: 0.20, EmotionKind.SURPRISE: 0.90},
         ),
         SemanticExpressionUnit(
             id="wink 左眼",
@@ -80,34 +96,64 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="目移",
             targets=[ExpressionTarget(action=SemanticAction.EYE_GAZE_X, min_value=-1.00, max_value=1)],
-            emotions={EmotionKind.SADNESS: 0.72, EmotionKind.JOY: 0.12},
+            emotions={
+                EmotionKind.SADNESS: 0.72,
+                EmotionKind.JOY: 0.12,
+                EmotionKind.SHY: 0.70,
+            },
         ),
         SemanticExpressionUnit(
             id="眼睛下看",
             targets=[ExpressionTarget(action=SemanticAction.EYE_GAZE_Y, min_value=-1.00, max_value=-0.70)],
-            emotions={EmotionKind.SADNESS: 0.70},
+            emotions={
+                EmotionKind.SADNESS: 0.70,
+                EmotionKind.WRY: 0.30,
+                EmotionKind.SHY: 0.40,
+            },
         ),
         SemanticExpressionUnit(
             id="眼睛上看",
             targets=[ExpressionTarget(action=SemanticAction.EYE_GAZE_Y, min_value=0.70, max_value=1.00)],
             emotions={},
         ),
+        # —— 复合 AU：低头 + 抬眼的合取，整体持有 smug 身份 ——
+        # 替代旧 BindingRule「怒视依赖」：合取语义直接住进一个 AU，
+        # 与散装「低头」「眼睛上看」的物理排他由 action 隐式互斥自动处理。
+        SemanticExpressionUnit(
+            id="阴险抬眼",
+            targets=[
+                ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=-0.60, max_value=-0.30),
+                ExpressionTarget(action=SemanticAction.EYE_GAZE_Y, min_value=0.60, max_value=1.00),
+            ],
+            emotions={EmotionKind.SMUG: 0.80, EmotionKind.ANGER: 0.55},
+        ),
         # —— 嘴角 ——
         SemanticExpressionUnit(
             id="嘴角上扬",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.60, max_value=1.00)],
-            emotions={EmotionKind.JOY: 0.82},
+            emotions={
+                EmotionKind.JOY: 0.82,
+                EmotionKind.SMUG: 0.65,
+                EmotionKind.WRY: 0.60,
+                EmotionKind.SHY: 0.45,
+            },
         ),
         SemanticExpressionUnit(
             id="嘴角下撇",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.00, max_value=0.40)],
-            emotions={EmotionKind.SADNESS: 0.92, EmotionKind.ANGER: 0.44},
+            emotions={
+                EmotionKind.SADNESS: 0.92,
+                EmotionKind.ANGER: 0.44,
+            },
         ),
         # —— 嘴部开合 ——
         SemanticExpressionUnit(
             id="闭嘴",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_OPEN, min_value=0.00, max_value=0.10)],
-            emotions={EmotionKind.ANGER: 0.30, EmotionKind.SADNESS: 0.25},
+            emotions={
+                EmotionKind.ANGER: 0.30,
+                EmotionKind.SADNESS: 0.25,
+            },
         ),
         SemanticExpressionUnit(
             id="嘴巴微张",
@@ -115,12 +161,13 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             emotions={
                 EmotionKind.JOY: 0.76,
                 EmotionKind.SADNESS: 0.16,
+                EmotionKind.SURPRISE: 0.40,
             },
         ),
         SemanticExpressionUnit(
             id="嘴巴张大",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_OPEN, min_value=0.60, max_value=1.00)],
-            emotions={EmotionKind.JOY: 0.25},
+            emotions={EmotionKind.JOY: 0.25, EmotionKind.SURPRISE: 0.70},
         ),
         SemanticExpressionUnit(
             id="抿嘴",
@@ -128,7 +175,10 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
                 ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.40, max_value=0.40),
                 ExpressionTarget(action=SemanticAction.MOUTH_OPEN, min_value=0.0, max_value=0.00),
             ],
-            emotions={EmotionKind.ANGER: 0.86, EmotionKind.SADNESS: 0.34},
+            emotions={
+                EmotionKind.ANGER: 0.86,
+                EmotionKind.SADNESS: 0.34,
+            },
         ),
         # —— 嘴部位移 ——
         SemanticExpressionUnit(
@@ -158,72 +208,47 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="抬头",
             targets=[ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=0.3, max_value=0.7)],
-            emotions={EmotionKind.JOY: 0.10},
+            emotions={},
+            baseline=0.15,
         ),
         SemanticExpressionUnit(
             id="低头",
             targets=[ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=-0.7, max_value=-0.3)],
-            emotions={EmotionKind.SADNESS: 0.68, EmotionKind.ANGER: 0.42},
+            emotions={
+                EmotionKind.SADNESS: 0.68,
+                EmotionKind.ANGER: 0.42,
+                EmotionKind.SHY: 0.55,
+            },
         ),
         # —— 头部侧歪 ——
         SemanticExpressionUnit(
             id="歪头",
             targets=[ExpressionTarget(action=SemanticAction.HEAD_ROLL, min_value=-0.5, max_value=0.5)],
-            emotions={EmotionKind.JOY: 0.45, EmotionKind.SADNESS: 0.18},
+            emotions={EmotionKind.JOY: 0.45, EmotionKind.WRY: 0.50, EmotionKind.SMUG: 0.35},
+            baseline=0.25,
         ),
         # —— 头部转向 ——
         SemanticExpressionUnit(
             id="转头",
             targets=[ExpressionTarget(action=SemanticAction.HEAD_YAW, min_value=-0.5, max_value=0.5)],
-            emotions={EmotionKind.SADNESS: 0.18, EmotionKind.JOY: 0.12},
+            emotions={},
+            baseline=0.20,
         ),
     ]
 
 
 def default_rules() -> list[ExpressionRule]:
-    """返回通用默认规则（互斥 + 情绪联动加分 + 抑制 + 强制依赖）"""
+    """默认规则为空（v3）。
 
-    return [
-        # —— 情绪联动加分（SYNERGY）——
-        BonusRule(
-            id="喜悦笑眼增强",
-            unit_ids=frozenset({"嘴角上扬", "眯眼"}),
-            value=0.18,
-            emotions=frozenset({EmotionKind.JOY}),
-        ),
-        BonusRule(
-            id="怒视增强",
-            unit_ids=frozenset({"皱眉", "眯眼", "抿嘴"}),
-            value=0.4,
-            emotions=frozenset({EmotionKind.ANGER}),
-        ),
-        BonusRule(
-            id="低头上目线增强",
-            unit_ids=frozenset({"低头", "目移"}),
-            value=0.7,
-            emotions=frozenset({EmotionKind.SADNESS}),
-        ),
-        BonusRule(
-            id="悲伤低头增强",
-            unit_ids=frozenset({"嘴角下撇", "眼睛下看", "低头"}),
-            value=0.18,
-            emotions=frozenset({EmotionKind.SADNESS}),
-        ),
-        # —— 抑制（SUPPRESSION）——
-        PenaltyRule(
-            id="抿嘴削弱嘴角上扬",
-            unit_ids=frozenset({"抿嘴", "嘴角上扬"}),
-            value=0.35,
-        ),
-        # —— 互斥（MUTEX）——
-        MutualExclusionRule(
-            id="wink 左右互斥",
-            unit_ids=frozenset({"wink 左眼", "wink 右眼"}),
-        ),
-        # —— 强制依赖（DEPENDENCY）——
-        BindingRule(
-            id="怒视依赖",
-            unit_ids=frozenset({"眼睛上看", "低头", "抿嘴"}),
-            emotions=frozenset({EmotionKind.ANGER}),
-        ),
-    ]
+    历史上靠 rules 兜底的三类合理性约束，现分别由更底层的机制覆盖：
+    - 物理互斥 → action 隐式冲突（旧「wink 左右互斥」为其冗余实例，已删）
+    - 身份错位 → 典型度门（旧 Penalty「抿嘴削弱嘴角上扬」本为死规则，已删）
+    - 合取语义 → 复合 AU（旧 Binding「怒视依赖」→ 复合 AU「阴险抬眼」，已删）
+    - 拉郎配 → 同列高分同现由打分自然驱动，Bonus 无选择效果，已删
+
+    规则类型与执行代码全部保留，作为模型级例外通道：仅当某模型出现
+    「同列都典型、物理不冲突、但美术上不能同现」的真例外时，才按需添加
+    MutualExclusionRule。
+    """
+
+    return []

@@ -1,4 +1,4 @@
-"""表情解算器：实现完整 AU 选择算法"""
+"""表情解算器：实现完整 AU 选择算法（v3 典型度门控）"""
 
 from __future__ import annotations
 
@@ -40,12 +40,17 @@ class ExpressionSolver:
         history: ExpressionHistory,
         top_candidates: int = 14,
         *,
+        typicality_floor: float = 0.30,
+        typicality_power: float = 0.5,
         rng: random.Random | None = None,
     ) -> None:
         self._units = units
         self._rules = rules
         self._history = history
         self._top_candidates = top_candidates
+        # 典型度门控参数（v3）：τ 硬门（客串门槛）/ α 软折扣指数
+        self._typicality_floor = typicality_floor
+        self._typicality_power = typicality_power
         # 注入随机源，便于测试用固定种子获得确定性结果；默认用独立实例不污染全局 random
         self._rng = rng or random.Random()
 
@@ -71,7 +76,7 @@ class ExpressionSolver:
     def _run(self, request: ExpressionRequest) -> SelectedExpression:
         recent_ids = self._history.recent_unit_ids
         logger.debug(
-            "AU 解算开始: emotion={}, intensity={}, max_units={}, core_score={}, randomness={}, diversity={}, history_avoidance={}, recent={}",
+            "AU 解算开始: emotion={}, intensity={}, max_units={}, core_score={}, randomness={}, diversity={}, history_avoidance={}, typicality_floor={}, typicality_power={}, recent={}",
             request.emotion,
             request.intensity,
             request.max_units,
@@ -79,6 +84,8 @@ class ExpressionSolver:
             request.randomness,
             request.diversity,
             request.history_avoidance,
+            self._typicality_floor,
+            self._typicality_power,
             sorted(recent_ids),
         )
         candidates = self._score_units(request, recent_ids)
@@ -96,6 +103,7 @@ class ExpressionSolver:
                     "rank": round(rank, 4),
                     "score": round(candidate.score, 4),
                     "correlation": round(candidate.correlation, 4),
+                    "typicality": round(candidate.typicality, 4),
                 }
                 for candidate, rank in ranked_pairs
             ],
@@ -113,15 +121,54 @@ class ExpressionSolver:
         )
         return result
 
+    def _resolve_correlation(self, unit: ExpressionUnit, emotion: EmotionKind) -> tuple[float, bool]:
+        """解析 AU 在当前情绪下的相关性及来源。
+
+        显式打分（含显式 <=0 = 禁用）优先；缺失时用 baseline 百搭分兜底。
+        返回 (correlation, via_baseline)。
+        """
+        if emotion in unit.emotions:
+            return unit.emotions[emotion], False
+        return unit.baseline, (unit.baseline > 0.0)
+
+    def _peak_correlation(self, unit: ExpressionUnit) -> float:
+        """AU 打分行峰值，用于典型度分母。"""
+        return max(max(unit.emotions.values(), default=0.0), unit.baseline)
+
     def _score_units(self, request: ExpressionRequest, recent_ids: frozenset[str]) -> list[ScoredExpressionUnit]:
+        """单体打分 + 典型度硬门过滤（v3）。
+
+        硬门在候选池阶段裁决——即使 randomness=0 也生效，
+        因为这是「身份不合」的结构性拒绝，不是随机选择性降频。
+        """
         result: list[ScoredExpressionUnit] = []
         for unit in self._units:
-            correlation = unit.emotions.get(request.emotion, 0.0)
+            correlation, via_baseline = self._resolve_correlation(unit, request.emotion)
             if correlation <= 0.0:
+                continue
+            # 典型度 = 当前格分 / 打分行峰值：识别「本职还是客串」
+            peak = self._peak_correlation(unit)
+            typicality = correlation / peak
+            if typicality < self._typicality_floor:
+                logger.debug(
+                    "AU 候选剔除: id={}, 原因=典型度不足, typicality={}, correlation={}, peak={}",
+                    unit.id,
+                    round(typicality, 4),
+                    round(correlation, 4),
+                    round(peak, 4),
+                )
                 continue
             novelty = 0.35 if unit.id in recent_ids else 1.0
             score = correlation * 0.80 + novelty * 0.20
-            result.append(ScoredExpressionUnit(unit=unit, score=score, correlation=correlation))
+            result.append(
+                ScoredExpressionUnit(
+                    unit=unit,
+                    score=score,
+                    correlation=correlation,
+                    typicality=typicality,
+                    via_baseline=via_baseline,
+                )
+            )
         result.sort(key=lambda s: s.score, reverse=True)
         return result[: self._top_candidates]
 
@@ -130,17 +177,23 @@ class ExpressionSolver:
             return scored.score
         return scored.score + self._rng.uniform(-1.0, 1.0) * request.randomness * request.diversity * 0.30
 
-    def _should_select(self, scored: ScoredExpressionUnit, request: ExpressionRequest) -> bool:
-        selected, _ = self._selection_decision(scored, request)
-        return selected
-
     def _selection_decision(self, scored: ScoredExpressionUnit, request: ExpressionRequest) -> tuple[bool, float]:
-        if scored.score >= request.core_score or scored.correlation >= 0.80 or request.randomness <= 0.0:
+        """概率门 + 典型度软折扣（v3）。
+
+        randomness<=0 时保持确定性直通——典型度硬门已在打分阶段生效，
+        软折扣依赖掷骰，确定性路径跳过。
+        """
+        if request.randomness <= 0.0:
             return True, 1.0
-        p = min(
-            1.0,
-            max(0.05, scored.score) * (0.55 + request.diversity * 0.55) + scored.correlation * 0.20,
-        )
+        if scored.score >= request.core_score or scored.correlation >= 0.80:
+            base = 1.0
+        else:
+            base = min(
+                1.0,
+                max(0.05, scored.score) * (0.55 + request.diversity * 0.55) + scored.correlation * 0.20,
+            )
+        # 客串折扣：本职 AU（typicality=1）无影响，客串按 typ^α 降频
+        p = base * scored.typicality**self._typicality_power
         return self._rng.random() <= p, p
 
     def _build_combo(self, ranked: list[ScoredExpressionUnit], request: ExpressionRequest) -> list[ScoredExpressionUnit]:
@@ -156,22 +209,36 @@ class ExpressionSolver:
                     [selected.unit.id for selected in combo],
                 )
                 break
+            # ── v3：百搭候选不得当锚 ──
+            if candidate.via_baseline and not combo:
+                logger.debug(
+                    "AU 候选跳过: id={}, 原因=百搭分不当锚",
+                    candidate.unit.id,
+                )
+                continue
             accepted_by_probability, probability = self._selection_decision(candidate, request)
             if not accepted_by_probability:
                 logger.debug(
-                    "AU 候选跳过: id={}, 原因=概率未命中, probability={}, score={}, correlation={}",
+                    "AU 候选跳过: id={}, 原因=概率未命中, probability={}, score={}, correlation={}, typicality={}",
                     candidate.unit.id,
                     round(probability, 4),
                     round(candidate.score, 4),
                     round(candidate.correlation, 4),
+                    round(candidate.typicality, 4),
                 )
                 continue
 
             # 互斥冲突检查（显式规则 + 隐式 action 冲突）。
-            # 一个候选可能同时与多个已入选单元冲突（多 target 时尤甚），必须全部收集后统一裁决，
-            # 否则只顶替其中一个会让候选与剩余冲突单元共占同一 action，留下非法组合。
             conflicts = self._find_conflicts(candidate, combo, request.emotion)
             if conflicts:
+                # ── v3：百搭候选不参与顶替 ──
+                if candidate.via_baseline:
+                    logger.debug(
+                        "AU 候选跳过: id={}, 原因=百搭候选不参与顶替, conflicts={}",
+                        candidate.unit.id,
+                        [conflict.unit.id for conflict in conflicts],
+                    )
+                    continue
                 strongest = max(c.score for c in conflicts)
                 strongest_weight = max(_unit_control_weight(c.unit) for c in conflicts)
                 replace_margin = 0.03 + max(0.0, strongest_weight - _unit_control_weight(candidate.unit)) * 0.08
@@ -208,15 +275,15 @@ class ExpressionSolver:
             if isinstance(candidate.unit, SemanticExpressionUnit):
                 occupied_actions.update(t.action for t in candidate.unit.targets)
             logger.debug(
-                "AU 候选选中: id={}, probability={}, combo={}, occupied_actions={}",
+                "AU 候选选中: id={}, probability={}, typicality={}, combo={}, occupied_actions={}",
                 candidate.unit.id,
                 round(probability, 4),
+                round(candidate.typicality, 4),
                 [selected.unit.id for selected in combo],
                 sorted(occupied_actions),
             )
 
-            # 情绪饱和提前收手（多样性来源）：累计满足度足够后，按 (1 - diversity) 概率停手，
-            # 让「单个完整表情」与「多 AU 叠加」都能出现。randomness<=0 时保持确定性，不提前停。
+            # 情绪饱和提前收手（多样性来源）
             unmet *= 1.0 - max(0.0, min(1.0, candidate.correlation))
             covered_regions = {region for selected in combo for region in selected.unit.regions}
             if (
@@ -242,11 +309,7 @@ class ExpressionSolver:
         combo: list[ScoredExpressionUnit],
         emotion: EmotionKind,
     ) -> list[ScoredExpressionUnit]:
-        """收集 combo 中所有与 candidate 冲突的已入选单元（显式互斥规则 + 隐式 action 冲突）。
-
-        与旧版「命中第一个就返回」不同，这里返回全部冲突者：多 target 候选可能同时与
-        几个已入选单元各冲突一个 action，调用方需要看到完整冲突集才能正确裁决与回收。
-        """
+        """收集 combo 中所有与 candidate 冲突的已入选单元（显式互斥规则 + 隐式 action 冲突）。"""
         conflicts: list[ScoredExpressionUnit] = []
 
         candidate_actions: set[str] = set()
@@ -280,8 +343,7 @@ class ExpressionSolver:
 
     @staticmethod
     def _binding_violated(rule: BindingRule, combo_ids: set[str]) -> bool:
-        """绑定规则是否被违反：组合命中了规则的部分单元但未覆盖全部（部分绑定即违反）。"""
-
+        """绑定规则是否被违反：组合命中了规则的部分单元但未覆盖全部。"""
         present = combo_ids & rule.unit_ids
         return bool(present) and present != rule.unit_ids
 
@@ -292,7 +354,7 @@ class ExpressionSolver:
             if rule.emotions and emotion not in rule.emotions:
                 continue
             if rule.penalty != float("inf"):
-                continue  # 软惩罚在 combo_score 里处理，此处只检查强制绑定
+                continue
             if self._binding_violated(rule, combo_ids):
                 return False
         return True
@@ -303,16 +365,16 @@ class ExpressionSolver:
         for s in combo:
             covered.update(s.unit.regions)
 
-        # 情绪饱和度（noisy-OR）：值域恒为 [0,1]，单个高相关 AU 即可逼近 1，
-        # 避免 sum 让「AU 数量」碾压「单个完整表情」——单一区域表情也能拿到接近满额的基础分。
+        # 情绪饱和度（noisy-OR）
         unmet = 1.0
         for s in combo:
             unmet *= 1.0 - max(0.0, min(1.0, s.correlation))
         fulfillment = 1.0 - unmet
 
-        # 多区域覆盖用对数曲线：单一区域不加分，跨区组合递增变慢。
+        # 多区域覆盖用对数曲线；v3：乘以成员典型度均值，防止「靠客串凑跨区域」骗分
+        typ_mean = sum(s.typicality for s in combo) / len(combo) if combo else 1.0
         region_steps = max(0, len(covered) - 1)
-        variety = math.log1p(region_steps) / math.log(len(FacialRegion)) * 0.22 if region_steps else 0.0
+        variety = math.log1p(region_steps) / math.log(len(FacialRegion)) * 0.22 * typ_mean if region_steps else 0.0
         size_penalty = max(0, len(combo) - 1) * 0.04
         rule_score = self._rule_score(combo_ids, request.emotion)
         hist_penalty = self._history.penalty(
@@ -321,13 +383,14 @@ class ExpressionSolver:
         )
         total = fulfillment + variety - size_penalty + rule_score - hist_penalty
         logger.debug(
-            "AU 组合评分: units={}, fulfillment={}, variety={}, size_penalty={}, rule_score={}, history_penalty={}, total={}",
+            "AU 组合评分: units={}, fulfillment={}, variety={}, size_penalty={}, rule_score={}, history_penalty={}, typ_mean={}, total={}",
             sorted(combo_ids),
             round(fulfillment, 4),
             round(variety, 4),
             round(size_penalty, 4),
             round(rule_score, 4),
             round(hist_penalty, 4),
+            round(typ_mean, 4),
             round(total, 4),
         )
         return total
@@ -364,7 +427,6 @@ class ExpressionSolver:
             if isinstance(unit, SemanticExpressionUnit):
                 for target in unit.targets:
                     sampled_value = self._rng.uniform(target.min_value, target.max_value)
-                    # 从静息基准按强度插值：intensity→0 时回归 neutral，→1 时取完整采样值
                     neutral = neutral_value(target.action)
                     value = neutral + (sampled_value - neutral) * request.intensity
                     value = clamp_semantic_value(target.action, value)
@@ -414,6 +476,8 @@ def _scored_unit_log(scored: ScoredExpressionUnit) -> dict[str, object]:
         "type": "semantic" if isinstance(unit, SemanticExpressionUnit) else "native",
         "score": round(scored.score, 4),
         "correlation": round(scored.correlation, 4),
+        "typicality": round(scored.typicality, 4),
+        "via_baseline": scored.via_baseline,
         "regions": sorted(region.value for region in unit.regions),
     }
     if isinstance(unit, SemanticExpressionUnit):
@@ -426,9 +490,9 @@ def _scored_unit_log(scored: ScoredExpressionUnit) -> dict[str, object]:
 def _semantic_target_log(target: ResolvedSemanticTarget) -> dict[str, object]:
     return {"action": target.action, "value": round(target.value, 4), "easing": target.easing}
 
+
 def _actions_overlap(left: set[str], right: set[str]) -> bool:
     return any(semantic_actions_overlap(left_action, right_action) for left_action in left for right_action in right)
-
 
 
 def _unit_control_weight(unit: ExpressionUnit) -> int:

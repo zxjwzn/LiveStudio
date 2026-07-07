@@ -58,6 +58,8 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             rules=profile.to_rules(),
             history=ExpressionHistory(capacity=config.history_capacity),
             top_candidates=config.top_candidates,
+            typicality_floor=config.typicality_floor,
+            typicality_power=config.typicality_power,
         )
         self._finishing_task: asyncio.Task[None] | None = None
         # 上一次表情驱动过的语义动作集合：新表情若不再覆盖其中某些动作，

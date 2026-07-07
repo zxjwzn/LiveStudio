@@ -53,6 +53,10 @@ _EMOTION_SPECS: tuple[EmotionSpec, ...] = (
     EmotionSpec(EmotionKind.JOY.value, "喜悦", "😊"),
     EmotionSpec(EmotionKind.ANGER.value, "愤怒", "😠"),
     EmotionSpec(EmotionKind.SADNESS.value, "悲伤", "😢"),
+    EmotionSpec(EmotionKind.SURPRISE.value, "惊讶", "😲"),
+    EmotionSpec(EmotionKind.SMUG.value, "阴险", "😏"),
+    EmotionSpec(EmotionKind.WRY.value, "无奈", "😅"),
+    EmotionSpec(EmotionKind.SHY.value, "害羞", "😳"),
 )
 
 _EXPRESSION_CONTROLLER = "expression"

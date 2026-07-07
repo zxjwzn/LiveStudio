@@ -51,7 +51,6 @@ def test_default_units_fresh_instances() -> None:
 def test_create_default_builds_solvable_profile() -> None:
     profile = ExpressionProfileConfig.create_default()
     assert profile.semantic_units
-    assert profile.rules
     solver = _solver(profile)
     for emotion in EmotionKind:
         result = solver.solve(ExpressionRequest(emotion=emotion, randomness=0.0))
@@ -79,17 +78,46 @@ def test_default_sadness_emphasizes_downcast_face() -> None:
     assert "眼睛下看" in ids or "低头" in ids
 
 
+# ── 演出层情绪（v3）──
+
+
+def test_default_smug_produces_signature_combo() -> None:
+    """阴险：复合「阴险抬眼」为骨架，眯眼/嘴角上扬同列跟进"""
+    profile = ExpressionProfileConfig.create_default()
+    solver = _solver(profile)
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.SMUG, randomness=0.0))
+    ids = {unit.id for unit in result.units}
+    assert "阴险抬眼" in ids
+    assert "眯眼" in ids
+    assert "嘴角上扬" in ids
+
+
+def test_default_wry_mixes_brow_and_smile() -> None:
+    """无奈：眉苦（皱眉）与嘴笑（嘴角上扬）同框——v2 余弦方案的反例，v3 必须放行"""
+    profile = ExpressionProfileConfig.create_default()
+    solver = _solver(profile)
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.WRY, randomness=0.0))
+    ids = {unit.id for unit in result.units}
+    assert "皱眉" in ids
+    assert "嘴角上扬" in ids
+
+
+def test_default_surprise_uses_brow_and_eye() -> None:
+    """惊讶：抬眉 + 睁眼 + 嘴巴张大"""
+    profile = ExpressionProfileConfig.create_default()
+    solver = _solver(profile)
+    result = solver.solve(ExpressionRequest(emotion=EmotionKind.SURPRISE, randomness=0.0))
+    ids = {unit.id for unit in result.units}
+    assert "抬眉" in ids
+    assert "睁眼" in ids
+
+
 def test_default_rules_reference_existing_units() -> None:
-    """默认规则引用的 unit_id 必须都在默认 AU 中存在"""
+    """默认规则引用的 unit_id 必须都在默认 AU 中存在（v3 默认规则为空，循环体不执行）"""
     unit_ids = {unit.id for unit in default_semantic_units()}
     for rule in default_rules():
         for uid in rule.unit_ids:
             assert uid in unit_ids, f"规则 {rule.id} 引用了不存在的 AU: {uid}"
-
-
-def test_default_rules_make_left_and_right_wink_mutex() -> None:
-    rule = next(rule for rule in default_rules() if rule.id == "wink 左右互斥")
-    assert rule.unit_ids == frozenset({"wink 左眼", "wink 右眼"})
 
 
 # ── create_default 种子机制 ────────────────────────────────────────────────────
@@ -103,10 +131,11 @@ def test_create_default_seeds_expression_profile() -> None:
     )
     config = VTubeStudioModelConfig.create_default(identity)
     assert config.expression_profile.semantic_units
-    assert config.expression_profile.rules
-    # VTS 子类的语义 profile / 参数也应保留
+    # v3 默认规则为空（合理性改由典型度门 + action 隐式互斥 + 复合 AU 覆盖）
+    assert config.expression_profile.rules == []
+    # VTS 子类的语义 profile 在 seed 时即写入；parameter_specs 来自实模热加载，seed 期为空
     assert config.semantic_profile.bindings
-    assert config.parameter_specs
+    assert config.parameter_specs == []
     # 空构造仍是空的（seed-once 内容只经 create_default 注入）
     assert VTubeStudioModelConfig().expression_profile.semantic_units == []
 

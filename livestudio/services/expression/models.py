@@ -29,6 +29,11 @@ class EmotionKind(StrEnum):
     JOY = "joy"
     SADNESS = "sadness"
     ANGER = "anger"
+    # ── 演出层（v3 新增）──
+    SURPRISE = "surprise"  # 惊讶
+    SMUG = "smug"  # 阴险·得意
+    WRY = "wry"  # 无奈·苦笑
+    SHY = "shy"  # 害羞
 
 
 class _FrozenModel(BaseModel):
@@ -61,7 +66,8 @@ class SemanticExpressionUnit(_FrozenModel):
     targets: list[ExpressionTarget]
     emotions: dict[EmotionKind, float] = Field(
         default_factory=dict
-    )  # 正数 (0,1]；缺失或 <=0 视为无关
+    )  # 正数 (0,1]；缺失走 baseline 兜底，显式 <=0 视为该情绪禁用
+    baseline: float = 0.0  # 百搭分：情绪列未显式打分时的兜底相关性；0=非百搭
     easing: str = "linear"
 
     @property
@@ -84,6 +90,7 @@ class NativeExpressionUnit(_FrozenModel):
     native_ref: str
     regions: frozenset[FacialRegion]
     emotions: dict[EmotionKind, float] = Field(default_factory=dict)
+    baseline: float = 0.0  # 百搭分：语义同 SemanticExpressionUnit.baseline
 
 
 ExpressionUnit = SemanticExpressionUnit | NativeExpressionUnit
@@ -153,6 +160,8 @@ class ScoredExpressionUnit:
     unit: ExpressionUnit
     score: float
     correlation: float
+    typicality: float = 1.0  # 本职程度 = correlation / 打分行峰值，值域 (0,1]
+    via_baseline: bool = False  # correlation 是否来自百搭分
 
 
 @dataclass(frozen=True, slots=True)

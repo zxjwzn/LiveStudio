@@ -45,7 +45,8 @@ def test_model_config_full_deserialization() -> None:
     config = VTubeStudioModelConfig.model_validate(raw)
     assert config.expression_profile.semantic_units
     assert config.expression_profile.native_units
-    assert config.expression_profile.rules
+    # v3 默认规则为空（合理性改由典型度门 + action 隐式互斥 + 复合 AU 覆盖）
+    assert config.expression_profile.rules == []
 
 
 def test_builtin_units_present() -> None:
