@@ -30,11 +30,23 @@ class _DisconnectRecorder:
 class _InputParameterClient:
     def __init__(self, response: InputParameterListResponse | None = None) -> None:
         self.response = response
+        self.created_parameters: list[tuple[str, float, float, float]] = []
 
     async def get_input_parameters(self) -> InputParameterListResponse:
         if self.response is None:
             raise RuntimeError("api failed")
         return self.response
+
+    async def create_parameter(self, request: Any) -> object:
+        self.created_parameters.append(
+            (
+                request.data.parameter_name,
+                request.data.min,
+                request.data.max,
+                request.data.default_value,
+            )
+        )
+        return object()
 
 
 class _ExpressionClient(_InputParameterClient):
@@ -76,6 +88,53 @@ def _input_parameter_response() -> InputParameterListResponse:
             },
         }
     )
+
+
+def _input_parameter_response_with_plugin_parameters() -> InputParameterListResponse:
+    raw = _input_parameter_response().model_dump(by_alias=True)
+    raw["data"]["customParameters"] = [
+        {
+            "name": "MouthFunnel",
+            "addedBy": "LiveStudio",
+            "value": 0.0,
+            "min": 0.0,
+            "max": 1.0,
+            "defaultValue": 0.0,
+        },
+        {
+            "name": "MouthShrug",
+            "addedBy": "LiveStudio",
+            "value": 0.0,
+            "min": 0.0,
+            "max": 1.0,
+            "defaultValue": 0.0,
+        },
+        {
+            "name": "JawOpen",
+            "addedBy": "LiveStudio",
+            "value": 0.0,
+            "min": 0.0,
+            "max": 1.0,
+            "defaultValue": 0.0,
+        },
+        {
+            "name": "MouthPucker",
+            "addedBy": "LiveStudio",
+            "value": 0.0,
+            "min": -1.0,
+            "max": 1.0,
+            "defaultValue": 0.0,
+        },
+        {
+            "name": "EyeWide",
+            "addedBy": "LiveStudio",
+            "value": 0.0,
+            "min": 0.0,
+            "max": 1.0,
+            "defaultValue": 0.0,
+        },
+    ]
+    return InputParameterListResponse.model_validate(raw)
 
 
 def _expression_state_response() -> ExpressionStateResponse:
@@ -202,6 +261,27 @@ async def test_reload_model_config_syncs_and_saves_vtube_studio_parameter_specs(
     assert saved_mouth_open.maximum == 2.0
 
 
+async def test_reload_model_config_creates_plugin_parameters_before_refresh(tmp_path) -> None:
+    platform = VTubeStudio()
+    client = _InputParameterClient(_input_parameter_response_with_plugin_parameters())
+    platform._client = cast(Any, client)  # noqa: SLF001
+    platform.config.model_config_dir = str(tmp_path)
+
+    model_config = await platform.reload_model_config("model-1", "avatar")
+
+    assert client.created_parameters == [
+        ("MouthFunnel", 0.0, 1.0, 0.0),
+        ("MouthShrug", 0.0, 1.0, 0.0),
+        ("JawOpen", 0.0, 1.0, 0.0),
+        ("MouthPucker", -1.0, 1.0, 0.0),
+        ("EyeWide", 0.0, 1.0, 0.0),
+    ]
+    specs = {spec.name: spec for spec in model_config.parameter_specs}
+    assert specs["MouthFunnel"].minimum == 0.0
+    assert specs["MouthPucker"].minimum == -1.0
+    assert specs["EyeWide"].maximum == 1.0
+
+
 async def test_reload_model_config_keeps_file_specs_when_vtube_studio_query_fails(
     tmp_path,
 ) -> None:
@@ -233,14 +313,10 @@ async def test_refresh_expression_adapter_uses_latest_expression_config(tmp_path
     platform.config.model_config_dir = str(tmp_path)
 
     model_config = await platform.reload_model_config("model-1", "avatar")
-    model_config.expressions.append(
-        VTubeStudioExpressionStateConfig(name="2脸黑", file="2脸黑.exp3.json")
-    )
+    model_config.expressions.append(VTubeStudioExpressionStateConfig(name="2脸黑", file="2脸黑.exp3.json"))
     platform.refresh_expression_adapter(model_config)
 
-    await platform.apply_native_expressions(
-        [NativeExpressionTrigger(platform="vtubestudio", native_ref="2脸黑")]
-    )
+    await platform.apply_native_expressions([NativeExpressionTrigger(platform="vtubestudio", native_ref="2脸黑")])
 
     assert client.calls == [("2脸黑.exp3.json", True)]
 
@@ -257,8 +333,6 @@ async def test_initial_expression_sync_refreshes_adapter_mapping(tmp_path) -> No
     assert model_config.expressions == []
 
     await app._sync_native_state(model_config)  # noqa: SLF001
-    await platform.apply_native_expressions(
-        [NativeExpressionTrigger(platform="vtubestudio", native_ref="1抱枕")]
-    )
+    await platform.apply_native_expressions([NativeExpressionTrigger(platform="vtubestudio", native_ref="1抱枕")])
 
     assert client.calls == [("1抱枕.exp3.json", True)]

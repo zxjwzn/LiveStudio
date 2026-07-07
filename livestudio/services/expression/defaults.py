@@ -194,20 +194,14 @@ def default_rules() -> list[ExpressionRule]:
         BonusRule(
             id="怒视增强",
             unit_ids=frozenset({"皱眉", "眯眼", "抿嘴"}),
-            value=0.6,
-            emotions=frozenset({EmotionKind.ANGER}),
-        ),
-        BonusRule(
-            id="怒眉嘴角增强",
-            unit_ids=frozenset({"嘴角下撇", "皱眉", "抿嘴"}),
-            value=0.5,
+            value=0.4,
             emotions=frozenset({EmotionKind.ANGER}),
         ),
         BonusRule(
             id="低头上目线增强",
-            unit_ids=frozenset({"低头", "眼睛上看", "目移"}),
+            unit_ids=frozenset({"低头", "目移"}),
             value=0.7,
-            emotions=frozenset({EmotionKind.ANGER}),
+            emotions=frozenset({EmotionKind.SADNESS}),
         ),
         BonusRule(
             id="悲伤低头增强",
@@ -229,7 +223,7 @@ def default_rules() -> list[ExpressionRule]:
         # —— 强制依赖（DEPENDENCY）——
         BindingRule(
             id="怒视依赖",
-            unit_ids=frozenset({"眼睛上看", "低头"}),
+            unit_ids=frozenset({"眼睛上看", "低头", "抿嘴"}),
             emotions=frozenset({EmotionKind.ANGER}),
         ),
     ]

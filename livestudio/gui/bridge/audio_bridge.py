@@ -18,7 +18,7 @@ from livestudio.services.audio_stream.models import AudioChunkSubscription
 from livestudio.services.audio_stream.sources.tts.config import TTSAudioStreamConfig
 from livestudio.utils.log import logger
 
-_METER_INTERVAL_MS = 33  # ~30fps
+_METER_INTERVAL_MS = 12  # ~60fps
 
 
 class AudioController(QObject):
