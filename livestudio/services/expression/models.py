@@ -20,16 +20,13 @@ from livestudio.services.semantic_actions.models import (
     SemanticActionSpec,
 )
 
-_SPEC_BY_ACTION: dict[str, SemanticActionSpec] = {
-    spec.id: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS
-}
+_SPEC_BY_ACTION: dict[str, SemanticActionSpec] = {spec.id: spec for spec in DEFAULT_SEMANTIC_ACTION_SPECS}
 
 
 class EmotionKind(StrEnum):
     JOY = "joy"
     SADNESS = "sadness"
     ANGER = "anger"
-    # ── 演出层（v3 新增）──
     SURPRISE = "surprise"  # 惊讶
     SMUG = "smug"  # 阴险·得意
     WRY = "wry"  # 无奈·苦笑
@@ -72,11 +69,7 @@ class SemanticExpressionUnit(_FrozenModel):
 
     @property
     def regions(self) -> frozenset[FacialRegion]:
-        return frozenset(
-            _SPEC_BY_ACTION[t.action].region
-            for t in self.targets
-            if t.action in _SPEC_BY_ACTION
-        )
+        return frozenset(_SPEC_BY_ACTION[t.action].region for t in self.targets if t.action in _SPEC_BY_ACTION)
 
 
 class NativeExpressionUnit(_FrozenModel):
@@ -122,20 +115,8 @@ class BonusRule(_FrozenModel):
     emotions: frozenset[EmotionKind] = Field(default_factory=frozenset)
 
 
-class BindingRule(_FrozenModel):
-    """unit_ids 中任意 AU 出现时，其余 AU 也应出现；否则扣 penalty 分"""
-
-    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "LINK"})
-
-    kind: Literal["binding"] = "binding"
-    id: str
-    unit_ids: frozenset[str]
-    penalty: float = float("inf")  # inf = 强制，缺席则组合非法
-    emotions: frozenset[EmotionKind] = Field(default_factory=frozenset)
-
-
 ExpressionRule = Annotated[
-    MutualExclusionRule | BonusRule | BindingRule,
+    MutualExclusionRule | BonusRule,
     Field(discriminator="kind"),
 ]
 

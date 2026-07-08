@@ -290,12 +290,12 @@ class ExpressionControllerSettings(ControllerSettings):
         description="到达目标后保持时长，期间高优先级占用参数，<=0 时跳过保持段",
     )
     history_capacity: int = Field(
-        default=10,
+        default=5,
         ge=0,
         description="解算历史保留条数，用于重复惩罚",
     )
     top_candidates: int = Field(
-        default=15,
+        default=20,
         ge=1,
         description="评分后保留进入排序阶段的候选数量上限",
     )

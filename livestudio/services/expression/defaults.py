@@ -44,21 +44,20 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="轻微抬眉",
             targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.50, max_value=0.70)],
-            emotions={EmotionKind.JOY: 0.28, EmotionKind.SURPRISE: 0.30},
+            emotions={EmotionKind.JOY: 0.58, EmotionKind.SMUG: 0.50},
         ),
         SemanticExpressionUnit(
             id="抬眉",
             targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.70, max_value=1.00)],
-            emotions={EmotionKind.JOY: 0.15, EmotionKind.SURPRISE: 0.85},
+            emotions={EmotionKind.JOY: 0.69, EmotionKind.SURPRISE: 0.89},
         ),
         # —— 眼睛开合 ——
         SemanticExpressionUnit(
             id="闭眼",
             targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.00, max_value=0.00)],
             emotions={
-                EmotionKind.JOY: 0.36,
-                EmotionKind.SADNESS: 0.49,
-                EmotionKind.WRY: 0.48,
+                EmotionKind.SADNESS: 0.23,
+                EmotionKind.WRY: 0.34,
                 EmotionKind.SHY: 0.30,
             },
         ),
@@ -67,7 +66,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.20, max_value=0.40)],
             emotions={
                 EmotionKind.JOY: 0.76,
-                EmotionKind.ANGER: 0.72,
+                EmotionKind.ANGER: 0.88,
                 EmotionKind.SADNESS: 0.79,
                 EmotionKind.SMUG: 0.70,
             },
@@ -75,12 +74,12 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="睁眼",
             targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.75, max_value=1.00)],
-            emotions={EmotionKind.JOY: 0.20, EmotionKind.SURPRISE: 0.90},
+            emotions={EmotionKind.JOY: 0.20, EmotionKind.SURPRISE: 0.99},
         ),
         SemanticExpressionUnit(
             id="瞪眼",
             targets=[ExpressionTarget(action=SemanticAction.EYE_WIDE, min_value=0.50, max_value=1.00)],
-            emotions={EmotionKind.SURPRISE: 0.80, EmotionKind.ANGER: 0.40},
+            emotions={EmotionKind.SURPRISE: 0.99, EmotionKind.ANGER: 0.40},
         ),
         SemanticExpressionUnit(
             id="wink 左眼",
@@ -104,7 +103,6 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             targets=[ExpressionTarget(action=SemanticAction.EYE_GAZE_X, min_value=-1.00, max_value=1)],
             emotions={
                 EmotionKind.SADNESS: 0.72,
-                EmotionKind.JOY: 0.12,
                 EmotionKind.SHY: 0.70,
             },
         ),
@@ -112,26 +110,15 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             id="眼睛下看",
             targets=[ExpressionTarget(action=SemanticAction.EYE_GAZE_Y, min_value=-1.00, max_value=-0.70)],
             emotions={
-                EmotionKind.SADNESS: 0.70,
-                EmotionKind.WRY: 0.30,
+                EmotionKind.SADNESS: 0.80,
+                EmotionKind.WRY: 0.80,
                 EmotionKind.SHY: 0.40,
             },
         ),
         SemanticExpressionUnit(
             id="眼睛上看",
             targets=[ExpressionTarget(action=SemanticAction.EYE_GAZE_Y, min_value=0.70, max_value=1.00)],
-            emotions={},
-        ),
-        # —— 复合 AU：低头 + 抬眼的合取，整体持有 smug 身份 ——
-        # 替代旧 BindingRule「怒视依赖」：合取语义直接住进一个 AU，
-        # 与散装「低头」「眼睛上看」的物理排他由 action 隐式互斥自动处理。
-        SemanticExpressionUnit(
-            id="阴险抬眼",
-            targets=[
-                ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=-0.60, max_value=-0.30),
-                ExpressionTarget(action=SemanticAction.EYE_GAZE_Y, min_value=0.60, max_value=1.00),
-            ],
-            emotions={EmotionKind.SMUG: 0.80, EmotionKind.ANGER: 0.55},
+            emotions={EmotionKind.WRY: 0.80},
         ),
         # —— 嘴角 ——
         SemanticExpressionUnit(
@@ -147,10 +134,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="嘴角下撇",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.00, max_value=0.40)],
-            emotions={
-                EmotionKind.SADNESS: 0.92,
-                EmotionKind.ANGER: 0.44,
-            },
+            emotions={EmotionKind.SADNESS: 0.92, EmotionKind.ANGER: 0.44, EmotionKind.SMUG: 0.45, EmotionKind.SURPRISE: 0.99},
         ),
         # —— 嘴部开合 ——
         SemanticExpressionUnit(
@@ -159,6 +143,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             emotions={
                 EmotionKind.ANGER: 0.30,
                 EmotionKind.SADNESS: 0.25,
+                EmotionKind.SURPRISE: 0.7,
             },
         ),
         SemanticExpressionUnit(
@@ -167,7 +152,8 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             emotions={
                 EmotionKind.JOY: 0.76,
                 EmotionKind.SADNESS: 0.16,
-                EmotionKind.SURPRISE: 0.40,
+                EmotionKind.SURPRISE: 0.60,
+                EmotionKind.SMUG: 0.30,
             },
         ),
         SemanticExpressionUnit(
@@ -221,7 +207,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="鼓腮",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_CHEEK_PUFF, min_value=0.50, max_value=1.00)],
-            emotions={EmotionKind.SHY: 0.40, EmotionKind.ANGER: 0.78},
+            emotions={EmotionKind.SHY: 0.40, EmotionKind.ANGER: 0.89},
         ),
         SemanticExpressionUnit(
             id="微微吐舌",
@@ -232,7 +218,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="嘴移",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_X, min_value=-1, max_value=1)],
-            emotions={EmotionKind.JOY: 0.18, EmotionKind.ANGER: 0.50},
+            emotions={EmotionKind.ANGER: 0.60, EmotionKind.SMUG: 0.6, EmotionKind.SURPRISE: 0.50},
         ),
         SemanticExpressionUnit(
             id="嘴部居中",
@@ -270,6 +256,15 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             targets=[ExpressionTarget(action=SemanticAction.HEAD_YAW, min_value=-0.5, max_value=0.5)],
             emotions={},
             baseline=0.20,
+        ),
+        # —— 复合 AU：低头 + 抬眼的合取，整体持有 smug 身份 ——
+        SemanticExpressionUnit(
+            id="阴险抬眼",
+            targets=[
+                ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=-0.60, max_value=-0.30),
+                ExpressionTarget(action=SemanticAction.EYE_GAZE_Y, min_value=0.60, max_value=1.00),
+            ],
+            emotions={EmotionKind.SMUG: 0.80, EmotionKind.ANGER: 0.55},
         ),
     ]
 

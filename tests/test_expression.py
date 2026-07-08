@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from livestudio.services.expression.config import ExpressionProfileConfig
 from livestudio.services.expression.history import ExpressionHistory
 from livestudio.services.expression.models import (
-    BindingRule,
     BonusRule,
     EmotionKind,
     ExpressionRequest,

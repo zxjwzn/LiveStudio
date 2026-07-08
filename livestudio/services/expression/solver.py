@@ -15,7 +15,6 @@ from livestudio.utils.log import logger
 
 from .history import ExpressionHistory
 from .models import (
-    BindingRule,
     BonusRule,
     EmotionKind,
     ExpressionRequest,
@@ -260,16 +259,6 @@ class ExpressionSolver:
                     if isinstance(victim.unit, SemanticExpressionUnit):
                         occupied_actions -= {t.action for t in victim.unit.targets}
 
-            # BINDING 合法性检查（强制绑定）
-            new_ids = {s.unit.id for s in combo} | {candidate.unit.id}
-            if not self._binding_legal(new_ids, request.emotion):
-                logger.debug(
-                    "AU 候选跳过: id={}, 原因=强制绑定未满足, combo={}",
-                    candidate.unit.id,
-                    sorted(new_ids),
-                )
-                continue
-
             combo.append(candidate)
             if isinstance(candidate.unit, SemanticExpressionUnit):
                 occupied_actions.update(t.action for t in candidate.unit.targets)
@@ -340,24 +329,6 @@ class ExpressionSolver:
 
         return conflicts
 
-    @staticmethod
-    def _binding_violated(rule: BindingRule, combo_ids: set[str]) -> bool:
-        """绑定规则是否被违反：组合命中了规则的部分单元但未覆盖全部。"""
-        present = combo_ids & rule.unit_ids
-        return bool(present) and present != rule.unit_ids
-
-    def _binding_legal(self, combo_ids: set[str], emotion: EmotionKind) -> bool:
-        for rule in self._rules:
-            if not isinstance(rule, BindingRule):
-                continue
-            if rule.emotions and emotion not in rule.emotions:
-                continue
-            if rule.penalty != float("inf"):
-                continue
-            if self._binding_violated(rule, combo_ids):
-                return False
-        return True
-
     def _combo_score(self, combo: list[ScoredExpressionUnit], request: ExpressionRequest) -> float:
         combo_ids = {s.unit.id for s in combo}
         covered: set[FacialRegion] = set()
@@ -401,12 +372,6 @@ class ExpressionSolver:
                 continue
             if isinstance(rule, BonusRule) and rule.unit_ids <= combo_ids:
                 score += rule.value
-            elif (
-                isinstance(rule, BindingRule)
-                and rule.penalty != float("inf")
-                and self._binding_violated(rule, combo_ids)
-            ):
-                score -= rule.penalty
         return score
 
     def _make_result(self, combo: list[ScoredExpressionUnit], request: ExpressionRequest) -> SelectedExpression:

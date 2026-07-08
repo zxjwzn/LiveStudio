@@ -5,7 +5,6 @@ from livestudio.services.expression.defaults import (
 )
 from livestudio.services.expression.history import ExpressionHistory
 from livestudio.services.expression.models import (
-    BindingRule,
     BonusRule,
     EmotionKind,
     ExpressionRequest,
@@ -24,7 +23,6 @@ from livestudio.services.expression.models import (
 from livestudio.services.expression.solver import ExpressionSolver
 
 __all__ = [
-    "BindingRule",
     "BonusRule",
     "EmotionKind",
     "ExpressionHistory",

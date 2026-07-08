@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: main.py",
+            "name": "Python: livestudio.gui",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
+            "module": "livestudio.gui",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"
         }
