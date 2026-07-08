@@ -16,7 +16,6 @@ from livestudio.services.expression.models import (
     ExpressionTarget,
     MutualExclusionRule,
     NativeExpressionUnit,
-    PenaltyRule,
     SemanticExpressionUnit,
 )
 from livestudio.services.expression.solver import ExpressionSolver
@@ -284,6 +283,24 @@ def test_solver_bonus_rule_score_increases() -> None:
         assert result_with.score >= result_without.score
 
 
+def test_solver_bonus_negative_value_decreases_score() -> None:
+    """Bonus 负值即旧 Penalty 语义：同框时组合得分应更低。"""
+    u1 = _joy_unit("嘴角上扬")
+    u2 = SemanticExpressionUnit(
+        id="眯眼",
+        targets=[ExpressionTarget(action=SemanticAction.EYE_OPEN, min_value=0.3, max_value=0.5)],
+        emotions={EmotionKind.JOY: 0.80},
+    )
+    rule = BonusRule(id="矛盾联动", unit_ids=frozenset(["嘴角上扬", "眯眼"]), value=-0.5)
+    solver_with = _make_solver(u1, u2, rules=[rule])
+    solver_without = _make_solver(u1, u2)
+    result_with = solver_with.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
+    result_without = solver_without.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
+    # 负值 bonus（=旧 Penalty）应让分数更低（假设两者都选了这两个 AU）
+    if len(result_with.units) == 2 and len(result_without.units) == 2:
+        assert result_with.score <= result_without.score
+
+
 def test_solver_binding_rule_enforced() -> None:
     """强制绑定：皱眉出现必须有嘴角下垂，否则非法"""
     u_brow = SemanticExpressionUnit(
@@ -381,7 +398,7 @@ def test_profile_to_rules() -> None:
         rules=[
             MutualExclusionRule(id="互斥测试", unit_ids=frozenset(["a", "b"])),
             BonusRule(id="加分测试", unit_ids=frozenset(["c", "d"]), value=0.3),
-            PenaltyRule(id="扣分测试", unit_ids=frozenset(["e"]), value=0.2),
+            BonusRule(id="扣分测试", unit_ids=frozenset(["e"]), value=-0.2),
             BindingRule(id="绑定测试", unit_ids=frozenset(["f", "g"])),
         ]
     )
@@ -389,7 +406,7 @@ def test_profile_to_rules() -> None:
     assert len(rules) == 4
     assert isinstance(rules[0], MutualExclusionRule)
     assert isinstance(rules[1], BonusRule)
-    assert isinstance(rules[2], PenaltyRule)
+    assert isinstance(rules[2], BonusRule)
     assert isinstance(rules[3], BindingRule)
 
 

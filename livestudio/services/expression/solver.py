@@ -24,7 +24,6 @@ from .models import (
     ExpressionUnit,
     MutualExclusionRule,
     NativeExpressionTrigger,
-    PenaltyRule,
     ResolvedSemanticTarget,
     ScoredExpressionUnit,
     SelectedExpression,
@@ -402,8 +401,6 @@ class ExpressionSolver:
                 continue
             if isinstance(rule, BonusRule) and rule.unit_ids <= combo_ids:
                 score += rule.value
-            elif isinstance(rule, PenaltyRule) and rule.unit_ids <= combo_ids:
-                score -= rule.value
             elif (
                 isinstance(rule, BindingRule)
                 and rule.penalty != float("inf")

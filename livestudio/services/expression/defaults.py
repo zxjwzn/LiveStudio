@@ -37,7 +37,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.00, max_value=0.10)],
             emotions={
                 EmotionKind.ANGER: 0.85,
-                EmotionKind.SADNESS: 0.42,
+                EmotionKind.SADNESS: 0.89,
                 EmotionKind.WRY: 0.58,
             },
         ),
@@ -68,6 +68,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             emotions={
                 EmotionKind.JOY: 0.76,
                 EmotionKind.ANGER: 0.72,
+                EmotionKind.SADNESS: 0.79,
                 EmotionKind.SMUG: 0.70,
             },
         ),
@@ -220,11 +221,11 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         SemanticExpressionUnit(
             id="鼓腮",
             targets=[ExpressionTarget(action=SemanticAction.MOUTH_CHEEK_PUFF, min_value=0.50, max_value=1.00)],
-            emotions={EmotionKind.SHY: 0.40, EmotionKind.ANGER: 0.28},
+            emotions={EmotionKind.SHY: 0.40, EmotionKind.ANGER: 0.78},
         ),
         SemanticExpressionUnit(
-            id="吐舌",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_TONGUE_OUT, min_value=0.40, max_value=1.00)],
+            id="微微吐舌",
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_TONGUE_OUT, min_value=0.30, max_value=0.6)],
             emotions={EmotionKind.SMUG: 0.45, EmotionKind.JOY: 0.35, EmotionKind.SHY: 0.25},
         ),
         # —— 嘴部位移 ——
@@ -234,19 +235,8 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             emotions={EmotionKind.JOY: 0.18, EmotionKind.ANGER: 0.50},
         ),
         SemanticExpressionUnit(
-            id="嘴部上移",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_Y, min_value=0.25, max_value=0.70)],
-            emotions={EmotionKind.JOY: 0.16},
-        ),
-        SemanticExpressionUnit(
-            id="嘴部下移",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_Y, min_value=-0.70, max_value=-0.25)],
-            emotions={EmotionKind.SADNESS: 0.24},
-        ),
-        SemanticExpressionUnit(
             id="嘴部居中",
             targets=[
-                ExpressionTarget(action=SemanticAction.MOUTH_Y, min_value=0, max_value=0),
                 ExpressionTarget(action=SemanticAction.MOUTH_X, min_value=0, max_value=0),
             ],
             emotions={EmotionKind.SADNESS: 0.24},
@@ -256,14 +246,14 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
             id="抬头",
             targets=[ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=0.3, max_value=0.7)],
             emotions={},
-            baseline=0.15,
+            baseline=0.05,
         ),
         SemanticExpressionUnit(
             id="低头",
             targets=[ExpressionTarget(action=SemanticAction.HEAD_PITCH, min_value=-0.7, max_value=-0.3)],
             emotions={
                 EmotionKind.SADNESS: 0.68,
-                EmotionKind.ANGER: 0.42,
+                EmotionKind.ANGER: 0.62,
                 EmotionKind.SHY: 0.55,
             },
         ),
@@ -293,9 +283,10 @@ def default_rules() -> list[ExpressionRule]:
     - 合取语义 → 复合 AU（旧 Binding「怒视依赖」→ 复合 AU「阴险抬眼」，已删）
     - 拉郎配 → 同列高分同现由打分自然驱动，Bonus 无选择效果，已删
 
-    规则类型与执行代码全部保留，作为模型级例外通道：仅当某模型出现
-    「同列都典型、物理不冲突、但美术上不能同现」的真例外时，才按需添加
-    MutualExclusionRule。
+    规则类型与执行代码保留三类作为模型级例外通道：MutualExclusion（互斥）、
+    Binding（绑定，penalty=∞ 强制）、Bonus（加分，value 带符号，正加负扣——
+    旧 PenaltyRule 已并入此类）。仅当某模型出现「同列都典型、物理不冲突、
+    但美术上不能同现」的真例外时，才按需添加 MutualExclusionRule。
     """
 
     return []

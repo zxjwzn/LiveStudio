@@ -111,23 +111,11 @@ class MutualExclusionRule(_FrozenModel):
 
 
 class BonusRule(_FrozenModel):
-    """unit_ids 中的 AU 全部出现时，组合得分 +value"""
+    """unit_ids 中的 AU 全部出现时，组合得分 += value（value 为负即扣分，已合并旧 PenaltyRule）"""
 
     model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "ADD"})
 
     kind: Literal["bonus"] = "bonus"
-    id: str
-    unit_ids: frozenset[str]
-    value: float
-    emotions: frozenset[EmotionKind] = Field(default_factory=frozenset)
-
-
-class PenaltyRule(_FrozenModel):
-    """unit_ids 中的 AU 全部出现时，组合得分 -value"""
-
-    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_extra={"title_field": "id", "icon": "REMOVE"})
-
-    kind: Literal["penalty"] = "penalty"
     id: str
     unit_ids: frozenset[str]
     value: float
@@ -147,7 +135,7 @@ class BindingRule(_FrozenModel):
 
 
 ExpressionRule = Annotated[
-    MutualExclusionRule | BonusRule | PenaltyRule | BindingRule,
+    MutualExclusionRule | BonusRule | BindingRule,
     Field(discriminator="kind"),
 ]
 
