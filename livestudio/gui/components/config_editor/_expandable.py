@@ -18,10 +18,7 @@ from qfluentwidgets import FluentIcon as FIF
 
 from ._base import FieldEditor
 from ._schema_types import FieldSpec, resolve_icon
-
-_ERROR_COLOR = "#EF4444"
-_INDENT_STEP = 16  # 每层缩进像素
-_INDENT_MAX = 64  # 缩进封顶,避免深层控件溢出
+from .constants import ERROR_COLOR, INDENT_MAX, INDENT_STEP
 
 
 def _rotated_chevron_down() -> QIcon:
@@ -130,7 +127,7 @@ class _ExpandableCard(CardWidget):
     def set_error_text(self, message: str | None) -> None:
         if message:
             self._content.setText("存在校验错误,展开查看")
-            self._content.setStyleSheet(f"#contentLabel {{ color: {_ERROR_COLOR}; }}")
+            self._content.setStyleSheet(f"#contentLabel {{ color: {ERROR_COLOR}; }}")
         else:
             # 清空内联样式即回到 SETTING_CARD 全局 QSS 控制的副标题色(随主题)
             self._content.setStyleSheet("")
@@ -140,7 +137,7 @@ class _ExpandableCard(CardWidget):
 def indent_for_depth(depth: int) -> int:
     """按层级算缩进(封顶,防溢出)"""
 
-    return min(depth * _INDENT_STEP, _INDENT_MAX)
+    return min(depth * INDENT_STEP, INDENT_MAX)
 
 
 class _ContainerEditor(FieldEditor):

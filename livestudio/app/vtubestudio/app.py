@@ -20,6 +20,7 @@ from livestudio.services.animations import (
     MouthExpressionController,
     MouthSyncController,
 )
+from livestudio.services.animations.constants import MANUAL_NATIVE_SCOPE
 from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.services.expression.models import NativeExpressionTrigger
 from livestudio.services.platforms.vtubestudio import (
@@ -27,9 +28,6 @@ from livestudio.services.platforms.vtubestudio import (
     VTubeStudioExpressionStateConfig,
     VTubeStudioModelConfig,
 )
-
-# MCP/手动来源切换原生表情独占的作用域,与情绪解算(emotion)互不干扰(见 VTSExpressionAdapter)。
-_NATIVE_SCOPE = "manual"
 
 
 class VTubeStudioApp(BasePlatformApp[VTubeStudio, VTubeStudioModelConfig]):
@@ -96,7 +94,7 @@ class VTubeStudioApp(BasePlatformApp[VTubeStudio, VTubeStudioModelConfig]):
         """把目标激活集合下发给平台 adapter(diff 增删),成功后更新本地镜像。"""
 
         triggers = [NativeExpressionTrigger(platform=self.platform.name, native_ref=name) for name in target]
-        await self.platform.apply_native_expressions(triggers, scope=_NATIVE_SCOPE)
+        await self.platform.apply_native_expressions(triggers, scope=MANUAL_NATIVE_SCOPE)
         self._active_native = target
 
     async def _subscribe_model_events(self) -> None:

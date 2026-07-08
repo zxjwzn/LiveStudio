@@ -17,14 +17,7 @@ from ._atomic import _CardEditor
 from ._base import FieldEditor
 from ._factory import create_editor_for_annotation
 from ._schema_types import FieldSpec
-
-# 基础类型 → 友好中文名,避免在下拉里暴露 typing.Literal[...] 这类原始类型字符串
-_PRIMITIVE_LABEL = {
-    str: "文本",
-    int: "整数",
-    float: "小数",
-    bool: "开关",
-}
+from .constants import PRIMITIVE_LABEL
 
 
 def _member_label(annotation: Any) -> str:
@@ -33,8 +26,8 @@ def _member_label(annotation: Any) -> str:
     if typing.get_origin(annotation) is Literal:
         values = ", ".join(str(value) for value in typing.get_args(annotation))
         return f"预设({values})"
-    if annotation in _PRIMITIVE_LABEL:
-        return _PRIMITIVE_LABEL[annotation]
+    if annotation in PRIMITIVE_LABEL:
+        return PRIMITIVE_LABEL[annotation]
     if isinstance(annotation, type):
         return annotation.__name__
     return str(annotation)

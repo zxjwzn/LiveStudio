@@ -16,7 +16,7 @@ from livestudio.services.platforms.vtubestudio import (
     VTubeStudioExpressionStateConfig,
     default_vtube_studio_semantic_profile,
 )
-from livestudio.services.platforms.vtubestudio.defaults import _PLUGIN_PARAMETER_TABLE
+from livestudio.services.platforms.vtubestudio.plugin_parameters import PLUGIN_PARAMETER_TABLE
 from livestudio.services.semantic_actions import (
     DEFAULT_SEMANTIC_ACTION_SPECS,
     PlatformParameterSpec,
@@ -366,7 +366,7 @@ def test_plugin_parameter_semantic_consistency() -> None:
     spec_by_action = {s.id: s for s in DEFAULT_SEMANTIC_ACTION_SPECS}
     profile = default_vtube_studio_semantic_profile()
     bindings = {b.action: b.platform_params for b in profile.bindings}
-    for action, plugin_spec in _PLUGIN_PARAMETER_TABLE:
+    for action, plugin_spec in PLUGIN_PARAMETER_TABLE:
         semantic = spec_by_action[action]
         assert bindings[action] == [plugin_spec.name]
         assert (semantic.minimum, semantic.maximum) == (plugin_spec.minimum, plugin_spec.maximum)

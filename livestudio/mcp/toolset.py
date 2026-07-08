@@ -21,10 +21,7 @@ from functools import cached_property
 import mcp.types as mcp_types
 from pydantic import BaseModel, Field, create_model
 
-# 被 @tool 标记的方法上挂的属性名(存 _ToolMeta);编译期反射读取。
-_TOOL_MARK = "__mcp_tool_meta__"
-# docstring 中标识参数说明段的小节标题(任一命中即进入 Args 解析)。
-_ARGS_HEADERS = ("Args:", "Arguments:", "参数:", "参数：")
+from .constants import ARGS_HEADERS, TOOL_MARK
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +52,7 @@ def tool(
     """
 
     def wrap(target: Callable[..., Awaitable[object]]) -> Callable[..., Awaitable[object]]:
-        setattr(target, _TOOL_MARK, _ToolMeta(name=name))
+        setattr(target, TOOL_MARK, _ToolMeta(name=name))
         return target
 
     return wrap if fn is None else wrap(fn)
@@ -74,7 +71,7 @@ def _split_doc(doc: str) -> tuple[str, dict[str, str]]:
     last_arg: str | None = None
     for raw_line in doc.splitlines():
         stripped = raw_line.strip()
-        if not in_args and stripped in _ARGS_HEADERS:
+        if not in_args and stripped in ARGS_HEADERS:
             in_args = True
             continue
         if not in_args:
@@ -154,7 +151,7 @@ class PlatformToolset(ABC):
             for attr_name, func in vars(klass).items():
                 if attr_name in seen or not callable(func):
                     continue
-                meta: _ToolMeta | None = getattr(func, _TOOL_MARK, None)
+                meta: _ToolMeta | None = getattr(func, TOOL_MARK, None)
                 if meta is None:
                     continue
                 seen.add(attr_name)

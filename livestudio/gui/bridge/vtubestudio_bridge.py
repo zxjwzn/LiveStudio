@@ -20,49 +20,21 @@ from livestudio.clients.vtube_studio.config import VTubeStudioConfig
 from livestudio.clients.vtube_studio.errors import DiscoveryError
 from livestudio.config import ConfigManager
 from livestudio.gui.core import run_guarded
-from livestudio.services.expression.models import EmotionKind, NativeExpressionTrigger
+from livestudio.services.animations.constants import (
+    CAP_NATIVE_EXPRESSIONS,
+    EXPRESSION_CONTROLLER,
+    LAN_DISCOVERY,
+    MANUAL_NATIVE_SCOPE,
+)
+from livestudio.services.expression.models import NativeExpressionTrigger
 from livestudio.services.platforms.model_config_service import PlatformModelConfigService
 from livestudio.services.platforms.vtubestudio.config import VTubeStudioModelConfig
+from livestudio.services.platforms.vtubestudio.constants import PLATFORM_NAME
 from livestudio.utils.log import logger
 from livestudio.utils.paths import resolve_config_path
 
-from .platform_bridge import (
-    ConnectionState,
-    ControllerEntry,
-    ControllerSpec,
-    EmotionSpec,
-    ModelConfigEntry,
-    PlatformBridge,
-)
-
-_PLATFORM_NAME = "vtubestudio"
-
-# 待机控制器静态规格(顺序即仪表盘展示顺序):内部名 / 中文展示名 / 行首图标。
-# expression 为一次性控制器,无常驻运行态,不在此列(其触发能力归快速表情区)。
-_CONTROLLER_SPECS: tuple[ControllerSpec, ...] = (
-    ControllerSpec("blink", "眨眼", FluentIcon.VIEW),
-    ControllerSpec("breathing", "呼吸", FluentIcon.HEART),
-    ControllerSpec("gaze", "眼神注视", FluentIcon.VIEW),
-    ControllerSpec("mouth_expression", "嘴部表情", FluentIcon.EMOJI_TAB_SYMBOLS),
-    ControllerSpec("mouth_sync", "口型同步", FluentIcon.MICROPHONE),
-)
-
-# 情绪表情(AU 解算)静态规格:EmotionKind 值 / 中文名 / emoji。触发 expression 控制器
-# 解算对应情绪(一次性:过渡→保持→自动回静息)。
-_EMOTION_SPECS: tuple[EmotionSpec, ...] = (
-    EmotionSpec(EmotionKind.JOY.value, "喜悦", "😊"),
-    EmotionSpec(EmotionKind.ANGER.value, "愤怒", "😠"),
-    EmotionSpec(EmotionKind.SADNESS.value, "悲伤", "😢"),
-    EmotionSpec(EmotionKind.SURPRISE.value, "惊讶", "😲"),
-    EmotionSpec(EmotionKind.SMUG.value, "阴险", "😏"),
-    EmotionSpec(EmotionKind.WRY.value, "无奈", "😅"),
-    EmotionSpec(EmotionKind.SHY.value, "害羞", "😳"),
-)
-
-_EXPRESSION_CONTROLLER = "expression"
-_CAP_NATIVE_EXPRESSIONS = "native_expressions"
-# 手动 toggle 的常驻原生表情独占一组作用域，与情绪解算(emotion)互不干扰。
-_NATIVE_SCOPE = "manual"
+from .constants import VTUBESTUDIO_CONTROLLER_SPECS, VTUBESTUDIO_EMOTION_SPECS
+from .platform_bridge import ConnectionState, ControllerEntry, ControllerSpec, EmotionSpec, ModelConfigEntry, PlatformBridge
 
 
 class VTubeStudioPlatformBridge(PlatformBridge):
@@ -79,7 +51,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
 
     @property
     def platform_name(self) -> str:
-        return _PLATFORM_NAME
+        return PLATFORM_NAME
 
     @property
     def display_name(self) -> str:
@@ -91,7 +63,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
 
     @property
     def capabilities(self) -> frozenset[str]:
-        return frozenset({"lan_discovery", _CAP_NATIVE_EXPRESSIONS})
+        return frozenset({LAN_DISCOVERY, CAP_NATIVE_EXPRESSIONS})
 
     def connect_platform(self) -> None:
         """发起连接(可取消)。连接期间 start() 会无限重试,故状态停留 CONNECTING。"""
@@ -173,7 +145,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
     def controller_specs(self) -> list[ControllerSpec]:
         """待机控制器静态规格(与连接态无关),供仪表盘一次性建开关行"""
 
-        return list(_CONTROLLER_SPECS)
+        return list(VTUBESTUDIO_CONTROLLER_SPECS)
 
     def controller_entries(self) -> list[ControllerEntry]:
         """当前可独立启停的待机控制器(blink/breathing/gaze/嘴部);未加载模型时为空。
@@ -182,10 +154,10 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         模型时 runtime.controllers 为空,这里返回空列表。
         """
 
-        runtime = self._app.animation_manager.get_runtime(_PLATFORM_NAME)
+        runtime = self._app.animation_manager.get_runtime(PLATFORM_NAME)
         controllers = runtime.controllers
         entries: list[ControllerEntry] = []
-        for spec in _CONTROLLER_SPECS:
+        for spec in VTUBESTUDIO_CONTROLLER_SPECS:
             controller = controllers.get(spec.name)
             if controller is None:
                 continue
@@ -205,7 +177,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         那一等可能正好向已断连接发数据),并发单控制器信号让开关回到「已停止」。
         """
 
-        runtime = self._app.animation_manager.get_runtime(_PLATFORM_NAME)
+        runtime = self._app.animation_manager.get_runtime(PLATFORM_NAME)
         for name, controller in runtime.controllers.items():
             if controller.is_running:
                 await controller.cancel()
@@ -229,7 +201,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         run_guarded(self._start_controller(name), on_error=self._on_generic_error)
 
     async def _start_controller(self, name: str) -> None:
-        runtime = self._app.animation_manager.get_runtime(_PLATFORM_NAME)
+        runtime = self._app.animation_manager.get_runtime(PLATFORM_NAME)
         started = await runtime.start_controller(name)
         # enabled=False 的控制器会被 start() 守卫跳过(started=False)。无论如何按真实
         # 运行态回报,让 UI 据此回弹开关并提示。
@@ -245,7 +217,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         run_guarded(self._stop_controller(name), on_error=self._on_generic_error)
 
     async def _stop_controller(self, name: str) -> None:
-        runtime = self._app.animation_manager.get_runtime(_PLATFORM_NAME)
+        runtime = self._app.animation_manager.get_runtime(PLATFORM_NAME)
         await runtime.stop_controller(name)
         self.controllerStateChanged.emit(name, False)
 
@@ -274,7 +246,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
     def emotion_specs(self) -> list[EmotionSpec]:
         """VTS 支持 AU 情绪解算,返回喜怒哀乐等情绪规格"""
 
-        return list(_EMOTION_SPECS)
+        return list(VTUBESTUDIO_EMOTION_SPECS)
 
     def play_emotion(self, key: str) -> None:
         """触发一次情绪解算(execute expression 控制器);需已连接且控制器已建"""
@@ -282,11 +254,11 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         run_guarded(self._play_emotion(key), on_error=self._on_generic_error)
 
     async def _play_emotion(self, key: str) -> None:
-        runtime = self._app.animation_manager.get_runtime(_PLATFORM_NAME)
-        if _EXPRESSION_CONTROLLER not in runtime.controllers:
+        runtime = self._app.animation_manager.get_runtime(PLATFORM_NAME)
+        if EXPRESSION_CONTROLLER not in runtime.controllers:
             self.errorOccurred.emit("表情控制器未就绪(请先连接并加载模型)")
             return
-        await runtime.execute_controller(_EXPRESSION_CONTROLLER, emotion=key)
+        await runtime.execute_controller(EXPRESSION_CONTROLLER, emotion=key)
 
     # --- 原生表情(exp3,可激活/取消的 toggle) ---
 
@@ -333,8 +305,8 @@ class VTubeStudioPlatformBridge(PlatformBridge):
     async def _apply_native(self, target: set[str]) -> None:
         """把目标激活集合下发给 adapter(diff 增删),成功后更新 GUI 镜像"""
 
-        triggers = [NativeExpressionTrigger(platform=_PLATFORM_NAME, native_ref=name) for name in target]
-        await self._app.platform.apply_native_expressions(triggers, scope=_NATIVE_SCOPE)
+        triggers = [NativeExpressionTrigger(platform=PLATFORM_NAME, native_ref=name) for name in target]
+        await self._app.platform.apply_native_expressions(triggers, scope=MANUAL_NATIVE_SCOPE)
         self._active_native = target
 
     def _on_model_changed(self, model_id: str, model_name: str) -> None:

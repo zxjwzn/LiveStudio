@@ -33,13 +33,8 @@ from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path
 
 from .config import McpConfig
+from .constants import BUILTIN_NAMES, GET_ACTIVE_PLATFORM, LIST_PLATFORMS, SWITCH_PLATFORM
 from .registry import PlatformToolsetRegistration
-
-# 固有工具名(恒定可见,与平台工具同名时由平台工具让位——构建时校验避免冲突)。
-_LIST_PLATFORMS = "list_platforms"
-_SWITCH_PLATFORM = "switch_platform"
-_GET_ACTIVE_PLATFORM = "get_active_platform"
-_BUILTIN_NAMES = frozenset({_LIST_PLATFORMS, _SWITCH_PLATFORM, _GET_ACTIVE_PLATFORM})
 
 
 class _SwitchPlatformInput(BaseModel):
@@ -56,19 +51,19 @@ def _builtin_tools() -> list[mcp_types.Tool]:
     empty_schema = {"type": "object", "properties": {}}
     return [
         mcp_types.Tool(
-            name=_LIST_PLATFORMS,
+            name=LIST_PLATFORMS,
             description="列出所有可控制的平台及其说明，并标记当前正在控制的平台。",
             inputSchema=dict(empty_schema),
         ),
         mcp_types.Tool(
-            name=_SWITCH_PLATFORM,
+            name=SWITCH_PLATFORM,
             description=(
                 "切换当前正在控制的平台。任一时刻只能控制一个平台；切换后该平台的工具才会出现。"
             ),
             inputSchema=switch_schema,
         ),
         mcp_types.Tool(
-            name=_GET_ACTIVE_PLATFORM,
+            name=GET_ACTIVE_PLATFORM,
             description="返回当前正在控制的平台标识；尚未选择任何平台时返回 null。",
             inputSchema=dict(empty_schema),
         ),
@@ -179,7 +174,7 @@ class LiveStudioMcpServer(AsyncServiceLifecycleMixin):
 
         @self._server.call_tool()
         async def _call_tool(name: str, arguments: dict[str, object]) -> mcp_types.CallToolResult:
-            if name in _BUILTIN_NAMES:
+            if name in BUILTIN_NAMES:
                 # 固有工具与平台无关,不注入平台实时状态。
                 return _to_tool_result(await self._call_builtin(name, arguments))
             if self._active is None:
@@ -196,7 +191,7 @@ class LiveStudioMcpServer(AsyncServiceLifecycleMixin):
     async def _call_builtin(self, name: str, arguments: dict[str, object]) -> object:
         """处理三个固有工具。switch_platform 改 active 后通知工具列表变更。"""
 
-        if name == _LIST_PLATFORMS:
+        if name == LIST_PLATFORMS:
             return [
                 {
                     "name": reg.name,
@@ -205,9 +200,9 @@ class LiveStudioMcpServer(AsyncServiceLifecycleMixin):
                 }
                 for reg in self._registrations
             ]
-        if name == _GET_ACTIVE_PLATFORM:
+        if name == GET_ACTIVE_PLATFORM:
             return {"platform": self._active.name if self._active else None}
-        if name == _SWITCH_PLATFORM:
+        if name == SWITCH_PLATFORM:
             target = _SwitchPlatformInput.model_validate(arguments).platform
             registration = self._by_name.get(target)
             if registration is None:

@@ -22,15 +22,11 @@ from qfluentwidgets import (
 from livestudio.gui.bridge import AudioController
 from livestudio.gui.components.audio_meter import AudioMeter
 from livestudio.gui.components.config_editor import ChoiceItem, ConfigEditor
+from livestudio.gui.constants import AUDIO_SOURCE_LABEL
 from livestudio.gui.core import run_guarded
 from livestudio.services.audio_stream.config import MicrophoneAudioStreamConfig
 from livestudio.services.audio_stream.models import AudioSourceKind
 from livestudio.services.audio_stream.sources.tts.config import TTSAudioStreamConfig
-
-_SOURCE_LABEL = {
-    AudioSourceKind.MICROPHONE: "麦克风",
-    AudioSourceKind.TTS: "TTS",
-}
 
 
 class AudioView(QWidget):
@@ -70,7 +66,7 @@ class AudioView(QWidget):
         source_row.addWidget(StrongBodyLabel("音频源", content))
         self._pivot = SegmentedWidget(content)
         for kind in (AudioSourceKind.MICROPHONE, AudioSourceKind.TTS):
-            self._pivot.addItem(routeKey=kind.value, text=_SOURCE_LABEL[kind])
+            self._pivot.addItem(routeKey=kind.value, text=AUDIO_SOURCE_LABEL[kind])
         self._pivot.currentItemChanged.connect(self._on_pivot_changed)
         source_row.addWidget(self._pivot)
         source_row.addStretch(1)

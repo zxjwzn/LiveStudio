@@ -3,19 +3,18 @@
 import math
 from collections.abc import Callable
 
-EasingFunction = Callable[[float], float]
+from livestudio.utils.constants import (
+    BACK_C1,
+    BACK_C2,
+    BACK_C3,
+    BOUNCE_D1,
+    BOUNCE_N1,
+    ELASTIC_C4,
+    ELASTIC_C5,
+    HALF_PI,
+)
 
-_HALF_PI = math.pi / 2
-# 回退（back）缓动标准系数：c1 控制回退幅度，c3=c1+1，c2 为 in_out 版本的放大系数
-_BACK_C1 = 1.70158
-_BACK_C2 = _BACK_C1 * 1.525
-_BACK_C3 = _BACK_C1 + 1
-# 弹性（elastic）缓动标准角频率：c4 用于单边，c5 用于 in_out
-_ELASTIC_C4 = (2 * math.pi) / 3
-_ELASTIC_C5 = (2 * math.pi) / 4.5
-# 弹跳（bounce）缓动标准分段系数
-_BOUNCE_N1 = 7.5625
-_BOUNCE_D1 = 2.75
+EasingFunction = Callable[[float], float]
 
 
 class Easing:
@@ -27,12 +26,12 @@ class Easing:
     @staticmethod
     def in_sine(t: float) -> float:
         """正弦缓入函数，缓慢开始加速"""
-        return 1 - math.cos(_HALF_PI * t)
+        return 1 - math.cos(HALF_PI * t)
 
     @staticmethod
     def out_sine(t: float) -> float:
         """正弦缓出函数，逐渐减速至停止"""
-        return math.sin(_HALF_PI * t)
+        return math.sin(HALF_PI * t)
 
     @staticmethod
     def in_out_sine(t: float) -> float:
@@ -166,20 +165,20 @@ class Easing:
     @staticmethod
     def in_back(t: float) -> float:
         """回退缓入函数，先回退一点再前进（easings.net 标准）"""
-        return _BACK_C3 * t * t * t - _BACK_C1 * t * t
+        return BACK_C3 * t * t * t - BACK_C1 * t * t
 
     @staticmethod
     def out_back(t: float) -> float:
         """回退缓出函数，超过终点一点再回退（easings.net 标准）"""
         t -= 1
-        return 1 + _BACK_C3 * t * t * t + _BACK_C1 * t * t
+        return 1 + BACK_C3 * t * t * t + BACK_C1 * t * t
 
     @staticmethod
     def in_out_back(t: float) -> float:
         """回退缓入缓出函数，两端都有回退效果（easings.net 标准）"""
         if t < 0.5:
-            return (pow(2 * t, 2) * ((_BACK_C2 + 1) * 2 * t - _BACK_C2)) / 2
-        return (pow(2 * t - 2, 2) * ((_BACK_C2 + 1) * (2 * t - 2) + _BACK_C2) + 2) / 2
+            return (pow(2 * t, 2) * ((BACK_C2 + 1) * 2 * t - BACK_C2)) / 2
+        return (pow(2 * t - 2, 2) * ((BACK_C2 + 1) * (2 * t - 2) + BACK_C2) + 2) / 2
 
     @staticmethod
     def in_elastic(t: float) -> float:
@@ -188,7 +187,7 @@ class Easing:
             return 0.0
         if t == 1:
             return 1.0
-        return -pow(2, 10 * t - 10) * math.sin((t * 10 - 10.75) * _ELASTIC_C4)
+        return -pow(2, 10 * t - 10) * math.sin((t * 10 - 10.75) * ELASTIC_C4)
 
     @staticmethod
     def out_elastic(t: float) -> float:
@@ -197,7 +196,7 @@ class Easing:
             return 0.0
         if t == 1:
             return 1.0
-        return pow(2, -10 * t) * math.sin((t * 10 - 0.75) * _ELASTIC_C4) + 1
+        return pow(2, -10 * t) * math.sin((t * 10 - 0.75) * ELASTIC_C4) + 1
 
     @staticmethod
     def in_out_elastic(t: float) -> float:
@@ -207,22 +206,22 @@ class Easing:
         if t == 1:
             return 1.0
         if t < 0.5:
-            return -(pow(2, 20 * t - 10) * math.sin((20 * t - 11.125) * _ELASTIC_C5)) / 2
-        return (pow(2, -20 * t + 10) * math.sin((20 * t - 11.125) * _ELASTIC_C5)) / 2 + 1
+            return -(pow(2, 20 * t - 10) * math.sin((20 * t - 11.125) * ELASTIC_C5)) / 2
+        return (pow(2, -20 * t + 10) * math.sin((20 * t - 11.125) * ELASTIC_C5)) / 2 + 1
 
     @staticmethod
     def out_bounce(t: float) -> float:
         """弹跳缓出函数，结束时有多次弹跳（easings.net 标准分段实现）"""
-        if t < 1 / _BOUNCE_D1:
-            return _BOUNCE_N1 * t * t
-        if t < 2 / _BOUNCE_D1:
-            t -= 1.5 / _BOUNCE_D1
-            return _BOUNCE_N1 * t * t + 0.75
-        if t < 2.5 / _BOUNCE_D1:
-            t -= 2.25 / _BOUNCE_D1
-            return _BOUNCE_N1 * t * t + 0.9375
-        t -= 2.625 / _BOUNCE_D1
-        return _BOUNCE_N1 * t * t + 0.984375
+        if t < 1 / BOUNCE_D1:
+            return BOUNCE_N1 * t * t
+        if t < 2 / BOUNCE_D1:
+            t -= 1.5 / BOUNCE_D1
+            return BOUNCE_N1 * t * t + 0.75
+        if t < 2.5 / BOUNCE_D1:
+            t -= 2.25 / BOUNCE_D1
+            return BOUNCE_N1 * t * t + 0.9375
+        t -= 2.625 / BOUNCE_D1
+        return BOUNCE_N1 * t * t + 0.984375
 
     @staticmethod
     def in_bounce(t: float) -> float:

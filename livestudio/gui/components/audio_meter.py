@@ -11,16 +11,15 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QSizePolicy, QWidget
 from qfluentwidgets import isDarkTheme, qconfig, themeColor
 
+from livestudio.gui.constants import (
+    AUDIO_METER_BAR_GAP,
+    AUDIO_METER_LABEL_WIDTH,
+    AUDIO_METER_TEXT_DARK,
+    AUDIO_METER_TEXT_LIGHT,
+    AUDIO_METER_TRACK_DARK,
+    AUDIO_METER_TRACK_LIGHT,
+)
 from livestudio.gui.core import colors
-
-_BAR_GAP = 6
-_LABEL_WIDTH = 48
-
-# 轨道(未填充)与文字色按主题切换:暗色用深轨道+浅字,亮色用浅轨道+深字
-_TRACK_DARK = "#1E293B"
-_TRACK_LIGHT = "#E2E8F0"
-_TEXT_DARK = "#F8FAFC"
-_TEXT_LIGHT = "#0F172A"
 
 
 def _level_color(level: float, overflowed: bool) -> QColor:
@@ -42,7 +41,7 @@ class AudioMeter(QWidget):
         self._peak = 0.0
         self._overflowed = False
         self._bar_height = 22 if large else 12
-        height = self._bar_height * 2 + _BAR_GAP + 8
+        height = self._bar_height * 2 + AUDIO_METER_BAR_GAP + 8
         self.setMinimumHeight(height)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         # 主题切换时重绘,使轨道/文字色跟随明暗
@@ -64,12 +63,12 @@ class AudioMeter(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         dark = isDarkTheme()
-        track = QColor(_TRACK_DARK if dark else _TRACK_LIGHT)
-        text = QColor(_TEXT_DARK if dark else _TEXT_LIGHT)
+        track = QColor(AUDIO_METER_TRACK_DARK if dark else AUDIO_METER_TRACK_LIGHT)
+        text = QColor(AUDIO_METER_TEXT_DARK if dark else AUDIO_METER_TEXT_LIGHT)
 
-        bar_width = self.width() - _LABEL_WIDTH
+        bar_width = self.width() - AUDIO_METER_LABEL_WIDTH
         self._draw_bar(painter, 4, bar_width, self._rms, "RMS", track, text)
-        self._draw_bar(painter, 4 + self._bar_height + _BAR_GAP, bar_width, self._peak, "PEAK", track, text)
+        self._draw_bar(painter, 4 + self._bar_height + AUDIO_METER_BAR_GAP, bar_width, self._peak, "PEAK", track, text)
         painter.end()
 
     def _draw_bar(
@@ -83,9 +82,9 @@ class AudioMeter(QWidget):
         text: QColor,
     ) -> None:
         painter.setPen(text)
-        painter.drawText(0, y, _LABEL_WIDTH - 6, self._bar_height, Qt.AlignmentFlag.AlignVCenter, label)
+        painter.drawText(0, y, AUDIO_METER_LABEL_WIDTH - 6, self._bar_height, Qt.AlignmentFlag.AlignVCenter, label)
 
-        x = _LABEL_WIDTH
+        x = AUDIO_METER_LABEL_WIDTH
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(track)
         painter.drawRoundedRect(x, y, width, self._bar_height, 4, 4)

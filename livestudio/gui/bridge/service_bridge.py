@@ -77,10 +77,15 @@ class ServiceBridge(QObject):
         for name, service in services:
             try:
                 await service.stop()
-            except BaseExceptionGroup as exc:
-                logger.error("停止 {} 失败,已隔离继续关闭: {}", name, exc)
-                for index, sub_exc in enumerate(exc.exceptions, start=1):
-                    logger.opt(exception=sub_exc).error("停止 {} 子异常 #{}: {}", name, index, sub_exc)
-            except Exception:
-                logger.exception("停止 {} 失败,已隔离继续关闭", name)
+            except Exception as exc:
+                if _is_exception_group(exc):
+                    logger.error("停止 {} 失败,已隔离继续关闭: {}", name, exc)
+                    for index, sub_exc in enumerate(getattr(exc, "exceptions", ()), start=1):
+                        logger.opt(exception=sub_exc).error("停止 {} 子异常 #{}: {}", name, index, sub_exc)
+                else:
+                    logger.exception("停止 {} 失败,已隔离继续关闭", name)
         self.logs.stop()
+
+
+def _is_exception_group(exc: BaseException) -> bool:
+    return isinstance(getattr(exc, "exceptions", None), tuple)

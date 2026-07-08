@@ -6,7 +6,7 @@
 - Mixin 幂等守卫：重复调用安全
 - AudioStreamSource 统一用 Mixin 标志（_mark_started / _mark_stopped）
 - AudioStreamRouter._rebind_active_source 原子切换
-- easing 常量精度（_HALF_PI）
+- easing 常量精度（HALF_PI）
 """
 
 # ruff: noqa: SLF001
@@ -24,7 +24,8 @@ from livestudio.services.audio_stream import (
 )
 from livestudio.services.audio_stream.base import AudioStreamSource
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
-from livestudio.utils.easing import _HALF_PI, Easing
+from livestudio.utils.constants import HALF_PI
+from livestudio.utils.easing import Easing
 
 # ──────────────────────────────────────────────
 # 1. Mixin 默认状态 & 类级属性
@@ -304,7 +305,7 @@ async def test_rebind_active_source_updates_config() -> None:
 
 
 def test_half_pi_uses_math_pi() -> None:
-    assert math.pi / 2 == _HALF_PI
+    assert math.pi / 2 == HALF_PI
 
 
 def test_in_sine_at_one_equals_one_exactly() -> None:

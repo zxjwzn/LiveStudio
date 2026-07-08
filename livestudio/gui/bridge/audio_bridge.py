@@ -12,13 +12,12 @@ import asyncio
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from livestudio.gui.components.config_editor import ChoiceItem
+from livestudio.gui.constants import AUDIO_METER_INTERVAL_MS
 from livestudio.services import AudioSourceKind, AudioStreamRouter
 from livestudio.services.audio_stream.config import MicrophoneAudioStreamConfig
 from livestudio.services.audio_stream.models import AudioChunkSubscription
 from livestudio.services.audio_stream.sources.tts.config import TTSAudioStreamConfig
 from livestudio.utils.log import logger
-
-_METER_INTERVAL_MS = 12  # ~60fps
 
 
 class AudioController(QObject):
@@ -43,7 +42,7 @@ class AudioController(QObject):
         self._latest_overflow = False
 
         self._timer = QTimer(self)
-        self._timer.setInterval(_METER_INTERVAL_MS)
+        self._timer.setInterval(AUDIO_METER_INTERVAL_MS)
         self._timer.timeout.connect(self._emit_level)
 
     def start_metering(self) -> None:

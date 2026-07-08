@@ -38,17 +38,10 @@ from qfluentwidgets import (
 from qfluentwidgets import FluentIcon as FIF
 
 from livestudio.gui.bridge import ConnectionState, ModelConfigEntry, PlatformBridge
+from livestudio.gui.bridge.constants import CONNECTION_STATE_COLOR
 from livestudio.gui.components.config_editor import ConfigEditor
 from livestudio.gui.core import colors, run_guarded
-
-_STATE_COLOR = {
-    ConnectionState.DISCONNECTED: colors.NEUTRAL,
-    ConnectionState.CONNECTING: colors.WARNING,
-    ConnectionState.CONNECTED: colors.SUCCESS,
-    ConnectionState.ERROR: colors.ERROR,
-}
-
-_LAN_DISCOVERY = "lan_discovery"
+from livestudio.services.animations.constants import LAN_DISCOVERY
 
 
 class _ModelCard(CardWidget):
@@ -115,7 +108,7 @@ class _PlatformCard(CardWidget):
         root.addLayout(header)
 
         # --- 地址行:LineEdit + 保存 + (LAN 搜索) ---
-        if bridge.ws_url() or _LAN_DISCOVERY in bridge.capabilities:
+        if bridge.ws_url() or LAN_DISCOVERY in bridge.capabilities:
             root.addLayout(self._build_address_row())
 
         # --- 按钮组:连接 / 断开 / 重连 ---
@@ -151,7 +144,7 @@ class _PlatformCard(CardWidget):
         self._address_edit.editingFinished.connect(self._on_address_committed)
         row.addWidget(self._address_edit, 1)
 
-        if _LAN_DISCOVERY in self._bridge.capabilities:
+        if LAN_DISCOVERY in self._bridge.capabilities:
             self._lan_button = PushButton("局域网搜索", self)
             self._lan_button.setIcon(FIF.SEARCH)
             self._lan_button.clicked.connect(self._on_lan_search)
@@ -202,7 +195,7 @@ class _PlatformCard(CardWidget):
         self._apply_state(state)
 
     def _apply_state(self, state: ConnectionState) -> None:
-        color = QColor(_STATE_COLOR[state])
+        color = QColor(CONNECTION_STATE_COLOR[state])
         self._badge.setCustomBackgroundColor(color, color)
 
         connecting = state is ConnectionState.CONNECTING

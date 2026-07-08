@@ -5,7 +5,7 @@ import asyncio
 import random
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Final
+from typing import Any
 
 import json5
 
@@ -15,6 +15,7 @@ from livestudio.services.semantic_actions import (
 )
 from livestudio.utils.log import logger
 
+from .constants import TEMPLATE_PRIORITY
 from .models import (
     AnimationTemplate,
     LoadedTemplateInfo,
@@ -24,8 +25,6 @@ from .models import (
     TemplateScalar,
     TemplateValue,
 )
-
-TEMPLATE_PRIORITY: Final = 50
 
 
 class TemplateEvaluationError(ValueError):

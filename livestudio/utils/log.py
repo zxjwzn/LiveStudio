@@ -9,15 +9,10 @@ from typing import Final, TextIO
 
 from loguru import logger as _logger
 
+from livestudio.utils.constants import DEFAULT_LOG_FORMAT
+
 # 默认日志级别取自环境变量，缺省 INFO（避免导入即固定为 DEBUG 造成生产环境过于冗长）
 _DEFAULT_LEVEL: Final[str] = os.environ.get("LIVESTUDIO_LOG_LEVEL", "INFO")
-
-_DEFAULT_FORMAT: Final[str] = (
-    "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green>"
-    " | <level>{level: <8}</level>"
-    " | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>"
-    " - <level>{message}</level>"
-)
 _STATUS_LINE_LOCK: Final[RLock] = RLock()
 _ACTIVE_STATUS_LINES: Final[weakref.WeakSet["StatusLine"]] = weakref.WeakSet()
 
@@ -62,7 +57,7 @@ def _install_log_sink(level: str) -> None:
     _logger.remove()
     _logger.add(
         _log_sink,
-        format=_DEFAULT_FORMAT,
+        format=DEFAULT_LOG_FORMAT,
         level=level.upper(),
         colorize=True,
         enqueue=True,

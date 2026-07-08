@@ -24,11 +24,11 @@ from qfluentwidgets import (
 from qfluentwidgets import FluentIcon as FIF
 
 from livestudio.gui.core import GuiSettings, ThemeMode, apply_all
+from livestudio.gui.core.constants import THEME_LABELS
 
 # 设置变更后回调:宿主据此持久化 GuiSettings。
 SettingsChangedHandler = Callable[[GuiSettings], None]
 
-_THEME_LABELS = [("跟随系统", ThemeMode.AUTO), ("浅色", ThemeMode.LIGHT), ("深色", ThemeMode.DARK)]
 
 
 class SettingsView(QWidget):
@@ -72,7 +72,7 @@ class SettingsView(QWidget):
     def _build_theme_card(self, parent: QWidget) -> tuple[SettingCard, ComboBox]:
         card = SettingCard(FIF.BRUSH, "主题模式", "浅色 / 深色 / 跟随系统", parent)
         combo = ComboBox(card)
-        for label, _ in _THEME_LABELS:
+        for label, _ in THEME_LABELS:
             combo.addItem(label)
         combo.setCurrentIndex(self._index_of_theme(self._settings.theme))
         combo.setMinimumWidth(140)
@@ -91,7 +91,7 @@ class SettingsView(QWidget):
 
     @staticmethod
     def _index_of_theme(theme: ThemeMode) -> int:
-        for index, (_, value) in enumerate(_THEME_LABELS):
+        for index, (_, value) in enumerate(THEME_LABELS):
             if value is theme:
                 return index
         return 0
@@ -100,7 +100,7 @@ class SettingsView(QWidget):
         # 只改主题与强调色;其余字段沿用当前设置(保持默认),避免被本页重置。
         return self._settings.model_copy(
             update={
-                "theme": _THEME_LABELS[self._theme.currentIndex()][1],
+                "theme": THEME_LABELS[self._theme.currentIndex()][1],
                 "accent_color": self._accent.color.name(),
             }
         )

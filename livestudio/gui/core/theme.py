@@ -5,21 +5,16 @@
 """
 
 from PySide6.QtGui import QColor
-from qfluentwidgets import Theme, setTheme, setThemeColor
+from qfluentwidgets import setTheme, setThemeColor
 
-from .settings_config import GuiSettings, ThemeMode
-
-_THEME_BY_MODE: dict[ThemeMode, Theme] = {
-    ThemeMode.LIGHT: Theme.LIGHT,
-    ThemeMode.DARK: Theme.DARK,
-    ThemeMode.AUTO: Theme.AUTO,
-}
+from .constants import THEME_BY_MODE
+from .settings_config import GuiSettings
 
 
 def apply_theme(settings: GuiSettings) -> None:
     """按当前 GuiSettings 应用主题模式与强调色"""
 
-    setTheme(_THEME_BY_MODE[settings.theme])
+    setTheme(THEME_BY_MODE[settings.theme])
     setThemeColor(QColor(settings.accent_color))
 
 

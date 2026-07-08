@@ -15,15 +15,13 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from livestudio.services.animations import AnimationManager
+from livestudio.services.animations.constants import EXPRESSION_CONTROLLER
 from livestudio.services.animations.controllers import AnimationType
 from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.services.expression.models import EmotionKind
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.services.platforms import PlatformModelConfig, PlatformService
 from livestudio.utils.log import logger
-
-# 情绪解算控制器的约定名:各平台在 _apply_model_config 里统一以此名注册一次性表情控制器。
-_EXPRESSION_CONTROLLER = "expression"
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,10 +186,10 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         except ValueError as exc:
             raise ValueError(f"未知情绪: {emotion}") from exc
         runtime = self.animation_manager.get_runtime(self.platform.name)
-        if _EXPRESSION_CONTROLLER not in runtime.controllers:
+        if EXPRESSION_CONTROLLER not in runtime.controllers:
             raise RuntimeError("表情控制器未就绪(请先连接并加载模型)")
         await runtime.execute_controller(
-            _EXPRESSION_CONTROLLER, emotion=kind.value, intensity=intensity
+            EXPRESSION_CONTROLLER, emotion=kind.value, intensity=intensity
         )
 
     async def load_current_model(self) -> None:

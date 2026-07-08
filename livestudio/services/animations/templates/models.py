@@ -2,12 +2,9 @@ from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from livestudio.services.semantic_actions import (
-    DEFAULT_SEMANTIC_ACTION_SPECS,
-    SemanticTweenRequest,
-)
+from livestudio.services.semantic_actions import SemanticTweenRequest
 
-_SEMANTIC_ACTION_NAMES = {spec.id.value for spec in DEFAULT_SEMANTIC_ACTION_SPECS}
+from .constants import SEMANTIC_ACTION_NAMES
 
 TemplatePrimitive: TypeAlias = float | int | bool | str
 TemplateValue: TypeAlias = TemplatePrimitive | dict[str, str | list[float | int]]
@@ -46,7 +43,7 @@ class TemplateActionDefinition(BaseModel):
     @field_validator("parameter")
     @classmethod
     def validate_semantic_action(cls, value: str) -> str:
-        if value not in _SEMANTIC_ACTION_NAMES:
+        if value not in SEMANTIC_ACTION_NAMES:
             raise ValueError(f"未知 AU 动作名: {value}")
         return value
 

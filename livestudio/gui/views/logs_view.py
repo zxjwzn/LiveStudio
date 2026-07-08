@@ -23,29 +23,12 @@ from qfluentwidgets import (
 )
 
 from livestudio.gui.bridge import LogController, LogEntry
+from livestudio.gui.constants import LOG_LEVEL_COLOR_DARK, LOG_LEVEL_COLOR_LIGHT, LOG_LEVELS, LOG_MAX_ROWS
 from livestudio.gui.core import colors
-
-_MAX_ROWS = 2000
-_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
-
-# 级别色按主题切换:WARNING/ERROR 两套都醒目;DEBUG/INFO 的中性/信息色需按明暗
-# 取不同明度,避免暗色下偏暗、亮色下偏浅而看不清。
-_LEVEL_COLOR_DARK = {
-    "DEBUG": "#94A3B8",
-    "INFO": "#38BDF8",
-    "WARNING": "#FBBF24",
-    "ERROR": "#F87171",
-}
-_LEVEL_COLOR_LIGHT = {
-    "DEBUG": "#475569",
-    "INFO": "#0284C7",
-    "WARNING": "#B45309",
-    "ERROR": "#DC2626",
-}
 
 
 def _level_color(level: str) -> QColor:
-    table = _LEVEL_COLOR_DARK if isDarkTheme() else _LEVEL_COLOR_LIGHT
+    table = LOG_LEVEL_COLOR_DARK if isDarkTheme() else LOG_LEVEL_COLOR_LIGHT
     return QColor(table.get(level, colors.TEXT))
 
 
@@ -55,7 +38,7 @@ class LogsView(QWidget):
     def __init__(self, logs: LogController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("logsView")
-        self._entries: deque[LogEntry] = deque(maxlen=_MAX_ROWS)
+        self._entries: deque[LogEntry] = deque(maxlen=LOG_MAX_ROWS)
         self._level_filters: dict[str, CheckBox] = {}
 
         layout = QVBoxLayout(self)
@@ -67,7 +50,7 @@ class LogsView(QWidget):
         controls_layout = QHBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(8)
-        for level in _LEVELS:
+        for level in LOG_LEVELS:
             box = CheckBox(level, controls)
             box.setChecked(True)
             box.stateChanged.connect(self._refilter)
@@ -132,7 +115,7 @@ class LogsView(QWidget):
         self._table.scrollToBottom()
 
     def _trim_rows(self) -> None:
-        while self._table.rowCount() > _MAX_ROWS:
+        while self._table.rowCount() > LOG_MAX_ROWS:
             self._table.removeRow(0)
 
     def _passes_filter(self, entry: LogEntry) -> bool:

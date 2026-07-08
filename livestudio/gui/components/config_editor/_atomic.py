@@ -15,14 +15,7 @@ from qfluentwidgets import DoubleSpinBox, LineEdit, PushButton, SettingCard, Spi
 
 from ._base import FieldEditor
 from ._schema_types import FieldSpec, resolve_icon
-
-# SpinBox 无界时的兜底范围(Qt 需要有限 range)
-_INT_MIN = -2_147_483_648
-_INT_MAX = 2_147_483_647
-_FLOAT_MIN = -1.0e12
-_FLOAT_MAX = 1.0e12
-
-_ERROR_COLOR = "#EF4444"
+from .constants import ERROR_COLOR, FLOAT_MAX, FLOAT_MIN, INT_MAX, INT_MIN
 
 
 class _CardEditor(FieldEditor):
@@ -63,7 +56,7 @@ class _CardEditor(FieldEditor):
             return
         if message:
             self._card.setContent(message)
-            self._card.contentLabel.setStyleSheet(f"color: {_ERROR_COLOR};")
+            self._card.contentLabel.setStyleSheet(f"color: {ERROR_COLOR};")
         else:
             # contentLabel 是裸 QLabel,字色由 SettingCard 全局 QSS 按主题控制;清空内联样式即回到跟随主题
             self._card.contentLabel.setStyleSheet("")
@@ -92,8 +85,8 @@ class IntEditor(_CardEditor):
         self._spin = SpinBox(self)
         self._spin.setMinimumWidth(140)
         self._spin.setRange(
-            int(spec.minimum) if spec.minimum is not None else _INT_MIN,
-            int(spec.maximum) if spec.maximum is not None else _INT_MAX,
+            int(spec.minimum) if spec.minimum is not None else INT_MIN,
+            int(spec.maximum) if spec.maximum is not None else INT_MAX,
         )
         self._spin.valueChanged.connect(lambda _: self.valueChanged.emit())
         self._mount(self._spin)
@@ -113,8 +106,8 @@ class FloatEditor(_CardEditor):
         self._spin.setMinimumWidth(140)
         self._spin.setDecimals(4)
         self._spin.setRange(
-            spec.minimum if spec.minimum is not None else _FLOAT_MIN,
-            spec.maximum if spec.maximum is not None else _FLOAT_MAX,
+            spec.minimum if spec.minimum is not None else FLOAT_MIN,
+            spec.maximum if spec.maximum is not None else FLOAT_MAX,
         )
         self._spin.valueChanged.connect(lambda _: self.valueChanged.emit())
         self._mount(self._spin)

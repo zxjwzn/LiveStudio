@@ -30,24 +30,9 @@ from qfluentwidgets import (
 from qfluentwidgets import FluentIcon as FIF
 
 from livestudio.gui.bridge import AudioController, ConnectionState, PlatformBridge
+from livestudio.gui.bridge.constants import CONNECTION_STATE_COLOR, CONNECTION_STATE_TEXT
 from livestudio.gui.components.audio_meter import AudioMeter
-from livestudio.gui.core import colors
-
-_STATE_TEXT = {
-    ConnectionState.DISCONNECTED: "未连接",
-    ConnectionState.CONNECTING: "连接中…",
-    ConnectionState.CONNECTED: "已连接",
-    ConnectionState.ERROR: "连接错误",
-}
-
-_STATE_COLOR = {
-    ConnectionState.DISCONNECTED: colors.NEUTRAL,
-    ConnectionState.CONNECTING: colors.WARNING,
-    ConnectionState.CONNECTED: colors.SUCCESS,
-    ConnectionState.ERROR: colors.ERROR,
-}
-
-_CAP_NATIVE_EXPRESSIONS = "native_expressions"
+from livestudio.services.animations.constants import CAP_NATIVE_EXPRESSIONS
 
 
 class _FlowHost(QWidget):
@@ -142,7 +127,7 @@ class _PlatformCard(ExpandGroupSettingCard):
         """原生表情区(exp3,toggle 多选):仅 VTS 等带 native_expressions 能力的平台显示"""
 
         self._native_chips: dict[str, PillPushButton] = {}
-        if _CAP_NATIVE_EXPRESSIONS not in self._bridge.capabilities:
+        if CAP_NATIVE_EXPRESSIONS not in self._bridge.capabilities:
             self._native_row = None
             return
         row = QWidget(self.view)
@@ -211,8 +196,8 @@ class _PlatformCard(ExpandGroupSettingCard):
         self._apply_state(state)
 
     def _apply_state(self, state: ConnectionState) -> None:
-        self.card.setContent(_STATE_TEXT.get(state, ""))
-        self._badge.setCustomBackgroundColor(QColor(_STATE_COLOR[state]), QColor(_STATE_COLOR[state]))
+        self.card.setContent(CONNECTION_STATE_TEXT.get(state, ""))
+        self._badge.setCustomBackgroundColor(QColor(CONNECTION_STATE_COLOR[state]), QColor(CONNECTION_STATE_COLOR[state]))
         if state is not ConnectionState.CONNECTED:
             self._model_label.setText("")
         self._refresh_controllers()

@@ -9,12 +9,11 @@ from livestudio.clients.vtube_studio.models import (
     ExpressionActivationRequest,
     ExpressionActivationRequestData,
 )
+from livestudio.services.animations.constants import DEFAULT_NATIVE_SCOPE
 from livestudio.services.expression.models import NativeExpressionTrigger
 from livestudio.utils.log import logger
 
-PLATFORM_NAME = "vtubestudio"
-
-DEFAULT_SCOPE = "default"
+from .constants import PLATFORM_NAME
 
 
 class _ExpressionClient(Protocol):
@@ -71,7 +70,7 @@ class VTSExpressionAdapter:
         client: _ExpressionClient,
         *,
         fade_time: float | None = None,
-        scope: str = DEFAULT_SCOPE,
+        scope: str = DEFAULT_NATIVE_SCOPE,
     ) -> None:
         """更新某作用域的期望表情集，再把所有作用域并集与实际激活集 diff
 

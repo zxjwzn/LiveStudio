@@ -22,8 +22,7 @@ from qfluentwidgets import FluentIcon
 from livestudio.utils.log import logger
 
 from ._schema_types import ChoicesProvider, FieldKind, FieldSpec
-
-_NONE_TYPE = type(None)
+from .constants import NONE_TYPE
 
 
 def _unwrap_annotated(annotation: Any) -> Any:
@@ -166,7 +165,7 @@ def _is_union(annotation: Any) -> bool:
 
 
 def _non_none_args(annotation: Any) -> tuple[Any, ...]:
-    return tuple(arg for arg in typing.get_args(annotation) if arg is not _NONE_TYPE)
+    return tuple(arg for arg in typing.get_args(annotation) if arg is not NONE_TYPE)
 
 
 def _is_model(annotation: Any) -> bool:

@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 
+from livestudio.services.animations.constants import EMOTION_NATIVE_SCOPE
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.expression import (
     EmotionKind,
@@ -24,9 +25,6 @@ from livestudio.utils.log import logger
 from ..base import AnimationController
 from ..config import ExpressionControllerSettings
 from ..models import AnimationType
-
-# 原生表情作用域：情绪解算的临时触发独占一组，收尾清空时不影响用户手动点亮的常驻表情。
-_NATIVE_SCOPE = "emotion"
 
 
 class ExpressionController(AnimationController[ExpressionControllerSettings]):
@@ -125,7 +123,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         await self.runtime.platform.apply_native_expressions(
             selected.native_triggers,
             fade_time=self.config.transition_duration,
-            scope=_NATIVE_SCOPE,
+            scope=EMOTION_NATIVE_SCOPE,
         )
 
         # 过渡缓动 + 保持 + 收尾停用丢到后台，execute 不阻塞调用方。
@@ -166,7 +164,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             await self.runtime.platform.apply_native_expressions(
                 [],
                 fade_time=transition_duration,
-                scope=_NATIVE_SCOPE,
+                scope=EMOTION_NATIVE_SCOPE,
             )
 
         if not selected.semantic_targets:
