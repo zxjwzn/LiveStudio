@@ -316,6 +316,62 @@ def test_solver_binding_rule_enforced() -> None:
     assert "皱眉" not in [u.id for u in result.units]
 
 
+def test_solver_mutual_exclusion_rule_prevents_cooccurrence() -> None:
+    """显式互斥：两个不共享 action 的 AU 只能靠规则禁止同现（隐式 action 冲突抓不到）。"""
+    u_mouth = SemanticExpressionUnit(
+        id="张嘴",
+        targets=[ExpressionTarget(action=SemanticAction.MOUTH_OPEN, min_value=0.6, max_value=1.0)],
+        emotions={EmotionKind.JOY: 0.90},
+    )
+    u_eye = SemanticExpressionUnit(
+        id="瞪眼",
+        targets=[ExpressionTarget(action=SemanticAction.EYE_WIDE, min_value=0.5, max_value=1.0)],
+        emotions={EmotionKind.JOY: 0.85},
+    )
+    rule = MutualExclusionRule(id="张嘴瞪眼互斥", unit_ids=frozenset(["张嘴", "瞪眼"]))
+
+    # 无规则：MOUTH_OPEN 与 EYE_WIDE 不重叠，隐式冲突抓不到 -> 两者可同现
+    solver_without = _make_solver(u_mouth, u_eye)
+    ids_without = {
+        u.id for u in solver_without.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0)).units
+    }
+    assert {"张嘴", "瞪眼"} <= ids_without
+
+    # 有规则：显式互斥 -> 不能同现
+    solver_with = _make_solver(u_mouth, u_eye, rules=[rule])
+    ids_with = {
+        u.id for u in solver_with.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0)).units
+    }
+    assert not ({"张嘴", "瞪眼"} <= ids_with)
+
+
+def test_solver_soft_binding_rule_penalizes_partial_combo() -> None:
+    """软绑定（有限 penalty）：选了 A 但 B 因 action 冲突缺席时，组合得分应被扣分。"""
+    u1 = SemanticExpressionUnit(
+        id="嘴角上扬",
+        targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.7, max_value=1.0)],
+        emotions={EmotionKind.JOY: 0.90},
+    )
+    # u2 与 u1 同 action -> 隐式冲突，solver 只选 u1，组合仅命中绑定的"一半"
+    u2 = SemanticExpressionUnit(
+        id="大笑",
+        targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.4, max_value=0.6)],
+        emotions={EmotionKind.JOY: 0.80},
+    )
+    rule = BindingRule(id="笑联动软绑定", unit_ids=frozenset(["嘴角上扬", "大笑"]), penalty=0.5)
+
+    solver_with = _make_solver(u1, u2, rules=[rule])
+    solver_without = _make_solver(u1, u2)
+    result_with = solver_with.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
+    result_without = solver_without.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
+
+    # 两种情况都只选了"嘴角上扬"（软绑定不影响选择，只调分）
+    assert {u.id for u in result_with.units} == {"嘴角上扬"}
+    assert {u.id for u in result_without.units} == {"嘴角上扬"}
+    # 部分命中触发软扣分 -> 得分更低
+    assert result_with.score < result_without.score
+
+
 def test_solver_preview_does_not_update_history() -> None:
     solver = _make_solver(_joy_unit("笑容"))
     request = ExpressionRequest(emotion=EmotionKind.JOY)
