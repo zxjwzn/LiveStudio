@@ -42,7 +42,6 @@ class SemanticAction(StrEnum):
     MOUTH_OPEN = "mouth.open"
     MOUTH_SMILE = "mouth.smile"
     MOUTH_X = "mouth.x"
-    MOUTH_Y = "mouth.y"
     MOUTH_JAW_OPEN = "mouth.jaw.open"
     MOUTH_FUNNEL = "mouth.funnel"
     MOUTH_PUCKER = "mouth.pucker"
@@ -218,13 +217,6 @@ DEFAULT_SEMANTIC_ACTION_SPECS: list[SemanticActionSpec] = [
         maximum=1.0,
         region=FacialRegion.MOUTH,
         description="嘴部左右移动的位置",
-    ),
-    SemanticActionSpec(
-        id=SemanticAction.MOUTH_Y,
-        minimum=-1.0,
-        maximum=1.0,
-        region=FacialRegion.MOUTH,
-        description="嘴部上下移动的位置",
     ),
     SemanticActionSpec(
         id=SemanticAction.MOUTH_JAW_OPEN,

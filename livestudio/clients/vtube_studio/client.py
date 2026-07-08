@@ -58,7 +58,6 @@ from .models import (
     HotkeyTriggerRequest,
     HotkeyTriggerResponse,
     InjectParameterDataRequest,
-    InjectParameterDataResponse,
     InputParameterListRequest,
     InputParameterListResponse,
     ItemAnimationControlRequest,
@@ -253,6 +252,30 @@ class VTubeStudioClient:
             raise ResponseError(f"等待 {request.message_type} 响应超时") from exc
 
         return self._parse_response(raw_response, request.request_id, response_model)
+
+    async def send_notification(self, request: VTSRequestEnvelope[Any]) -> None:
+        """发送不需要响应的通知型请求（如参数注入）。
+
+        与 ``send_request`` 的区别：不注册响应 future、不 ``wait_for`` 超时。
+        参数注入是高频单向数据推送（tween 每 step 一次），等待响应既无必要，又会在
+        qasync 下因取消超时句柄而泄漏 Win32 timer——故走纯发送。连接级异常
+        （已断开/发送失败）仍照常上抛，由调用方按需捕获；VTS 仍会回的响应由
+        ``_reader_loop`` 因无匹配 request_id 而静默丢弃。
+        """
+
+        async with self._lock:
+            connection = self._connection
+            if connection is None:
+                raise VTubeStudioConnectionError("尚未建立到 VTube Studio 的连接")
+            payload = json.dumps(request.to_payload(), ensure_ascii=False)
+            try:
+                await connection.send(payload)
+            except ConnectionClosed as exc:
+                # 连接已断：统一清理（置空连接 + 让全部挂起请求失败），不留半关闭态
+                self._handle_connection_lost(VTubeStudioConnectionError("VTube Studio 连接已关闭"))
+                raise VTubeStudioConnectionError("VTube Studio 连接已关闭") from exc
+            except WebSocketException as exc:
+                raise ResponseError("发送或接收 VTube Studio 消息失败") from exc
 
     async def _reader_loop(self) -> None:
         """在后台读消息，并按请求编号或事件类型分给对应处理逻辑"""
@@ -600,11 +623,15 @@ class VTubeStudioClient:
     ) -> ParameterDeletionResponse:
         return await self.send_request(request, ParameterDeletionResponse)
 
-    async def inject_parameter_data(
-        self,
-        request: InjectParameterDataRequest,
-    ) -> InjectParameterDataResponse:
-        return await self.send_request(request, InjectParameterDataResponse)
+    async def inject_parameter_data(self, request: InjectParameterDataRequest) -> None:
+        """注入参数值（高频单向推送，fire-and-forget，不等响应）。
+
+        参数注入每秒可能被调用数百次（tween 每 step 一次）。若走 ``send_request`` 的
+        ``wait_for`` 路径，每次快速完成的请求都会在 qasync 下留下一个挂满
+        ``request_timeout`` 的僵尸 Win32 timer，逐步耗尽 USER 句柄。故纯发送，不解析响应。
+        """
+
+        await self.send_notification(request)
 
     async def get_current_model_physics(self) -> GetCurrentModelPhysicsResponse:
         return await self.send_request(

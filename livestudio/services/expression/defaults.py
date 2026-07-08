@@ -225,7 +225,7 @@ def default_semantic_units() -> list[SemanticExpressionUnit]:
         ),
         SemanticExpressionUnit(
             id="微微吐舌",
-            targets=[ExpressionTarget(action=SemanticAction.MOUTH_TONGUE_OUT, min_value=0.30, max_value=0.6)],
+            targets=[ExpressionTarget(action=SemanticAction.MOUTH_TONGUE_OUT, min_value=0.30, max_value=0.60)],
             emotions={EmotionKind.SMUG: 0.45, EmotionKind.JOY: 0.35, EmotionKind.SHY: 0.25},
         ),
         # —— 嘴部位移 ——
