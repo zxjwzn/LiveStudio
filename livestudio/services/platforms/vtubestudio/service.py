@@ -414,15 +414,15 @@ class VTubeStudio(PlatformService):
     async def listen_for_api(
         self,
         timeout: float | None = None,
-        max_messages: int | None = None,
     ) -> list[VTubeStudioAPIStateBroadcast]:
-        async with contextlib.aclosing(
-            self.discovery.listen(
-                timeout=timeout,
-                max_messages=max_messages,
-            )
-        ) as broadcasts:
-            return [broadcast async for broadcast in broadcasts]
+        """在固定时间窗内收集所有 VTS API 状态广播（按源主机去重）。
+
+        委托 discovery.discover_all 以墙钟窗口保证必然终止：VTS 在线时持续广播，旧实现用
+        listen(max_messages=None) 收集会因「每条 per-message 超时都被下一条广播打断」而
+        永不返回，GUI LAN 搜索卡死。窗口内无广播返回空列表。
+        """
+
+        return await self.discovery.discover_all(timeout=timeout)
 
     async def send_parameter_states(
         self,

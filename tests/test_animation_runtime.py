@@ -135,3 +135,129 @@ async def test_runtime_rolls_back_started_idle_controllers_on_start_failure() ->
     assert not runtime.is_started
     assert not started.is_running
     assert started.cancel_calls == 1
+
+
+async def test_reload_controllers_hot_swaps_when_started_individually() -> None:
+    """reload_controllers 在 runtime 未 start 时也必须取消旧控制器并启动新控制器。
+
+    回归：仪表盘用 start_controller 单独起控制器，绕过 runtime.start()，故 _started
+    仍为 False。此前 reload_controllers 仅凭 _started 判定，会跳过停启——模型热切换时
+    旧控制器残留为孤儿任务（持续注入参数、断开后向失效适配器报错），新控制器不启动
+    （仪表盘开关显示已停止）。
+    """
+
+    platform = _Platform()
+    runtime = PlatformAnimationRuntime(
+        platform=platform,
+        template_player=_TemplatePlayer(platform),
+    )
+    old = _Controller(
+        runtime,
+        "idle",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    runtime.register_controller(old)
+    # 仪表盘单独起控制器：绕过 runtime.start()，_started 保持 False
+    await runtime.start_controller("idle")
+    assert old.is_running
+    assert not runtime.is_started
+
+    new = _Controller(
+        runtime,
+        "idle",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    await runtime.reload_controllers([new])
+
+    # 旧控制器被取消（无孤儿任务），新控制器已启动，runtime 服务态保持未 start
+    assert old.cancel_calls == 1
+    assert not old.is_running
+    assert new.is_running
+    assert not runtime.is_started
+
+
+async def test_reload_controllers_preserves_started_flag_when_bulk_started() -> None:
+    """runtime 已 start（批量起控制器）时，reload_controllers 保持 _started=True 并热替换。"""
+
+    platform = _Platform()
+    runtime = PlatformAnimationRuntime(
+        platform=platform,
+        template_player=_TemplatePlayer(platform),
+    )
+    old = _Controller(
+        runtime,
+        "idle",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    runtime.register_controller(old)
+    await runtime.start()
+    assert runtime.is_started
+    assert old.is_running
+
+    new = _Controller(
+        runtime,
+        "idle",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    await runtime.reload_controllers([new])
+
+    assert old.cancel_calls == 1
+    assert not old.is_running
+    assert new.is_running
+    assert runtime.is_started
+
+
+async def test_reload_controllers_preserves_per_controller_running_state() -> None:
+    """换模型热替换时保留各控制器运行态:替换前在跑的重启,关掉的不重启。
+
+    回归:此前 reload_controllers 走 _do_start(启动全部 idle),会把用户单独关掉的
+    控制器重新打开。改为按名匹配后,关掉的保持关闭。
+    """
+
+    platform = _Platform()
+    runtime = PlatformAnimationRuntime(
+        platform=platform,
+        template_player=_TemplatePlayer(platform),
+    )
+    blink = _Controller(
+        runtime,
+        "blink",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    breathing = _Controller(
+        runtime,
+        "breathing",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    runtime.register_controller(blink)
+    runtime.register_controller(breathing)
+    # 仪表盘单独起:blink 开、breathing 关
+    await runtime.start_controller("blink")
+    assert blink.is_running
+    assert not breathing.is_running
+
+    new_blink = _Controller(
+        runtime,
+        "blink",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    new_breathing = _Controller(
+        runtime,
+        "breathing",
+        ControllerSettings(),
+        animation_type=AnimationType.IDLE,
+    )
+    await runtime.reload_controllers([new_blink, new_breathing])
+
+    # 旧控制器被取消(无孤儿);新 blink 重启(之前在跑),新 breathing 不启动(之前关掉)
+    assert blink.cancel_calls == 1
+    assert new_blink.is_running
+    assert not new_breathing.is_running
+    assert not runtime.is_started

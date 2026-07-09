@@ -64,6 +64,14 @@ class SemanticActionAdapter:
             results.extend(self._resolve_request(req))
         return results
 
+    def can_resolve(self, action: SemanticAction | str) -> bool:
+        """返回语义动作是否存在可用的平台参数绑定"""
+        action_str = str(action)
+        binding = self._bindings.get(action_str)
+        if binding is None:
+            return False
+        return any(param_name in self._parameter_specs for param_name in binding.platform_params)
+
     # ------------------------------------------------------------------
     # 公开接口: 查询当前语义值
     # ------------------------------------------------------------------

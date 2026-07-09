@@ -264,9 +264,6 @@ class _PlatformCard(CardWidget):
                 parent=self.window(),
             )
             return
-        if len(addresses) == 1:
-            self._address_edit.setText(addresses[0])
-            return
         menu = RoundMenu(parent=self._lan_button)
         for address in addresses:
             menu.addAction(Action(FIF.LINK, address, triggered=lambda _c=False, a=address: self._address_edit.setText(a)))

@@ -300,21 +300,6 @@ def test_solver_bonus_negative_value_decreases_score() -> None:
         assert result_with.score <= result_without.score
 
 
-def test_solver_binding_rule_enforced() -> None:
-    """强制绑定：皱眉出现必须有嘴角下垂，否则非法"""
-    u_brow = SemanticExpressionUnit(
-        id="皱眉",
-        targets=[ExpressionTarget(action=SemanticAction.BROW_HEIGHT, min_value=0.0, max_value=0.2)],
-        emotions={EmotionKind.ANGER: 0.9},
-    )
-    # 嘴角下垂不在候选中（没有 anger 相关性）
-    rule = BindingRule(id="皱眉配嘴角", unit_ids=frozenset(["皱眉", "嘴角下垂"]), penalty=float("inf"))
-    solver = _make_solver(u_brow, rules=[rule])
-    result = solver.solve(ExpressionRequest(emotion=EmotionKind.ANGER, randomness=0.0))
-    # 皱眉不能单独出现（强制绑定但对方不存在）
-    assert "皱眉" not in [u.id for u in result.units]
-
-
 def test_solver_mutual_exclusion_rule_prevents_cooccurrence() -> None:
     """显式互斥：两个不共享 action 的 AU 只能靠规则禁止同现（隐式 action 冲突抓不到）。"""
     u_mouth = SemanticExpressionUnit(
@@ -331,44 +316,13 @@ def test_solver_mutual_exclusion_rule_prevents_cooccurrence() -> None:
 
     # 无规则：MOUTH_OPEN 与 EYE_WIDE 不重叠，隐式冲突抓不到 -> 两者可同现
     solver_without = _make_solver(u_mouth, u_eye)
-    ids_without = {
-        u.id for u in solver_without.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0)).units
-    }
+    ids_without = {u.id for u in solver_without.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0)).units}
     assert {"张嘴", "瞪眼"} <= ids_without
 
     # 有规则：显式互斥 -> 不能同现
     solver_with = _make_solver(u_mouth, u_eye, rules=[rule])
-    ids_with = {
-        u.id for u in solver_with.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0)).units
-    }
+    ids_with = {u.id for u in solver_with.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0)).units}
     assert not ({"张嘴", "瞪眼"} <= ids_with)
-
-
-def test_solver_soft_binding_rule_penalizes_partial_combo() -> None:
-    """软绑定（有限 penalty）：选了 A 但 B 因 action 冲突缺席时，组合得分应被扣分。"""
-    u1 = SemanticExpressionUnit(
-        id="嘴角上扬",
-        targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.7, max_value=1.0)],
-        emotions={EmotionKind.JOY: 0.90},
-    )
-    # u2 与 u1 同 action -> 隐式冲突，solver 只选 u1，组合仅命中绑定的"一半"
-    u2 = SemanticExpressionUnit(
-        id="大笑",
-        targets=[ExpressionTarget(action=SemanticAction.MOUTH_SMILE, min_value=0.4, max_value=0.6)],
-        emotions={EmotionKind.JOY: 0.80},
-    )
-    rule = BindingRule(id="笑联动软绑定", unit_ids=frozenset(["嘴角上扬", "大笑"]), penalty=0.5)
-
-    solver_with = _make_solver(u1, u2, rules=[rule])
-    solver_without = _make_solver(u1, u2)
-    result_with = solver_with.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
-    result_without = solver_without.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
-
-    # 两种情况都只选了"嘴角上扬"（软绑定不影响选择，只调分）
-    assert {u.id for u in result_with.units} == {"嘴角上扬"}
-    assert {u.id for u in result_without.units} == {"嘴角上扬"}
-    # 部分命中触发软扣分 -> 得分更低
-    assert result_with.score < result_without.score
 
 
 def test_solver_preview_does_not_update_history() -> None:
@@ -454,15 +408,13 @@ def test_profile_to_rules() -> None:
             MutualExclusionRule(id="互斥测试", unit_ids=frozenset(["a", "b"])),
             BonusRule(id="加分测试", unit_ids=frozenset(["c", "d"]), value=0.3),
             BonusRule(id="扣分测试", unit_ids=frozenset(["e"]), value=-0.2),
-            BindingRule(id="绑定测试", unit_ids=frozenset(["f", "g"])),
         ]
     )
     rules = profile.to_rules()
-    assert len(rules) == 4
+    assert len(rules) == 3
     assert isinstance(rules[0], MutualExclusionRule)
     assert isinstance(rules[1], BonusRule)
     assert isinstance(rules[2], BonusRule)
-    assert isinstance(rules[3], BindingRule)
 
 
 def test_profile_rules_discriminated_from_dict() -> None:
@@ -605,7 +557,9 @@ def test_typicality_hard_gate_blocks_guest_au() -> None:
     smile = _joy_unit("嘴角上扬", 0.82)
     for seed in range(30):
         solver = ExpressionSolver(
-            units=[smile, muyi], rules=[], history=ExpressionHistory(capacity=10),
+            units=[smile, muyi],
+            rules=[],
+            history=ExpressionHistory(capacity=10),
             rng=random.Random(seed),
         )
         result = solver.preview(ExpressionRequest(emotion=EmotionKind.JOY))
@@ -616,8 +570,11 @@ def test_typicality_gate_disabled_restores_reachability() -> None:
     """τ=0 且 α=0 时完全退化：客串 AU 重新可达（回归旧行为的逃生门）"""
     muyi = _guest_unit("目移", EmotionKind.SADNESS, 0.72, EmotionKind.JOY, 0.12)
     solver = ExpressionSolver(
-        units=[muyi], rules=[], history=ExpressionHistory(capacity=10),
-        typicality_floor=0.0, typicality_power=0.0,
+        units=[muyi],
+        rules=[],
+        history=ExpressionHistory(capacity=10),
+        typicality_floor=0.0,
+        typicality_power=0.0,
     )
     result = solver.solve(ExpressionRequest(emotion=EmotionKind.JOY, randomness=0.0))
     assert "目移" in {u.id for u in result.units}

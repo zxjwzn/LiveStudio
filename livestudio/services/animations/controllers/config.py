@@ -261,7 +261,7 @@ class MouthSyncControllerSettings(ControllerSettings):
     update_interval: float = Field(default=0.02, gt=0.0, description="更新间隔")
     attack_duration: float = Field(default=0.02, ge=0.0, description="张嘴过渡时长")
     release_duration: float = Field(default=0.04, ge=0.0, description="闭嘴过渡时长")
-    priority: int = Field(default=20, description="嘴型参数控制优先级")
+    priority: int = Field(default=99, description="嘴型参数控制优先级")
 
     @model_validator(mode="after")
     def validate_mouth_sync_range(self) -> "MouthSyncControllerSettings":
@@ -276,8 +276,14 @@ class ExpressionControllerSettings(ControllerSettings):
     model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "HEART"})
 
     au_priority: int = Field(
-        default=99,
+        default=20,
         description="表情语义缓动的优先级，保持期间高于此值的控制器才能接管参数",
+    )
+    neutral_priority: int = Field(
+        default=0,
+        description="回归静息段的优先级；须低于各待机控制器（默认 10）以使其在 AU 解算收尾时"
+        "即时接管对应参数（从当前值平滑过渡到自己的目标，跳过先回中性），"
+        "无人接管的参数照常由本段平滑回到静息",
     )
     transition_duration: float = Field(
         default=0.5,

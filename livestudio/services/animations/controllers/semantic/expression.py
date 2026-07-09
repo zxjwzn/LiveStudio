@@ -11,8 +11,10 @@ from livestudio.services.expression import (
     ExpressionProfileConfig,
     ExpressionRequest,
     ExpressionSolver,
+    ExpressionUnit,
     ResolvedSemanticTarget,
     SelectedExpression,
+    SemanticExpressionUnit,
 )
 from livestudio.services.semantic_actions import (
     SemanticAction,
@@ -52,7 +54,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         super().__init__(runtime, name, config)
         self._profile = profile
         self._solver = ExpressionSolver(
-            units=profile.to_units(),
+            units=self._resolvable_units(profile.to_units()),
             rules=profile.to_rules(),
             history=ExpressionHistory(capacity=config.history_capacity),
             top_candidates=config.top_candidates,
@@ -75,6 +77,30 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         """返回内部表情解算器"""
 
         return self._solver
+
+    def _resolvable_units(self, units: list[ExpressionUnit]) -> list[ExpressionUnit]:
+        """过滤当前平台无法完整下发的语义 AU"""
+
+        adapter = self.runtime.platform.semantic_adapter
+        if adapter is None:
+            return units
+
+        result: list[ExpressionUnit] = []
+        for unit in units:
+            if not isinstance(unit, SemanticExpressionUnit):
+                result.append(unit)
+                continue
+
+            unresolved = [target.action for target in unit.targets if not adapter.can_resolve(target.action)]
+            if unresolved:
+                logger.debug(
+                    "AU 候选预过滤: id={}, 原因=语义动作未绑定, actions={}",
+                    unit.id,
+                    [action.value for action in unresolved],
+                )
+                continue
+            result.append(unit)
+        return result
 
     @property
     def finishing_task(self) -> asyncio.Task[None] | None:
@@ -144,6 +170,9 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         流程：过渡 → 保持 → 停用本次原生表情 → （可选）回归静息。
         被取消时（新 execute 到来或控制器停止），级联取消在途缓动任务并释放
         参数，且不会执行后续阶段——新的表情状态由新 execute 接管。
+        回归静息段刻意用低优先级（neutral_priority），使待机控制器能在表情收尾时
+        即时按参数接管：被接管的参数从当前值平滑过渡到该控制器的目标（跳过先回中性），
+        无人接管的参数照常由本段回到静息。
         """
 
         transition_duration = self.config.transition_duration
@@ -179,7 +208,14 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             )
             for driven in selected.semantic_targets
         ]
-        await self._tween_targets(targets, self.config.neutral_transition_duration)
+        # 回归段用低优先级（neutral_priority），使其可被任意待机控制器即时按参数抢占：
+        # 被接管的参数从当前值平滑过渡到该控制器的目标（跳过先回中性），无人接管的参数
+        # 照常由本段回到静息。过渡段/保持段仍走 au_priority，表情展示期受保护不被打断。
+        await self._tween_targets(
+            targets,
+            self.config.neutral_transition_duration,
+            priority=self.config.neutral_priority,
+        )
 
     async def _tween_targets(
         self,
@@ -187,12 +223,16 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         duration: float,
         *,
         easing: str | None = None,
+        priority: int | None = None,
     ) -> None:
-        """把一组解算目标作为一段语义缓动下发，统一用 config.au_priority。
+        """把一组解算目标作为一段语义缓动下发。
 
         easing=None 时各目标用自身 easing；指定时（如保持段）统一覆盖。
+        priority=None 时统一用 config.au_priority（过渡/保持/orphan 回归皆然）；
+        指定时（如回归段）用该值--回归段刻意降到 neutral_priority 以让待机控制器抢占。
         """
 
+        resolved_priority = self.config.au_priority if priority is None else priority
         await self.runtime.platform.tween_semantic(
             [
                 SemanticTweenRequest(
@@ -200,7 +240,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
                     end_value=target.value,
                     duration=duration,
                     easing=easing if easing is not None else target.easing,
-                    priority=self.config.au_priority,
+                    priority=resolved_priority,
                 )
                 for target in targets
             ]

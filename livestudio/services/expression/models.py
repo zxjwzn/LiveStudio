@@ -65,7 +65,7 @@ class SemanticExpressionUnit(_FrozenModel):
         default_factory=dict
     )  # 正数 (0,1]；缺失走 baseline 兜底，显式 <=0 视为该情绪禁用
     baseline: float = 0.0  # 百搭分：情绪列未显式打分时的兜底相关性；0=非百搭
-    easing: str = "linear"
+    easing: str = "in_out_sine"
 
     @property
     def regions(self) -> frozenset[FacialRegion]:

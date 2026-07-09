@@ -17,7 +17,6 @@ from qfluentwidgets import FluentIcon
 
 from livestudio.app import VTubeStudioApp
 from livestudio.clients.vtube_studio.config import VTubeStudioConfig
-from livestudio.clients.vtube_studio.errors import DiscoveryError
 from livestudio.config import ConfigManager
 from livestudio.gui.core import run_guarded
 from livestudio.services.animations.constants import (
@@ -76,6 +75,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
 
     async def _connect(self) -> None:
         await self._app.connect()
+        await self._start_controllers()
 
     def _on_connect_done(self, task: asyncio.Task[object]) -> None:
         self._connect_task = None
@@ -121,6 +121,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         await self._cancel_all_controllers()
         await self._app.disconnect()
         await self._app.connect()
+        await self._start_controllers()
 
     def start_controllers(self) -> None:
         """启动动画控制器"""
@@ -169,10 +170,10 @@ class VTubeStudioPlatformBridge(PlatformBridge):
     async def _cancel_all_controllers(self) -> None:
         """取消所有正在运行的待机控制器,并通知仪表盘开关复位。
 
-        仪表盘开关用 runtime.start_controller(name) 单独起控制器,绕过了
-        animation_manager.start(),故 manager/runtime 的 _started 仍为 False,
-        断开/重连时 animation_manager.stop() 会因幂等守卫空转、残留控制器不停,
-        其 run_cycle 继续向已断开的连接发参数而报错。这里直接逐个 cancel 控制器:
+        连接/重连默认会经 app.start_controllers() 批量起控制器,_started 通常为 True,
+        断开时 animation_manager.stop() 已能取消它们。但批量启动可能被跳过/失败
+        (此时 _started 为 False,animation_manager.stop() 因幂等守卫空转、残留控制器
+        不停,其 run_cycle 继续向已断开的连接发参数而报错),故这里仍逐个 cancel 兜底:
         cancel() 立即中断任务、不等当前周期跑完(stop() 会 await 自然结束,断开场景下
         那一等可能正好向已断连接发数据),并发单控制器信号让开关回到「已停止」。
         """
@@ -222,18 +223,16 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         self.controllerStateChanged.emit(name, False)
 
     async def discover_addresses(self) -> list[str]:
-        """LAN 搜索运行中的 VTS 实例,返回候选 ws 地址列表。
+        """LAN 搜索运行中的 VTS 实例，返回候选 ws 地址列表。
 
-        LAN 发现用于「连接前」找地址,故不要求已连接;discovery 对象随服务构造即可用,
-        无需先启动。无实例时后端按超时抛 DiscoveryError,这里收敛为空列表(对 UI 即
-        「未发现」)。
+        LAN 发现用于「连接前」找地址，故不要求已连接；discovery 对象随服务构造即可用，
+        无需先启动。listen_for_api 在固定时间窗内收集并按源主机去重，窗口内无实例返回
+        空列表（对 UI 即「未发现」）；端口绑定失败会抛 DiscoveryError，由调用方呈现为错误，
+        不再被吞成「未发现」。
         """
 
         config = self._app.platform.config
-        try:
-            broadcasts = await self._app.platform.listen_for_api(timeout=config.discovery_timeout)
-        except DiscoveryError:
-            return []
+        broadcasts = await self._app.platform.listen_for_api(timeout=config.discovery_timeout)
         addresses: list[str] = []
         for broadcast in broadcasts:
             host = broadcast.source_host

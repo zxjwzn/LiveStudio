@@ -100,24 +100,54 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
         self,
         controllers: Iterable[AnimationController[Any]],
     ) -> None:
-        """重新加载当前平台控制器"""
+        """热替换控制器,保留各控制器的运行态(按名匹配)。
+
+        换模型时:取消旧控制器、注册新控制器,仅重启替换前在跑的那些(按名匹配)--用户
+        单独关掉的控制器不会被重新启动。新模型配置中禁用的由 start() 守卫跳过,不会强制启动。
+
+        活跃态以「runtime 已 start 或有控制器实际在跑」判定,而非仅 ``_started``:仪表盘用
+        ``start_controller`` 单独起控制器时会绕过 ``runtime.start()``,``_started`` 仍为 False,
+        若据此跳过停启会留下孤儿任务(持续注入参数、断开后向失效适配器报 NotImplementedError)。
+        首次加载(注册表空、无在跑)不启动任何控制器,首次全量启动由后续 start() 负责。
+        """
 
         next_controllers = tuple(controllers)
         if not next_controllers:
             raise ValueError("重新加载控制器时至少需要提供一个控制器")
 
-        # 只回收/重建运行态：运行中才热替换，沿用 _do_stop/_do_start 重建控制器，
-        # 不走 stop()/start() 以免触发幂等守卫。控制器热替换属重新部署范畴。
+        # 记下替换前各控制器的运行态(按名),用于换模型后按原状态重启新控制器。
         was_started = self._started
-        if was_started:
+        running_names = {
+            name
+            for name, controller in self._controllers.items()
+            if controller.is_running
+        }
+        active = was_started or bool(running_names)
+
+        # 不走 stop()/start() 以免触发幂等守卫;_started 仅在原已 start 时同步翻转,
+        # 单独起控制器场景保持 False(runtime 服务本身未 start)。
+        if active:
             await self._do_stop()
-            self._mark_stopped()
+            if was_started:
+                self._mark_stopped()
         self._controllers = {}
         for controller in next_controllers:
             self.register_controller(controller)
-        if was_started:
-            await self._do_start()
-            self._mark_started()
+        if active:
+            # 仅重启替换前在跑的控制器(按名匹配),保留用户单独关闭的意图。不走 _do_start--
+            # 它会启动全部 idle,会把用户关掉的也重新打开。模板不在此重载(平台级、不随模型变)。
+            to_start = [
+                controller
+                for name, controller in self._controllers.items()
+                if name in running_names
+                and controller.animation_type is AnimationType.IDLE
+            ]
+            if to_start:
+                await asyncio.gather(
+                    *(controller.start() for controller in to_start)
+                )
+            if was_started:
+                self._mark_started()
 
     def list_templates(self) -> list[LoadedTemplateInfo]:
         """返回当前平台已加载模板摘要"""

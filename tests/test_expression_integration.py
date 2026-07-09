@@ -13,12 +13,19 @@ from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.expression import (
     EmotionKind,
     ExpressionProfileConfig,
+    ExpressionRequest,
     NativeExpressionTrigger,
 )
 from livestudio.services.platforms.vtubestudio.expression_adapter import (
     VTSExpressionAdapter,
 )
-from livestudio.services.semantic_actions import SemanticAction
+from livestudio.services.semantic_actions import (
+    PlatformParameterSpec,
+    SemanticAction,
+    SemanticActionAdapter,
+    SemanticActionBinding,
+    SemanticActionProfile,
+)
 from tests.conftest import _SemanticPlatform, _TemplatePlayer
 
 
@@ -29,6 +36,24 @@ class _ExpressionPlatform(_SemanticPlatform):
         super().__init__(name)
         self.native_calls: list[list[NativeExpressionTrigger]] = []
         self.native_fade_times: list[float | None] = []
+        self._semantic_adapter: SemanticActionAdapter | None = None
+
+    @property
+    def semantic_adapter(self) -> SemanticActionAdapter | None:
+        return self._semantic_adapter
+
+    def bind_semantic_actions(self, actions: Iterable[SemanticAction]) -> None:
+        specs: list[PlatformParameterSpec] = []
+        bindings: list[SemanticActionBinding] = []
+        for action in actions:
+            param_name = f"Param{len(specs)}"
+            specs.append(PlatformParameterSpec(name=param_name, minimum=0.0, maximum=1.0))
+            bindings.append(SemanticActionBinding(action=action, platform_params=[param_name]))
+        self._semantic_adapter = SemanticActionAdapter(
+            SemanticActionProfile(bindings=bindings),
+            parameter_specs=specs,
+            engine=self.tween,
+        )
 
     async def apply_native_expressions(
         self,
@@ -261,6 +286,73 @@ async def test_controller_emits_semantic_and_native() -> None:
     assert "2脸红" in refs
 
 
+async def test_controller_filters_unbound_semantic_units_before_solving() -> None:
+    platform = _ExpressionPlatform()
+    platform.bind_semantic_actions([SemanticAction.MOUTH_SMILE])
+    profile = ExpressionProfileConfig.model_validate(
+        {
+            "semantic_units": [
+                {
+                    "id": "瞪眼",
+                    "targets": [{"action": "eye.wide", "min_value": 1.0, "max_value": 1.0}],
+                    "emotions": {"surprise": 0.99},
+                },
+                {
+                    "id": "嘴角上扬",
+                    "targets": [{"action": "mouth.smile", "min_value": 0.8, "max_value": 0.8}],
+                    "emotions": {"surprise": 0.8},
+                },
+            ]
+        }
+    )
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(),
+        profile,
+    )
+
+    selected = controller.solver.preview(ExpressionRequest(emotion=EmotionKind.SURPRISE, randomness=0.0, max_units=5))
+
+    assert [unit.id for unit in selected.units] == ["嘴角上扬"]
+    assert [target.action for target in selected.semantic_targets] == [SemanticAction.MOUTH_SMILE]
+
+
+async def test_controller_filters_unit_when_any_semantic_target_is_unbound() -> None:
+    platform = _ExpressionPlatform()
+    platform.bind_semantic_actions([SemanticAction.MOUTH_SMILE])
+    profile = ExpressionProfileConfig.model_validate(
+        {
+            "semantic_units": [
+                {
+                    "id": "复合表情",
+                    "targets": [
+                        {"action": "mouth.smile", "min_value": 0.8, "max_value": 0.8},
+                        {"action": "eye.wide", "min_value": 1.0, "max_value": 1.0},
+                    ],
+                    "emotions": {"surprise": 0.99},
+                },
+                {
+                    "id": "嘴角上扬",
+                    "targets": [{"action": "mouth.smile", "min_value": 0.7, "max_value": 0.7}],
+                    "emotions": {"surprise": 0.8},
+                },
+            ]
+        }
+    )
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(),
+        profile,
+    )
+
+    selected = controller.solver.preview(ExpressionRequest(emotion=EmotionKind.SURPRISE, randomness=0.0, max_units=5))
+
+    assert [unit.id for unit in selected.units] == ["嘴角上扬"]
+    assert [target.action for target in selected.semantic_targets] == [SemanticAction.MOUTH_SMILE]
+
+
 async def test_controller_emits_transition_then_hold() -> None:
     """每个语义动作应有两段：过渡(transition_duration) + 保持(hold_duration)"""
     platform = _ExpressionPlatform()
@@ -278,7 +370,12 @@ async def test_controller_emits_transition_then_hold() -> None:
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        ExpressionControllerSettings(au_priority=99, transition_duration=0.5, hold_duration=1.5),
+        ExpressionControllerSettings(
+            au_priority=99,
+            neutral_priority=0,
+            transition_duration=0.5,
+            hold_duration=1.5,
+        ),
         profile,
     )
     await controller.execute(emotion=EmotionKind.JOY)
@@ -292,9 +389,12 @@ async def test_controller_emits_transition_then_hold() -> None:
     assert neutral.duration == 0.5
     assert transition.end_value == hold.end_value
     assert neutral.end_value == 0.5
+    # 过渡/保持段受 au_priority 保护，表情展示期不被待机控制器打断；
+    # 回归段降到 neutral_priority（0），低于各待机控制器（默认 10），使其在
+    # AU 解算收尾时即时按参数接管，无人接管的参数照常回静息。
     assert transition.priority == 99
     assert hold.priority == 99
-    assert neutral.priority == 99
+    assert neutral.priority == 0
 
 
 async def test_controller_skips_hold_when_zero() -> None:
@@ -605,6 +705,7 @@ async def test_interrupt_resets_orphaned_action() -> None:
     assert brow
     assert abs(brow[0].end_value - 0.1) < 1e-6
 
+
 def _left_wink_then_squint_profile() -> ExpressionProfileConfig:
     return ExpressionProfileConfig.model_validate(
         {
@@ -643,8 +744,3 @@ async def test_interrupt_does_not_reset_overlapped_old_action() -> None:
     assert not left_eye
     assert both_eye
     assert abs(both_eye[0].end_value - 0.3) < 1e-6
-
-
-
-
-

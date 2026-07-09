@@ -16,13 +16,7 @@ from livestudio.services.expression import (
 )
 from livestudio.services.platforms.vtubestudio import VTubeStudioModelConfig
 
-_MODEL_CONFIG = (
-    Path(__file__).resolve().parents[1]
-    / "configs"
-    / "models"
-    / "vtubestudio"
-    / "Pink_devil_2be06.yaml"
-)
+_MODEL_CONFIG = Path(__file__).resolve().parents[1] / "configs" / "models" / "vtubestudio" / "Pink_devil_2be06.yaml"
 
 
 def _load_profile() -> ExpressionProfileConfig:
