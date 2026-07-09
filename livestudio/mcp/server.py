@@ -20,6 +20,7 @@ import asyncio
 import contextlib
 import json
 from collections.abc import Sequence
+from typing import Final
 
 import mcp.types as mcp_types
 import uvicorn
@@ -38,6 +39,10 @@ from livestudio.utils.paths import config_path
 from .config import McpConfig
 from .constants import BUILTIN_NAMES, GET_ACTIVE_PLATFORM, LIST_PLATFORMS, SWITCH_PLATFORM
 from .registry import PlatformToolsetRegistration
+
+# uvicorn 停机宽限期(秒):MCP 客户端长连 SSE 流不会被主动断开,设此上限保证
+# _stop_transport 的 await task 必然结束、GUI 关窗不被卡住(见 _start_transport)。
+_GRACEFUL_SHUTDOWN_TIMEOUT: Final[int] = 1
 
 
 class _SwitchPlatformInput(BaseModel):
@@ -283,6 +288,10 @@ class LiveStudioMcpServer(AsyncServiceLifecycleMixin):
             port=cfg.port,
             log_level="warning",
             lifespan="off",
+            # MCP 客户端持有长连 SSE 流;uvicorn 默认 timeout_graceful_shutdown=None 会
+            # 在 shutdown() 里死等连接关闭,导致 GUI 点 X 关窗时 _stop_transport 的
+            # await task 永不返回、窗口无法关闭。设上限让停机有界:宽限期内未结束即强取消。
+            timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_TIMEOUT,
         )
         server = uvicorn.Server(config)
         self._uvicorn = server
