@@ -1,6 +1,6 @@
 """把 VTube Studio 应用流程串起来"""
 
-from livestudio.app.base import BasePlatformApp
+from livestudio.app.base import BasePlatformApp, PlatformStateEvent
 from livestudio.clients.vtube_studio.models import (
     EventSubscriptionResponse,
     ExpressionActivationRequest,
@@ -91,11 +91,21 @@ class VTubeStudioApp(BasePlatformApp[VTubeStudio, VTubeStudioModelConfig]):
         await self._apply_native(set())
 
     async def _apply_native(self, target: set[str]) -> None:
-        """把目标激活集合下发给平台 adapter(diff 增删),成功后更新本地镜像。"""
+        """把目标激活集合下发给平台 adapter(diff 增删),成功后更新本地镜像。
+
+        成功后按新旧镜像 diff 广播 NATIVE_EXPRESSION_CHANGED,使 GUI 桥接能同步
+        仪表盘 chip(MCP 等非 GUI 来源的激活/取消也能反映到界面)。
+        """
 
         triggers = [NativeExpressionTrigger(platform=self.platform.name, native_ref=name) for name in target]
         await self.platform.apply_native_expressions(triggers, scope=MANUAL_NATIVE_SCOPE)
+        old = self._active_native
         self._active_native = target
+        for name in old | target:
+            was_active = name in old
+            now_active = name in target
+            if was_active != now_active:
+                await self._notify_state(PlatformStateEvent.native_expression(name, now_active))
 
     async def _subscribe_model_events(self) -> None:
         """监听 VTube Studio 的模型加载事件"""

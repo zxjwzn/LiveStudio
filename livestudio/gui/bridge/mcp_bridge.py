@@ -43,7 +43,7 @@ class McpBridge(QObject):
 
     # 固有工具分组的固定文案(与平台无关)。
     _BUILTIN_TITLE = "固有工具"
-    _BUILTIN_SUBTITLE = "始终可用：列出/切换平台。切到某平台后才出现该平台的工具。"
+    _BUILTIN_SUBTITLE = "始终可用：平台管理(列出/切换)与通用控制(连接、待机动画、情绪等)；通用控制需先切到某平台后生效。"
 
     def __init__(self, server: LiveStudioMcpServer, parent: QObject | None = None) -> None:
         super().__init__(parent)

@@ -3,9 +3,12 @@
 把已构造的各平台 app 以 MCP 工具的形式开放给 LLM。坐在 app 层之上,与 gui/ 平级:只调
 app 公开方法,不创建/不组装任何后端(平台工具集由装配点用既有 app 构造后注入)。
 
-工具可见性:固有工具(list_platforms / switch_platform / get_active_platform)恒定可见;
-当前 active 平台的工具随之追加。LLM 任一时刻只控制一个平台——switch_platform 改 active 后
-发 notifications/tools/list_changed,client 重新拉 tools/list 即见新平台工具。
+工具可见性:工具列表恒定全表--固有工具分两类(元信息 list_platforms / switch_platform /
+get_active_platform,与平台无关、无需 active;通用动词 connect / 情绪 / 控制器等,平台无关、
+路由到 active 平台并注入其状态)+ 所有登记平台的特有工具(各自列出,多平台须全局不重名)。
+恒定不随 active 变化,故不发 notifications/tools/list_changed:缓存型客户端首次拉取即见全部。
+active 仅决定通用动词与平台特有工具的路由目标(调用前须 switch_platform);特有工具恒定可见,
+但调用仍走 active 平台。
 
 镜像 gui/bridge/service_bridge.py 的聚合 + 生命周期角色;传输用 Streamable HTTP(app 常驻,
 作为 in-process asyncio 服务复用同一事件循环)。
@@ -138,15 +141,29 @@ class LiveStudioMcpServer(AsyncServiceLifecycleMixin):
     def platform_tools(self) -> list[tuple[str, str, list[mcp_types.Tool]]]:
         """枚举所有登记平台及其工具,供 GUI 展示。
 
-        返回每项为 (平台登记名, 平台说明, 该平台工具列表)。固有工具不在此列(它们与平台无关)。
+        返回每项为 (平台登记名, 平台说明, 该平台特有工具列表)。固有工具(元信息 + 通用动词)不在此列(它们与平台无关)。
         """
 
         return [(reg.name, reg.toolset.description, reg.toolset.tools()) for reg in self._registrations]
 
     def builtin_tools(self) -> list[mcp_types.Tool]:
-        """返回三个固有工具定义(供 GUI 单列展示)。"""
+        """返回固有工具定义(供 GUI 单列展示):元信息3个 + 通用动词。
 
-        return _builtin_tools()
+        通用动词平台无关、各工具集相同,取 active 平台版本(无 active 时取首个登记的);
+        元信息(list/switch/get_active)恒定。平台特有工具不在此列,见 platform_tools()。
+        """
+
+        return _builtin_tools() + self._universal_tools()
+
+    def _universal_tools(self) -> list[mcp_types.Tool]:
+        """通用动词定义:取 active 平台版本,无 active 时取首个登记的(各平台相同)。"""
+
+        source = (
+            self._active.toolset
+            if self._active is not None
+            else self._registrations[0].toolset if self._registrations else None
+        )
+        return source.universal_tools() if source is not None else []
 
     async def apply_config(self, config: McpConfig) -> None:
         """校验并写入新的监听配置,持久化后按需重启传输使其生效。
@@ -163,33 +180,50 @@ class LiveStudioMcpServer(AsyncServiceLifecycleMixin):
 
 
     def _register_handlers(self) -> None:
-        """注册 list_tools / call_tool handler(闭包捕获 self,随 active 动态返回)。"""
+        """注册 list_tools / call_tool handler(薄壳,逻辑在各 _*_impl 方法内,便于直测)。"""
 
         @self._server.list_tools()
         async def _list_tools() -> list[mcp_types.Tool]:
-            tools = _builtin_tools()
-            if self._active is not None:
-                tools.extend(self._active.toolset.tools())
-            return tools
+            return self._list_tools_impl()
 
         @self._server.call_tool()
         async def _call_tool(name: str, arguments: dict[str, object]) -> mcp_types.CallToolResult:
-            if name in BUILTIN_NAMES:
-                # 固有工具与平台无关,不注入平台实时状态。
-                return _to_tool_result(await self._call_builtin(name, arguments))
-            if self._active is None:
-                raise ValueError("尚未选择平台，请先调用 switch_platform。")
-            toolset = self._active.toolset
-            try:
-                result = await toolset.call(name, arguments)
-            except KeyError as exc:
-                raise ValueError(f"当前平台无此工具：{name}") from exc
-            # 动态注入:每次平台工具调用都把该平台实时状态追加进结果(不经 client 缓存,永远实时)。
-            context = await toolset.runtime_context()
-            return _to_tool_result(result, context=context)
+            return await self._dispatch_tool(name, arguments)
+
+    def _list_tools_impl(self) -> list[mcp_types.Tool]:
+        """当前对 LLM 可见的工具列表:元信息3 + 通用动词 + 所有登记平台的特有工具(恒定全表)。
+
+        恒定不随 active 变化:缓存型客户端首次拉取即见全部,不依赖 list_changed 重拉。
+        通用动词平台无关、取一代表版本;各平台特有工具各自列出(多平台时须全局不重名)。
+        """
+
+        # 元信息3 + 通用动词(恒定可见,平台无关) + 各登记平台特有工具(恒定全列)。
+        tools = _builtin_tools()
+        tools.extend(self._universal_tools())
+        for reg in self._registrations:
+            tools.extend(reg.toolset.tools())
+        return tools
+
+    async def _dispatch_tool(self, name: str, arguments: dict[str, object]) -> mcp_types.CallToolResult:
+        """按工具名分发:元信息走 _call_builtin(无 active、无状态);其余走 active 平台 + 注入状态。"""
+
+        if name in BUILTIN_NAMES:
+            # 元信息工具(list/switch/get_active):与平台无关、无需 active、不注入状态。
+            return _to_tool_result(await self._call_builtin(name, arguments))
+        if self._active is None:
+            raise ValueError("尚未选择平台，请先调用 switch_platform。")
+        toolset = self._active.toolset
+        try:
+            result = await toolset.call(name, arguments)
+        except KeyError as exc:
+            raise ValueError(f"当前平台无此工具：{name}") from exc
+        # 动态注入:通用动词与平台特有工具都走 active 平台,每次调用把该平台实时状态
+        # 追加进结果(不经 client 缓存,永远实时)。
+        context = await toolset.runtime_context()
+        return _to_tool_result(result, context=context)
 
     async def _call_builtin(self, name: str, arguments: dict[str, object]) -> object:
-        """处理三个固有工具。switch_platform 改 active 后通知工具列表变更。"""
+        """处理三个固有工具。switch_platform 仅改 active(工具列表恒定全表,不再发 list_changed)。"""
 
         if name == LIST_PLATFORMS:
             return [
@@ -210,22 +244,8 @@ class LiveStudioMcpServer(AsyncServiceLifecycleMixin):
                 raise ValueError(f"未知平台：{target}。可用平台：{known}")
             if registration is not self._active:
                 self._active = registration
-                await self._notify_tools_changed()
             return {"platform": registration.name, "switched": True}
         raise ValueError(f"未知固有工具：{name}")
-
-    async def _notify_tools_changed(self) -> None:
-        """向当前请求所属会话广播工具列表变更,触发 client 重新拉取 tools/list。
-
-        仅在请求上下文内可取到会话;在该上下文外(无活动请求)静默跳过。
-        """
-
-        try:
-            session = self._server.request_context.session
-        except LookupError:
-            return
-        with contextlib.suppress(Exception):
-            await session.send_tool_list_changed()
 
     # --- 传输与生命周期(Streamable HTTP,in-process) ---
 

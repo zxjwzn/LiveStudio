@@ -12,6 +12,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Generic, TypeVar
 
 from livestudio.services.animations import AnimationManager
@@ -35,6 +36,51 @@ class ControllerStatus:
 # 模型变更监听器：参数为 (model_id, model_name)。后端只负责广播「模型已就绪/已切换」，
 # 不关心由谁消费——GUI 适配器等外部观察者据此自我刷新，从而与本应用解耦。
 ModelChangedListener = Callable[[str, str], Awaitable[None] | None]
+
+
+class PlatformStateKind(Enum):
+    """平台运行态变更种类(供上层观察者同步 GUI 等外部态)。
+
+    后端为单一事实源:GUI 按钮与 MCP 工具都经 app 公开方法变更态,后端据此广播,GUI
+    桥接订阅后 emit Qt 信号--两条路径驱动的变更都能反映到界面(MCP 不再因绕过 bridge
+    而让 GUI 停留在旧态,诱发重复连接/重复运行控制器)。
+    """
+
+    CONNECTED = auto()  # 平台已连接并加载模型
+    DISCONNECTED = auto()  # 平台已断开(待机控制器随之停止)
+    CONTROLLERS_STARTED = auto()  # 待机动画控制器整体已启动
+    CONTROLLERS_STOPPED = auto()  # 待机动画控制器整体已停止
+    CONTROLLER_CHANGED = auto()  # 单个控制器运行态变更
+    NATIVE_EXPRESSION_CHANGED = auto()  # 单个原生表情激活态变更(如 VTS exp3)
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformStateEvent:
+    """一次平台运行态变更:种类 + (CONTROLLER_CHANGED/NATIVE_EXPRESSION_CHANGED)名与态。
+
+    name/active 为通用载荷:CONTROLLER_CHANGED 时 active 即「是否运行」,
+    NATIVE_EXPRESSION_CHANGED 时 active 即「是否激活」。其余种类不附带载荷。
+    """
+
+    kind: PlatformStateKind
+    name: str | None = None
+    active: bool | None = None
+
+    @classmethod
+    def controller(cls, name: str, running: bool) -> PlatformStateEvent:
+        """构造单个控制器运行态变更事件。"""
+
+        return cls(PlatformStateKind.CONTROLLER_CHANGED, name=name, active=running)
+
+    @classmethod
+    def native_expression(cls, name: str, active: bool) -> PlatformStateEvent:
+        """构造单个原生表情激活态变更事件。"""
+
+        return cls(PlatformStateKind.NATIVE_EXPRESSION_CHANGED, name=name, active=active)
+
+
+# 平台运行态监听器:参数为变更事件。同步或异步监听器都支持,异常隔离不影响主流程。
+StateChangeListener = Callable[[PlatformStateEvent], Awaitable[None] | None]
 
 TPlatform = TypeVar("TPlatform", bound=PlatformService)
 TModelConfig = TypeVar("TModelConfig", bound=PlatformModelConfig)
@@ -65,6 +111,7 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         self.animation_manager = animation_manager
         self.animation_manager.register_runtime(self.platform)
         self._model_changed_listener: ModelChangedListener | None = None
+        self._state_changed_listener: StateChangeListener | None = None
 
     def set_model_changed_listener(self, listener: ModelChangedListener | None) -> None:
         """注册模型变更监听器（首次加载与运行时换模型都会触发）。
@@ -73,6 +120,15 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         """
 
         self._model_changed_listener = listener
+
+    def set_state_changed_listener(self, listener: StateChangeListener | None) -> None:
+        """注册平台运行态变更监听器(connect/disconnect/控制器启停等都会触发)。
+
+        传 None 解除监听。监听器异常被隔离,不影响主流程。GUI 桥接据此同步连接徽标/
+        控制器开关,使 MCP 等非 GUI 调用方驱动的变更也能反映到界面。
+        """
+
+        self._state_changed_listener = listener
 
     async def _do_start(self) -> None:
         """启动平台相关应用（含资源准备）。
@@ -100,6 +156,7 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
 
         await self.platform.start()
         await self.load_current_model()
+        await self._notify_state(PlatformStateEvent(PlatformStateKind.CONNECTED))
 
     async def disconnect(self) -> None:
         """断开平台:先停动画控制器,再停平台(镜像 _do_stop 顺序)。"""
@@ -107,16 +164,19 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         await self.animation_manager.stop()
         await self.platform.stop()
         self._on_disconnected()
+        await self._notify_state(PlatformStateEvent(PlatformStateKind.DISCONNECTED))
 
     async def start_controllers(self) -> None:
         """启动动画控制器(待机动画)。需平台已连接。"""
 
         await self.animation_manager.start()
+        await self._notify_state(PlatformStateEvent(PlatformStateKind.CONTROLLERS_STARTED))
 
     async def stop_controllers(self) -> None:
         """停止动画控制器(幂等,未运行时为空操作)。"""
 
         await self.animation_manager.stop()
+        await self._notify_state(PlatformStateEvent(PlatformStateKind.CONTROLLERS_STOPPED))
 
     # --- 平台无关语义动作(供 GUI / MCP 等上层消费者直接调用,不下探 runtime/platform) ---
 
@@ -163,7 +223,9 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
             await runtime.start_controller(name)
         else:
             await runtime.stop_controller(name)
-        return runtime.get_controller(name).is_running
+        actual = runtime.get_controller(name).is_running
+        await self._notify_state(PlatformStateEvent.controller(name, actual))
+        return actual
 
     def available_emotions(self) -> list[str]:
         """返回可触发的情绪标识列表(EmotionKind 值,如 "joy"/"anger"/...)。
@@ -222,6 +284,19 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
                 await result
         except Exception:
             logger.exception("模型变更监听器执行失败，已隔离")
+
+    async def _notify_state(self, event: PlatformStateEvent) -> None:
+        """广播平台运行态变更:同步或异步监听器都支持,异常隔离不影响主流程。"""
+
+        listener = self._state_changed_listener
+        if listener is None:
+            return
+        try:
+            result = listener(event)
+            if isinstance(result, Awaitable):
+                await result
+        except Exception:
+            logger.exception("平台运行态监听器执行失败,已隔离")
 
     # --- 平台特有钩子(子类实现/覆盖) ---
 
