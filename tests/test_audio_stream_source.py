@@ -715,3 +715,114 @@ async def test_tts_speak_replaces_old_finishes_before_new_begin(monkeypatch) -> 
     assert events[0].text == "first"
     assert events[2].text == "second"
     await source.stop()
+
+
+async def test_tts_stop_speaking_invokes_on_interrupt(monkeypatch) -> None:
+    """stop_speaking / 新 speak 调用 on_interrupt 冲刷播放残留"""
+
+    monkeypatch.setattr(tts_module, "make_engine", lambda _config, **kw: _SlowEngine(**kw))
+    calls: list[int] = []
+    source = TTSAudioStreamSource(
+        TTSAudioStreamConfig(),
+        SubtitleStream(),
+        on_interrupt=lambda: calls.append(1),
+    )
+    await source.start()
+    await source.speak("hi")  # speak 内部先 stop_speaking → flush 一次
+    await asyncio.sleep(0.02)
+    assert calls == [1]
+    await source.stop_speaking()
+    assert calls == [1, 1]
+    await source.stop_speaking()
+    assert calls == [1, 1, 1]
+    await source.stop()
+
+
+async def test_tts_speak_calls_on_prepare(monkeypatch) -> None:
+    """speak 在首包上总线前 await on_prepare(打开播放设备)"""
+
+    monkeypatch.setattr(tts_module, "make_engine", lambda _config, **kw: _SlowEngine(**kw))
+    order: list[str] = []
+
+    async def _prepare() -> None:
+        order.append("prepare")
+
+    source = TTSAudioStreamSource(
+        TTSAudioStreamConfig(),
+        SubtitleStream(),
+        on_prepare=_prepare,
+        on_interrupt=lambda: order.append("interrupt"),
+    )
+    await source.start()
+    await source.speak("hi")
+    await asyncio.sleep(0.02)
+    # stop_speaking(无任务) → interrupt; prepare; 启动合成
+    assert order[0] == "interrupt"
+    assert "prepare" in order
+    assert order.index("prepare") > order.index("interrupt")
+    await source.stop_speaking()
+    await source.stop()
+
+
+async def test_tts_present_clock_feeds_bus_at_frame_rate(monkeypatch) -> None:
+    """大引擎块经呈现时钟切帧上总线:sleep 期间总线持续有块(嘴型同源)"""
+
+    frames = 24000  # 1s @24k
+    outputs = [TtsAudioOutput(data=np.full((frames, 1), 0.3, dtype=np.float32), frames=frames)]
+    monkeypatch.setattr(
+        tts_module,
+        "make_engine",
+        lambda _config, **kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
+    )
+    source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000), SubtitleStream())
+    sub = source.subscribe(queue_maxsize=256)
+    await source.start()
+    await asyncio.sleep(0.02)
+    while not sub.queue.empty():
+        sub.queue.get_nowait()
+
+    await source.speak("feed")
+    got = 0
+    deadline = asyncio.get_running_loop().time() + 0.5
+    while asyncio.get_running_loop().time() < deadline:
+        try:
+            chunk = await asyncio.wait_for(sub.queue.get(), timeout=0.08)
+        except TimeoutError:
+            break
+        if float(np.max(np.abs(chunk.data))) > 0.0:
+            got += 1
+            # 每帧约 1/60s @24k = 400 samples
+            assert chunk.frames <= 400 + 1
+    assert got >= 10, f"expected continuous present-clock chunks, got {got}"
+    await source.stop_speaking()
+    await source.stop()
+
+
+async def test_tts_present_does_not_burst_whole_utterance(monkeypatch) -> None:
+    """呈现时钟不会把 1s 音频在 0.1s 内全部塞进总线"""
+
+    frames = 24000
+    outputs = [TtsAudioOutput(data=np.full((frames, 1), 0.2, dtype=np.float32), frames=frames)]
+    monkeypatch.setattr(
+        tts_module,
+        "make_engine",
+        lambda _config, **kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
+    )
+    source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000), SubtitleStream())
+    sub = source.subscribe(queue_maxsize=256)
+    await source.start()
+    await asyncio.sleep(0.02)
+    while not sub.queue.empty():
+        sub.queue.get_nowait()
+
+    await source.speak("pace")
+    await asyncio.sleep(0.15)
+    non_silent = 0
+    while not sub.queue.empty():
+        chunk = sub.queue.get_nowait()
+        if float(np.max(np.abs(chunk.data))) > 0.0:
+            non_silent += 1
+    # 0.15s * 60fps ≈ 9 帧,允许抖动;绝不是 60 帧整秒
+    assert 4 <= non_silent <= 20
+    await source.stop_speaking()
+    await source.stop()

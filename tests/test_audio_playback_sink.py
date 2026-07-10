@@ -21,8 +21,6 @@ from livestudio.services.audio_stream.playback import (
 
 
 class _DummySource(AudioStreamSource):
-    """最小音频源:仅暴露 _publish_chunk,不接真实设备"""
-
     async def _do_start(self) -> None:
         pass
 
@@ -34,8 +32,6 @@ class _DummySource(AudioStreamSource):
 
 
 class _FakeOutputStream:
-    """sd.OutputStream 替身:记录构造参数,start/stop/close 不接真实设备"""
-
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
         self.started = False
@@ -87,8 +83,6 @@ def _chunk(
 
 
 def test_audio_chunk_requires_source_kind() -> None:
-    """AudioChunk 必须带 source 标识(无默认),杜绝无源块"""
-
     with pytest.raises(TypeError):
         AudioChunk(  # type: ignore[call-arg]
             frames=1,
@@ -99,16 +93,12 @@ def test_audio_chunk_requires_source_kind() -> None:
 
 
 def test_playback_config_defaults() -> None:
-    """默认启用、仅放行 TTS(避免回放麦克风啸叫)"""
-
     config = PlaybackConfig()
     assert config.enabled is True
     assert config.sources == [AudioSourceKind.TTS]
 
 
 def test_list_output_devices_filters_input_only(monkeypatch) -> None:
-    """仅返回有输出声道的设备;纯输入设备(麦克风)被排除"""
-
     monkeypatch.setattr(
         playback_module.sd,
         "query_devices",
@@ -125,32 +115,26 @@ def test_list_output_devices_filters_input_only(monkeypatch) -> None:
 
 
 def test_convert_int16_to_float32_stereo_volume() -> None:
-    """int16 单声道 -> float32、复制到 2 声道、应用音量"""
-
     sink = AudioPlaybackSink(_DummySource(), PlaybackConfig(channels=2, volume=0.5, output_device=0))
     sink._samplerate = 48000
     chunk = _chunk(16384, AudioSourceKind.TTS, channels=1, dtype=np.int16)
     pcm = sink._convert(chunk)
 
     assert pcm.dtype == np.float32
-    assert pcm.size == 128 * 2  # 单声道复制到 2 声道
+    assert pcm.size == 128 * 2
     expected = (16384 / 32768.0) * 0.5
     assert np.allclose(pcm.reshape(128, 2), expected)
 
 
 def test_convert_downsamples() -> None:
-    """块采样率高于输出采样率时下采样(48k -> 24k,帧数减半)"""
-
     sink = AudioPlaybackSink(_DummySource(), PlaybackConfig(channels=1, output_device=0))
     sink._samplerate = 24000
     chunk = _chunk(0.0, AudioSourceKind.TTS, samplerate=48000, channels=1)
     pcm = sink._convert(chunk)
-    assert pcm.size == 64  # 128 帧 @48k -> 64 帧 @24k
+    assert pcm.size == 64
 
 
 def test_convert_mono_to_stereo_mixdown() -> None:
-    """多声道块混音到单声道(取均值)"""
-
     sink = AudioPlaybackSink(_DummySource(), PlaybackConfig(channels=1, output_device=0))
     sink._samplerate = 48000
     data = np.full((128, 2), 0.4, dtype=np.float32)
@@ -161,8 +145,6 @@ def test_convert_mono_to_stereo_mixdown() -> None:
 
 
 async def test_sink_filters_by_source_kind(monkeypatch) -> None:
-    """仅放行 sources 内的源:TTS 块开流并入缓冲,麦克风块被跳过"""
-
     monkeypatch.setattr(playback_module.sd, "OutputStream", _FakeOutputStream)
     monkeypatch.setattr(
         playback_module.sd,
@@ -175,9 +157,9 @@ async def test_sink_filters_by_source_kind(monkeypatch) -> None:
     sink = AudioPlaybackSink(source, config)
     await sink.start()
 
-    source.emit(_chunk(0.5, AudioSourceKind.MICROPHONE))  # 被过滤
-    source.emit(_chunk(0.5, AudioSourceKind.TTS))  # 放行
-    await asyncio.sleep(0.1)  # 让 drain 处理(含 to_thread 开流)
+    source.emit(_chunk(0.5, AudioSourceKind.MICROPHONE))
+    source.emit(_chunk(0.5, AudioSourceKind.TTS))
+    await asyncio.sleep(0.1)
 
     assert sink._stream is not None
     assert sink._buffer_frames > 0
@@ -186,12 +168,57 @@ async def test_sink_filters_by_source_kind(monkeypatch) -> None:
 
 
 async def test_sink_lifecycle_without_audio(monkeypatch) -> None:
-    """无放行块时输出流懒开启(start/stop 生命周期正常,is_started 翻转)"""
+    """无 prepare、无放行块时输出流懒开启(流未开)"""
 
     monkeypatch.setattr(playback_module.sd, "OutputStream", _FakeOutputStream)
     sink = AudioPlaybackSink(_DummySource(), PlaybackConfig(output_device=0))
     await sink.start()
     assert sink.is_started
-    assert sink._stream is None  # 无音频,流未开
+    assert sink._stream is None
     await sink.stop()
     assert not sink.is_started
+
+
+async def test_prepare_opens_stream_without_cushion(monkeypatch) -> None:
+    """prepare 打开输出流且不预填静音垫(唇音同源时钟)"""
+
+    monkeypatch.setattr(playback_module.sd, "OutputStream", _FakeOutputStream)
+    monkeypatch.setattr(
+        playback_module.sd,
+        "query_devices",
+        lambda *args: _device_dict("out") if args else [_device_dict("out")],
+    )
+    sink = AudioPlaybackSink(_DummySource(), PlaybackConfig(sources=[AudioSourceKind.TTS], output_device=0))
+    await sink.start()
+    assert sink._stream is None
+    await sink.prepare()
+    assert sink._stream is not None
+    assert sink._buffer_frames == 0  # 无静音垫
+    await sink.stop()
+
+
+async def test_flush_clears_buffer_and_subscription_queue(monkeypatch) -> None:
+    monkeypatch.setattr(playback_module.sd, "OutputStream", _FakeOutputStream)
+    monkeypatch.setattr(
+        playback_module.sd,
+        "query_devices",
+        lambda *args: _device_dict("out") if args else [_device_dict("out")],
+    )
+
+    source = _DummySource()
+    sink = AudioPlaybackSink(source, PlaybackConfig(sources=[AudioSourceKind.TTS], output_device=0))
+    await sink.start()
+    await sink.prepare()
+    source.emit(_chunk(0.5, AudioSourceKind.TTS))
+    await asyncio.sleep(0.1)
+    assert sink._buffer_frames > 0
+
+    assert sink._subscription is not None
+    sink._subscription.queue.put_nowait(_chunk(0.9, AudioSourceKind.TTS))
+    assert not sink._subscription.queue.empty()
+
+    sink.flush()
+    assert sink._buffer_frames == 0
+    assert sink._remainder is None
+    assert sink._subscription.queue.empty()
+    await sink.stop()

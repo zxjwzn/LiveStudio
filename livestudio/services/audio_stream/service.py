@@ -100,6 +100,18 @@ class AudioStreamRouter(AudioStreamSource):
 
         return await asyncio.to_thread(AudioPlaybackSink.list_output_devices)
 
+    def flush_playback(self) -> None:
+        """冲刷音频播放未播缓冲与待处理块(TTS 打断/新 speak 时由 TTS 源 on_interrupt 调用)"""
+
+        if self._playback_sink is not None:
+            self._playback_sink.flush()
+
+    async def prepare_playback(self) -> None:
+        """为即将开始的 TTS 呈现打开输出流(首包上总线前调用,与嘴型共享起点)"""
+
+        if self._playback_sink is not None:
+            await self._playback_sink.prepare()
+
     async def apply_playback_config(self) -> None:
         """按最新 playback 配置重建音频播放订阅方(输出设备/音量/过滤源等变更生效)。
 
@@ -112,6 +124,7 @@ class AudioStreamRouter(AudioStreamSource):
         if self.is_started and self.config.playback.enabled:
             self._playback_sink = AudioPlaybackSink(self, self.config.playback)
             await self._playback_sink.start()
+        self._bind_tts_hooks()
 
     async def _do_start(self) -> None:
         await self._ensure_sources_built()
@@ -123,9 +136,31 @@ class AudioStreamRouter(AudioStreamSource):
         """按配置惰性启动音频播放订阅方(订阅总线,输出流在首个放行块到达时才开)"""
 
         if self._playback_sink is not None or not self.config.playback.enabled:
+            self._bind_tts_hooks()
             return
         self._playback_sink = AudioPlaybackSink(self, self.config.playback)
         await self._playback_sink.start()
+        self._bind_tts_hooks()
+
+    def _bind_tts_hooks(self) -> None:
+        """把 playback.prepare/flush 挂到 TTS 源(源 reload 与 sink 重建后重绑)"""
+
+        if self._tts_source is None:
+            return
+        if hasattr(self._tts_source, "set_on_interrupt"):
+            self._tts_source.set_on_interrupt(self.flush_playback)
+        if hasattr(self._tts_source, "set_on_prepare"):
+            self._tts_source.set_on_prepare(self.prepare_playback)
+
+    def _make_tts_source(self) -> TTSAudioStreamSource:
+        """构造 TTS 源并挂上 prepare/打断回调"""
+
+        return TTSAudioStreamSource(
+            self.config.tts,
+            self._subtitle_stream,
+            on_interrupt=self.flush_playback,
+            on_prepare=self.prepare_playback,
+        )
 
     async def _ensure_sources_built(self) -> None:
         """重读配置并构建音频源与活动源订阅（幂等：已构建则跳过）。
@@ -139,7 +174,7 @@ class AudioStreamRouter(AudioStreamSource):
         await self.config_manager.load()
 
         self._microphone_source = MicrophoneAudioStreamSource(self.config.microphone)
-        self._tts_source = TTSAudioStreamSource(self.config.tts, self._subtitle_stream)
+        self._tts_source = self._make_tts_source()
         self._sources = {
             AudioSourceKind.MICROPHONE: self._microphone_source,
             AudioSourceKind.TTS: self._tts_source,
@@ -227,9 +262,9 @@ class AudioStreamRouter(AudioStreamSource):
         await self._ensure_sources_built()
         old_source = self._sources.get(source_kind)
         if source_kind is AudioSourceKind.MICROPHONE:
-            new_source = MicrophoneAudioStreamSource(self.config.microphone)
+            new_source: AudioStreamSource = MicrophoneAudioStreamSource(self.config.microphone)
         else:
-            new_source = TTSAudioStreamSource(self.config.tts, self._subtitle_stream)
+            new_source = self._make_tts_source()
         if old_source is None:
             self._install_source(source_kind, new_source)
             return
