@@ -10,6 +10,7 @@ from livestudio.config import ConfigManager
 from livestudio.utils.log import logger
 from livestudio.utils.paths import config_path
 
+from ..subtitle import SubtitleStream
 from .base import AudioStreamSource
 from .config import AudioStreamRouterConfig
 from .models import (
@@ -41,6 +42,8 @@ class AudioStreamRouter(AudioStreamSource):
         self._forward_task: asyncio.Task[None] | None = None
         self._shutdown_task: asyncio.Task[None] | None = None
         self._playback_sink: AudioPlaybackSink | None = None
+        # 字幕事件总线(顶层持有,跨 TTS 源 reload 存活,保住将来网页订阅)
+        self._subtitle_stream = SubtitleStream()
 
     @property
     def config(self) -> AudioStreamRouterConfig:
@@ -86,6 +89,12 @@ class AudioStreamRouter(AudioStreamSource):
             raise RuntimeError("音频流路由器尚未启动")
         return self._tts_source
 
+    @property
+    def subtitle_stream(self) -> SubtitleStream:
+        """返回字幕事件总线(TTS 推送字幕段,将来网页订阅)"""
+
+        return self._subtitle_stream
+
     async def list_output_devices(self) -> list[OutputDeviceInfo]:
         """枚举系统输出设备,与路由器生命周期解耦(供音频播放选设备下拉)"""
 
@@ -130,7 +139,7 @@ class AudioStreamRouter(AudioStreamSource):
         await self.config_manager.load()
 
         self._microphone_source = MicrophoneAudioStreamSource(self.config.microphone)
-        self._tts_source = TTSAudioStreamSource(self.config.tts)
+        self._tts_source = TTSAudioStreamSource(self.config.tts, self._subtitle_stream)
         self._sources = {
             AudioSourceKind.MICROPHONE: self._microphone_source,
             AudioSourceKind.TTS: self._tts_source,
@@ -220,7 +229,7 @@ class AudioStreamRouter(AudioStreamSource):
         if source_kind is AudioSourceKind.MICROPHONE:
             new_source = MicrophoneAudioStreamSource(self.config.microphone)
         else:
-            new_source = TTSAudioStreamSource(self.config.tts)
+            new_source = TTSAudioStreamSource(self.config.tts, self._subtitle_stream)
         if old_source is None:
             self._install_source(source_kind, new_source)
             return

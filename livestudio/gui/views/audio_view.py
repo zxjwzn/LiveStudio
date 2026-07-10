@@ -12,6 +12,7 @@ from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
     InfoBar,
     InfoBarPosition,
+    LineEdit,
     PushButton,
     SegmentedWidget,
     SingleDirectionScrollArea,
@@ -97,6 +98,23 @@ class AudioView(QWidget):
         self._tts_editor.saved.connect(self._on_tts_saved)
         self._tts_editor.validationFailed.connect(self._on_validation_failed)
         self._stack.addWidget(self._tts_editor)
+
+        # --- TTS 测试(需先切到 TTS 音源才出声) ---
+        test_row = QHBoxLayout()
+        test_row.setSpacing(12)
+        test_row.addWidget(StrongBodyLabel("测试 TTS", content))
+        self._tts_text = LineEdit(content)
+        self._tts_text.setPlaceholderText("输入文本,需先切到 TTS 音源")
+        test_row.addWidget(self._tts_text, 1)
+        self._speak_btn = PushButton("播放", content)
+        self._speak_btn.setIcon(FIF.PLAY)
+        self._speak_btn.clicked.connect(self._on_speak)
+        test_row.addWidget(self._speak_btn)
+        self._stop_btn = PushButton("停止", content)
+        self._stop_btn.setIcon(FIF.PAUSE)
+        self._stop_btn.clicked.connect(self._on_stop_speaking)
+        test_row.addWidget(self._stop_btn)
+        layout.addLayout(test_row)
         layout.addStretch(1)
 
         audio.saveSucceeded.connect(self._on_save_succeeded)
@@ -131,6 +149,14 @@ class AudioView(QWidget):
 
     def _on_reload(self) -> None:
         run_guarded(self._audio.reload_source())
+
+    def _on_speak(self) -> None:
+        text = self._tts_text.text().strip()
+        if text:
+            run_guarded(self._audio.speak(text))
+
+    def _on_stop_speaking(self) -> None:
+        run_guarded(self._audio.stop_speaking())
 
     # --- 设备候选(仅麦克风) ---
 

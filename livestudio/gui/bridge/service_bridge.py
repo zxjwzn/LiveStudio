@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QObject
 
-from livestudio.services import AudioSourceKind, AudioStreamRouter
+from livestudio.services import AudioStreamRouter
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.utils.log import logger
 
@@ -56,11 +56,10 @@ class ServiceBridge(QObject):
         self.platforms: list[PlatformBridge] = [reg.bridge for reg in self._registrations]
 
     async def startup(self) -> None:
-        """注册日志 sink 并 eager 启动音频(切到麦克风,使电平即时可见)"""
+        """注册日志 sink 并启动音频(按配置的激活源 config.source,使电平即时可见)"""
 
         self.logs.start()
-        await self._audio_router.start()
-        await self._audio_router.switch_source(AudioSourceKind.MICROPHONE)
+        await self._audio_router.start()  # 启动配置里的激活源(不强制麦克风,尊重用户选择)
         self.audio.start_metering()
 
     async def shutdown(self) -> None:

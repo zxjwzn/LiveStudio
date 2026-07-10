@@ -204,3 +204,14 @@ class AudioController(QObject):
             self.playbackSaveFailed.emit(str(exc))
             return
         self.playbackSaveSucceeded.emit()
+
+    async def speak(self, text: str) -> None:
+        """触发一次 TTS 发声(音频发总线、字幕发字幕流)。
+
+        TTS 须为当前激活音频源才能听到声音/驱动唇形(无总线接管);否则仅字幕流更新。
+        """
+        await self._router.tts_source.speak(text)
+
+    async def stop_speaking(self) -> None:
+        """停止进行中的 TTS 发声"""
+        await self._router.tts_source.stop_speaking()
