@@ -101,6 +101,25 @@ class TTSAudioStreamSource(AudioStreamSource):
         block_frames = max(1, int(round(samplerate * _FRAME_SECONDS)))
         return samplerate, channels, block_frames
 
+    @staticmethod
+    def _crossfade_edge(
+        prev: NDArray[np.float32],
+        nxt: NDArray[np.float32],
+        *,
+        fade_frames: int,
+    ) -> NDArray[np.float32]:
+        """在 nxt 帧头部与 prev 尾部短 crossfade,抹平有声/静音硬切。"""
+
+        if fade_frames <= 0 or nxt.shape[0] == 0 or prev.shape[0] == 0:
+            return nxt
+        n = min(fade_frames, nxt.shape[0], prev.shape[0])
+        if n <= 0:
+            return nxt
+        out = np.array(nxt, copy=True, dtype=np.float32)
+        w = np.linspace(0.0, 1.0, n, dtype=np.float32).reshape(-1, 1)
+        out[:n] = prev[-n:] * (1.0 - w) + out[:n] * w
+        return out
+
     async def _idle_loop(self) -> None:
         samplerate, channels, block_frames = self._frame_params()
         delay = block_frames / samplerate
@@ -208,11 +227,16 @@ class TTSAudioStreamSource(AudioStreamSource):
         # 合成结束:呈现任务会把队列耗尽后自行收尾
 
     async def _present(self) -> None:
-        """固定帧率从队列取 PCM 上总线;队列空且合成已结束则 finish 并恢复空闲。"""
+        """固定帧率从队列取 PCM 上总线;队列空且合成已结束则 finish 并恢复空闲。
+
+        SSE 间隙插静音、句尾零填充时与上一帧做短 crossfade,避免有声/0 硬切爆破音。
+        """
 
         samplerate, channels, block_frames = self._frame_params()
         delay = block_frames / samplerate
+        fade_frames = max(1, int(round(samplerate * 0.003)))
         carry = np.zeros((0, channels), dtype=np.float32)
+        last = np.zeros((block_frames, channels), dtype=np.float32)
         try:
             while True:
                 # 尽量凑满一帧
@@ -243,8 +267,14 @@ class TTSAudioStreamSource(AudioStreamSource):
                     frame = np.ascontiguousarray(np.concatenate([carry, pad], axis=0))
                     carry = np.zeros((0, channels), dtype=np.float32)
                 else:
-                    # 合成仍在进行但本帧无足够音频(SSE 间隙):发静音保持总线节奏
+                    # 合成仍在进行但本帧无足够音频(SSE 间隙):静音帧
                     frame = np.zeros((block_frames, channels), dtype=np.float32)
+
+                prev_e = float(np.max(np.abs(last[-1]))) if last.size else 0.0
+                next_e = float(np.max(np.abs(frame[0]))) if frame.size else 0.0
+                if (prev_e > 1e-5) != (next_e > 1e-5):
+                    frame = self._crossfade_edge(last, frame, fade_frames=fade_frames)
+                last = frame
 
                 self._publish_chunk(
                     AudioChunk(

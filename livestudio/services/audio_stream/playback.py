@@ -11,7 +11,8 @@
 时钟契约:
 - 麦克风等实时源:块按采集时钟到达,本类短环缓冲丢最旧,懒开流。
 - TTS:源侧按实时节奏上总线(与嘴型同源时钟);调用方在首包前 await prepare()
-  打开输出流,本类不再塞静音垫(垫会让喇叭落后嘴型)。缓冲只吸收调度抖动。
+  打开输出流。首批真实音频前预填极短 jitter 静音(~1/60s)防欠载爆破音;
+  欠载恢复时短 fade-in 抹平 0->有声接缝。
 
 flush() 供打断丢弃未播残留。
 """
@@ -40,6 +41,10 @@ _BUFFER_SECONDS = 0.5
 _IDLE_CLOSE_SECONDS = 0.5
 # 订阅队列:须覆盖开流/转换尖峰,避免总线丢最旧
 _SUBSCRIPTION_QUEUE_MAXSIZE = 256
+# 首批真实音频前预填 jitter 静音(秒,约 1 帧):吸收调度抖动,远小于旧 100ms 垫
+_JITTER_SECONDS = 1.0 / 60.0
+# 欠载后恢复时的 fade-in 时长
+_FADE_IN_SECONDS = 0.003
 
 
 class OutputDeviceInfo(BaseModel):
@@ -107,6 +112,10 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         self._last_admit_monotonic: float = 0.0
         # prepare() 打开的会话:暂停空闲关流,直到缓冲耗尽后的自然结束或 flush/stop
         self._session_open = False
+        # 会话内尚未为「首批真实音频」垫过 jitter
+        self._need_jitter = False
+        # 欠载后下一笔真实音频做短 fade-in(采样帧数;0=不需要)
+        self._fade_in_remaining = 0
 
     async def prepare(self) -> None:
         """为即将开始的实时播放打开输出流并清空残留。
@@ -119,6 +128,8 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         if self._stream is None and not self._open_failed:
             await self._open_stream()
         self._session_open = self._stream is not None
+        self._need_jitter = self._session_open
+        self._fade_in_remaining = 0
 
     def flush(self) -> None:
         """丢弃未播 PCM 与订阅队列中的待处理块(打断/新 speak)。"""
@@ -136,6 +147,8 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         self._remainder = None
         self._last_frame = np.zeros(self._channels, dtype=np.float32)
         self._last_admit_monotonic = 0.0
+        self._need_jitter = False
+        self._fade_in_remaining = 0
 
     def _has_pending_audio(self) -> bool:
         with self._buffer_lock:
@@ -212,6 +225,9 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
                 self._last_admit_monotonic = time.monotonic()
                 pcm = self._convert(chunk)
                 if pcm.size > 0:
+                    if self._need_jitter:
+                        self._prefill_jitter()
+                        self._need_jitter = False
                     self._push_buffer(pcm)
             except Exception:
                 logger.exception("音频播放订阅处理音频块失败,已跳过该块")
@@ -270,6 +286,32 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         self._last_admit_monotonic = time.monotonic()
         logger.info("音频播放输出流已开启: {}ch @ {}Hz", self._channels, samplerate)
 
+    def _prefill_jitter(self) -> None:
+        """预填极短静音,吸收事件循环抖动,避免空缓冲开跑立刻欠载爆破音。"""
+
+        if self._samplerate is None:
+            return
+        frames = max(1, int(round(self._samplerate * _JITTER_SECONDS)))
+        self._push_buffer(np.zeros(frames * self._channels, dtype=np.float32))
+
+    def _apply_fade_in(self, pcm: np.ndarray) -> np.ndarray:
+        """对欠载后恢复的真实音频做短 fade-in,抹平 0->有声硬接缝。"""
+
+        if self._fade_in_remaining <= 0 or self._channels <= 0:
+            return pcm
+        samples = pcm.size
+        if samples <= 0:
+            return pcm
+        frames = samples // self._channels
+        if frames <= 0:
+            return pcm
+        n = min(self._fade_in_remaining, frames)
+        ramp = np.linspace(0.0, 1.0, n, dtype=np.float32)
+        shaped = pcm.reshape(frames, self._channels).copy()
+        shaped[:n] *= ramp.reshape(-1, 1)
+        self._fade_in_remaining -= n
+        return np.ascontiguousarray(shaped.reshape(-1))
+
     def _resolve_output_device(self) -> tuple[int | None, float]:
         if self._config.output_device is not None:
             info = sd.query_devices(self._config.output_device)
@@ -327,6 +369,8 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         return np.ascontiguousarray(f.reshape(-1))
 
     def _push_buffer(self, pcm: np.ndarray) -> None:
+        if self._fade_in_remaining > 0 and pcm.size > 0 and float(np.max(np.abs(pcm))) > 1e-8:
+            pcm = self._apply_fade_in(pcm)
         frames = pcm.size // self._channels
         if frames <= 0:
             return
@@ -370,9 +414,15 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
             if out_pos > 0:
                 self._last_frame = outdata[out_pos - 1].copy()
             if need > 0:
+                # 欠载:淡出到零,并标记恢复后短 fade-in,避免 0->有声硬切爆破音
                 fade = np.linspace(1.0, 0.0, need, dtype=np.float32).reshape(-1, 1)
                 outdata[out_pos:] = self._last_frame * fade
                 self._last_frame = np.zeros(self._channels, dtype=np.float32)
+                if self._samplerate is not None:
+                    self._fade_in_remaining = max(
+                        self._fade_in_remaining,
+                        max(1, int(round(self._samplerate * _FADE_IN_SECONDS))),
+                    )
         except Exception:
             with contextlib.suppress(Exception):
                 outdata[:] = 0.0

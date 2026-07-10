@@ -222,3 +222,41 @@ async def test_flush_clears_buffer_and_subscription_queue(monkeypatch) -> None:
     assert sink._remainder is None
     assert sink._subscription.queue.empty()
     await sink.stop()
+
+async def test_prepare_first_audio_prefills_jitter(monkeypatch) -> None:
+    """首批真实音频前预填 jitter 静音,缓冲非空但远小于旧 100ms 垫"""
+
+    monkeypatch.setattr(playback_module.sd, "OutputStream", _FakeOutputStream)
+    monkeypatch.setattr(
+        playback_module.sd,
+        "query_devices",
+        lambda *args: _device_dict("out", samplerate=48000.0) if args else [_device_dict("out")],
+    )
+    source = _DummySource()
+    sink = AudioPlaybackSink(
+        source,
+        PlaybackConfig(sources=[AudioSourceKind.TTS], output_device=0, samplerate=48000),
+    )
+    await sink.start()
+    await sink.prepare()
+    assert sink._buffer_frames == 0
+    source.emit(_chunk(0.5, AudioSourceKind.TTS, samplerate=48000))
+    await asyncio.sleep(0.05)
+    # jitter(~800@48k) + 真实块(可能重采样后仍 >0)
+    assert sink._buffer_frames > 0
+    # 不应再有 0.1s=4800 级静音垫
+    assert sink._buffer_frames < int(48000 * 0.08)
+    await sink.stop()
+
+
+def test_apply_fade_in_ramps_from_zero() -> None:
+    sink = AudioPlaybackSink(_DummySource(), PlaybackConfig(channels=1, output_device=0))
+    sink._channels = 1
+    sink._fade_in_remaining = 4
+    pcm = np.ones(8, dtype=np.float32)
+    out = sink._apply_fade_in(pcm)
+    assert out[0] == 0.0
+    assert out[3] == pytest.approx(1.0)
+    assert np.allclose(out[4:], 1.0)
+    assert sink._fade_in_remaining == 0
+
