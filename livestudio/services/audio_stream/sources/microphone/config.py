@@ -57,3 +57,4 @@ class MicrophoneAudioStreamConfig(BaseModel):
         description="输入延迟配置",
         json_schema_extra={"hidden": True},
     )
+

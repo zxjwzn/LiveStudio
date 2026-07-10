@@ -258,7 +258,7 @@ class MouthSyncControllerSettings(ControllerSettings):
         le=1.0,
         description="嘴部开合平滑系数",
     )
-    update_interval: float = Field(default=0.02, gt=0.0, description="更新间隔")
+    update_interval: float = Field(default=0.0167, gt=0.0, description="更新间隔")
     attack_duration: float = Field(default=0.02, ge=0.0, description="张嘴过渡时长")
     release_duration: float = Field(default=0.04, ge=0.0, description="闭嘴过渡时长")
     priority: int = Field(default=99, description="嘴型参数控制优先级")
@@ -352,3 +352,4 @@ class AnimationControllerSettingsConfig(BaseModel):
         default_factory=ExpressionControllerSettings,
         description="表情解算控制器配置",
     )
+
