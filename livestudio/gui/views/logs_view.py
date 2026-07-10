@@ -58,6 +58,10 @@ class LogsView(QWidget):
             controls_layout.addWidget(box)
         controls_layout.addStretch(1)
 
+        self._auto_scroll = CheckBox("自动滚动", controls)
+        self._auto_scroll.setChecked(True)
+        controls_layout.addWidget(self._auto_scroll)
+
         self._search = SearchLineEdit(controls)
         self._search.setPlaceholderText("搜索日志…")
         self._search.textChanged.connect(self._refilter)
@@ -112,7 +116,8 @@ class LogsView(QWidget):
         items[1].setForeground(color)
         for column, item in enumerate(items):
             self._table.setItem(row, column, item)
-        self._table.scrollToBottom()
+        if self._auto_scroll.isChecked():
+            self._table.scrollToBottom()
 
     def _trim_rows(self) -> None:
         while self._table.rowCount() > LOG_MAX_ROWS:
