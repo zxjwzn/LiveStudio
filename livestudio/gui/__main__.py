@@ -10,6 +10,7 @@ import qasync
 from PySide6.QtWidgets import QApplication
 
 from livestudio.gui.app import GuiApplication
+from livestudio.gui.core.async_utils import silence_proactor_connection_reset_on_close
 from livestudio.gui.core.resources import app_icon
 
 
@@ -19,6 +20,9 @@ def main() -> None:
     app.setWindowIcon(app_icon())
 
     event_loop = qasync.QEventLoop(app)
+    # 屏蔽 Windows proactor 套接字拆除时的良性 ConnectionResetError 噪音(停机收回 MCP
+    # 客户端长连等场景会刷屏;源于平台层,非项目代码)。
+    silence_proactor_connection_reset_on_close(event_loop)
 
     gui_app = GuiApplication()
     with event_loop:
