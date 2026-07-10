@@ -33,5 +33,5 @@ class AudioStreamRouterConfig(BaseModel):
     )
     playback: PlaybackConfig = Field(
         default_factory=PlaybackConfig,
-        description="本机播放订阅方配置（订阅总线、按源过滤后输出到本机设备）",
+        description="音频播放订阅方配置（订阅总线、按源过滤后输出到本机设备）",
     )

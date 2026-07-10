@@ -1,4 +1,4 @@
-"""本机播放页:配置音频总线的本机输出订阅方
+"""音频播放页:配置音频总线的本机输出订阅方
 
 订阅音频总线、按音频源标识过滤后用 sounddevice 输出到本机设备(可选虚拟声卡供 OBS
 采集)。独立成页,排在音频页之后、日志页之前。保存时写盘并重建播放订阅方,使新输出设备/
@@ -7,14 +7,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
-from qfluentwidgets import FluentIcon as FIF
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 from qfluentwidgets import (
     InfoBar,
     InfoBarPosition,
-    PushButton,
     SingleDirectionScrollArea,
-    StrongBodyLabel,
     SubtitleLabel,
 )
 
@@ -25,7 +22,7 @@ from livestudio.services.audio_stream.playback import PlaybackConfig
 
 
 class PlaybackView(QWidget):
-    """本机播放订阅方配置页"""
+    """音频播放订阅方配置页"""
 
     def __init__(self, audio: AudioController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -48,7 +45,7 @@ class PlaybackView(QWidget):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
-        layout.addWidget(SubtitleLabel("本机播放", content))
+        layout.addWidget(SubtitleLabel("音频播放", content))
 
         self._editor: ConfigEditor[PlaybackConfig] = ConfigEditor(
             PlaybackConfig,
@@ -60,21 +57,6 @@ class PlaybackView(QWidget):
         self._editor.validationFailed.connect(self._on_validation_failed)
         self._editor.reloadRequested.connect(self.refresh_devices)
         layout.addWidget(self._editor)
-
-        # --- 发声测试(占位正弦音;真实 engine 接入后改由 MCP speak 触发,此按钮可移除) ---
-        test_row = QHBoxLayout()
-        test_row.setSpacing(12)
-        test_row.addWidget(StrongBodyLabel("发声测试", content))
-        play_btn = PushButton("播放测试音", content)
-        play_btn.setIcon(FIF.PLAY)
-        play_btn.clicked.connect(self._on_play_test)
-        test_row.addWidget(play_btn)
-        stop_btn = PushButton("停止", content)
-        stop_btn.setIcon(FIF.PAUSE)
-        stop_btn.clicked.connect(self._on_stop_test)
-        test_row.addWidget(stop_btn)
-        test_row.addStretch(1)
-        layout.addLayout(test_row)
         layout.addStretch(1)
 
         # 用播放专用信号反馈,避免与音频页共享的 saveSucceeded/saveFailed 串扰
@@ -105,14 +87,6 @@ class PlaybackView(QWidget):
         if isinstance(config, PlaybackConfig):
             self._current = config
             run_guarded(self._audio.save_playback_config(config))
-
-    def _on_play_test(self) -> None:
-        """触发占位正弦音发声,验证总线接管 + 本机播放 + 唇形管道"""
-
-        run_guarded(self._audio.speak_test("测试"))
-
-    def _on_stop_test(self) -> None:
-        self._audio.stop_speaking()
 
     def _on_validation_failed(self, message: str) -> None:
         InfoBar.error("配置无效", message, duration=4000, position=InfoBarPosition.TOP_RIGHT, parent=self)

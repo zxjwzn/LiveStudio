@@ -1,4 +1,4 @@
-"""本机播放订阅方:订阅音频总线,按源标识过滤后用 sounddevice 在本机输出设备播放
+"""音频播放订阅方:订阅音频总线,按源标识过滤后用 sounddevice 在本机输出设备播放
 
 与电平表(AudioController)、唇形同步(MouthSyncController)同构--都是音频总线的下游
 订阅者。区别在于本类把放行的音频块写进底层输出流让人听见。
@@ -50,11 +50,11 @@ class OutputDeviceInfo(BaseModel):
 
 
 class PlaybackConfig(BaseModel):
-    """本机播放订阅方配置"""
+    """音频播放订阅方配置"""
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "VOLUME"})
 
-    enabled: bool = Field(default=True, description="启用本机播放订阅方")
+    enabled: bool = Field(default=True, description="启用音频播放订阅方")
     output_device: int | None = Field(
         default=None,
         ge=0,
@@ -77,12 +77,12 @@ class PlaybackConfig(BaseModel):
     volume: float = Field(default=1.0, ge=0.0, le=4.0, description="音量增益(1.0=原音量)")
     sources: list[AudioSourceKind] = Field(
         default_factory=lambda: [AudioSourceKind.TTS],
-        description="允许本机播放的音频源(默认仅 TTS;若加入麦克风需戴耳机以免啸叫)",
+        description="允许音频播放的音频源(默认仅 TTS;若加入麦克风需戴耳机以免啸叫)",
     )
 
 
 class AudioPlaybackSink(AsyncServiceLifecycleMixin):
-    """音频总线的本机播放订阅方:按源标识过滤后输出到本机设备"""
+    """音频总线的音频播放订阅方:按源标识过滤后输出到本机设备"""
 
     def __init__(self, router: AudioStreamSource, config: PlaybackConfig) -> None:
         self._router = router
@@ -175,7 +175,7 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
                 if pcm.size > 0:
                     self._push_buffer(pcm)
             except Exception:
-                logger.exception("本机播放订阅处理音频块失败,已跳过该块")
+                logger.exception("音频播放订阅处理音频块失败,已跳过该块")
 
     def _prefill_cushion(self) -> None:
         """预填一段静音缓冲垫,吸收节流抖动防欠载"""
@@ -209,7 +209,7 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
             self._buffer_frames = 0
         self._remainder = None
         self._last_frame = np.zeros(self._channels, dtype=np.float32)
-        logger.debug("本机播放输出流空闲关闭,下次播放将重开")
+        logger.debug("音频播放输出流空闲关闭,下次播放将重开")
 
     async def _open_stream(self) -> None:
         """在独立线程里解析输出设备并打开 OutputStream;失败则标记惰性空转"""
@@ -232,7 +232,7 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         try:
             stream, samplerate, buffer_max = await asyncio.to_thread(_build)
         except Exception:
-            logger.exception("打开音频输出流失败,本机播放将不可用")
+            logger.exception("打开音频输出流失败,音频播放将不可用")
             self._open_failed = True
             return
         self._stream = stream
@@ -242,7 +242,7 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         cushion = np.zeros(int(samplerate * _CUSHION_SECONDS) * self._channels, dtype=np.float32)
         self._push_buffer(cushion)
         self._last_tts_monotonic = time.monotonic()
-        logger.info("本机播放输出流已开启: {}ch @ {}Hz", self._channels, samplerate)
+        logger.info("音频播放输出流已开启: {}ch @ {}Hz", self._channels, samplerate)
 
     def _resolve_output_device(self) -> tuple[int | None, float]:
         """返回 (设备索引, 默认采样率);索引 None 表示系统默认输出"""

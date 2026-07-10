@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from typing import Any, cast
+from typing import cast
 
 import numpy as np
 
@@ -41,10 +41,6 @@ class AudioStreamRouter(AudioStreamSource):
         self._forward_task: asyncio.Task[None] | None = None
         self._shutdown_task: asyncio.Task[None] | None = None
         self._playback_sink: AudioPlaybackSink | None = None
-        # TTS 总线接管:speak 期间把转发临时切到 TTS(不停 mic、不落盘),结束后恢复。
-        self._speak_task: asyncio.Task[None] | None = None
-        self._tts_taken_over: bool = False
-        self._stopping: bool = False
 
     @property
     def config(self) -> AudioStreamRouterConfig:
@@ -91,12 +87,12 @@ class AudioStreamRouter(AudioStreamSource):
         return self._tts_source
 
     async def list_output_devices(self) -> list[OutputDeviceInfo]:
-        """枚举系统输出设备,与路由器生命周期解耦(供本机播放选设备下拉)"""
+        """枚举系统输出设备,与路由器生命周期解耦(供音频播放选设备下拉)"""
 
         return await asyncio.to_thread(AudioPlaybackSink.list_output_devices)
 
     async def apply_playback_config(self) -> None:
-        """按最新 playback 配置重建本机播放订阅方(输出设备/音量/过滤源等变更生效)。
+        """按最新 playback 配置重建音频播放订阅方(输出设备/音量/过滤源等变更生效)。
 
         与活动源无关:播放订阅方是总线抽头,重建只停/起自身,不触碰音频源与转发。
         """
@@ -108,85 +104,6 @@ class AudioStreamRouter(AudioStreamSource):
             self._playback_sink = AudioPlaybackSink(self, self.config.playback)
             await self._playback_sink.start()
 
-    async def speak(self, text: str, **opts: Any) -> None:
-        """触发一次 TTS 发声(取消进行中的旧发声后启动新的);立即返回,发声在后台进行。
-
-        TTS 经总线接管临时驱动下游(本机播放 + 唇形):活动源(如麦克风)物理流不停、
-        配置不落盘;发声结束(或被取消/被新发声取代)后恢复原活动源转发。取消旧发声会
-        先 await 其清理(串行),避免接管重绑竞态。
-        """
-
-        if self._speak_task is not None and not self._speak_task.done():
-            self._speak_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await self._speak_task
-            self._speak_task = None
-        self._speak_task = asyncio.ensure_future(self._speak_orchestrator(text, **opts))
-
-    def stop_speaking(self) -> None:
-        """取消进行中的发声(若有)"""
-
-        if self._speak_task is not None and not self._speak_task.done():
-            self._speak_task.cancel()
-
-    @property
-    def is_speaking(self) -> bool:
-        """是否有 TTS 发声进行中"""
-
-        return self._speak_task is not None and not self._speak_task.done()
-
-    async def _speak_orchestrator(self, text: str, **opts: Any) -> None:
-        """一次发声的全生命周期:接管总线 -> 跑发声 -> 恢复(取消/异常也恢复)"""
-
-        tts = self.tts_source
-        if not tts.is_started:
-            await tts.start()
-        utterance: asyncio.Task[None] | None = None
-        try:
-            await self._acquire_tts_forwarding()
-            utterance = tts.speak(text, **opts)
-            await utterance
-        finally:
-            if utterance is not None and not utterance.done():
-                utterance.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await utterance
-            await self._release_tts_forwarding()
-
-    async def _acquire_tts_forwarding(self) -> None:
-        """运行时把转发订阅临时切到 TTS(不停活动源、不落盘)。TTS 已是活动源时空操作。"""
-
-        if self._tts_taken_over or self._active_source_kind == AudioSourceKind.TTS:
-            return
-        await self._stop_forward_task()
-        if self._source_subscription is not None:
-            self.active_source.unsubscribe(self._source_subscription)
-            self._source_subscription = None
-        self._source_subscription = self.tts_source.subscribe(
-            queue_maxsize=self.config.queue_maxsize,
-        )
-        self._tts_taken_over = True
-        self._forward_task = asyncio.create_task(self._forward_chunks())
-        logger.info("TTS 总线接管:转发临时切到 TTS")
-
-    async def _release_tts_forwarding(self) -> None:
-        """结束 TTS 总线接管:恢复对活动源的转发。停机中只退订不重绑。"""
-
-        if not self._tts_taken_over:
-            return
-        self._tts_taken_over = False
-        await self._stop_forward_task()
-        if self._source_subscription is not None:
-            self.tts_source.unsubscribe(self._source_subscription)
-            self._source_subscription = None
-        if self._stopping:
-            return
-        self._source_subscription = self.active_source.subscribe(
-            queue_maxsize=self.config.queue_maxsize,
-        )
-        self._forward_task = asyncio.create_task(self._forward_chunks())
-        logger.info("TTS 总线接管结束:恢复活动源转发")
-
     async def _do_start(self) -> None:
         await self._ensure_sources_built()
         await self.active_source.start()
@@ -194,7 +111,7 @@ class AudioStreamRouter(AudioStreamSource):
         await self._start_playback_sink()
 
     async def _start_playback_sink(self) -> None:
-        """按配置惰性启动本机播放订阅方(订阅总线,输出流在首个放行块到达时才开)"""
+        """按配置惰性启动音频播放订阅方(订阅总线,输出流在首个放行块到达时才开)"""
 
         if self._playback_sink is not None or not self.config.playback.enabled:
             return
@@ -227,24 +144,14 @@ class AudioStreamRouter(AudioStreamSource):
     async def _do_stop(self) -> None:
         """停止并释放音频流路由器资源（唯一真正的退出入口）。"""
 
-        self._stopping = True
         await self._stop_forward_task()
-        # 取消进行中的 TTS 发声:其 orchestrator 的 finally 会 release(见 _stopping 分支,跳过重绑)
-        if self._speak_task is not None:
-            self._speak_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await self._speak_task
-            self._speak_task = None
         # 播放订阅方须先停:它持有对本路由器的订阅与输出流,在清空全部订阅前让它优雅退订
         if self._playback_sink is not None:
             await self._playback_sink.stop()
             self._playback_sink = None
-        # 转发订阅可能在 TTS(接管中)或活动源上,按当前归属退订
         if self._source_subscription is not None:
-            holder = self.tts_source if self._tts_taken_over else self.active_source
-            holder.unsubscribe(self._source_subscription)
+            self.active_source.unsubscribe(self._source_subscription)
             self._source_subscription = None
-        self._tts_taken_over = False
 
         for source in self._sources.values():
             await source.stop()
@@ -254,7 +161,6 @@ class AudioStreamRouter(AudioStreamSource):
         self._tts_source = None
         self._sources = {}
         self._active_source_kind = None
-        self._stopping = False
 
     async def _do_restart(self) -> None:
         """软重启：就地重启当前活动源（换设备等配置生效），保留对外契约。
@@ -306,13 +212,9 @@ class AudioStreamRouter(AudioStreamSource):
 
         供"保存音源配置"使用:mic/tts 源在初始化时绑定 config 对象,换设备等配置变更需
         重建实例才生效。与 stop+start 不同--不清空对外下游订阅(MouthSyncController 等),
-        也不重建本机播放 sink,只重建内部源实例并在必要时重绑转发。TTS 总线接管中跳过
-        (发声期间重建会破坏转发/接管状态;配置已落盘,下次重启/重载生效)。
+        也不重建音频播放 sink,只重建内部源实例并在必要时重绑转发。
         """
 
-        if self._tts_taken_over:
-            logger.warning("TTS 发声进行中,跳过音源重建(请勿在发声期间保存音源配置)")
-            return
         await self._ensure_sources_built()
         old_source = self._sources.get(source_kind)
         if source_kind is AudioSourceKind.MICROPHONE:

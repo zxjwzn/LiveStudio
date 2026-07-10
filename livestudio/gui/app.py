@@ -6,7 +6,7 @@
 平台在 _build_platform_registrations() 工厂集中登记(后端 app + GUI 桥接成对):新增
 平台只在该工厂多加一项,ServiceBridge 的 startup/shutdown 与各页渲染全自动覆盖。
 
-六页均为真实页面:仪表盘(音频电平+控制器开关)/ 平台(连接+模型配置)/ 音频 / 本机播放 / 日志 / 设置。
+六页均为真实页面:仪表盘(音频电平+控制器开关)/ 平台(连接+模型配置)/ 音频 / 音频播放 / 日志 / 设置。
 """
 
 import asyncio
@@ -151,7 +151,7 @@ class GuiApplication:
         self._audio_view.load_config()
 
     async def _init_playback_view(self) -> None:
-        """本机播放页加载当前配置并刷新输出设备下拉"""
+        """音频播放页加载当前配置并刷新输出设备下拉"""
 
         if self._playback_view is None:
             return

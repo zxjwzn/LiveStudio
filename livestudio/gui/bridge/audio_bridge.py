@@ -31,7 +31,7 @@ class AudioController(QObject):
     sourceChanged = Signal(str)  # AudioSourceKind.value
     reloadSucceeded = Signal()
     reloadFailed = Signal(str)
-    # 本机播放保存专用反馈(独立成页,避免与音频页共享 saveSucceeded/saveFailed 串扰)
+    # 音频播放保存专用反馈(独立成页,避免与音频页共享 saveSucceeded/saveFailed 串扰)
     playbackSaveSucceeded = Signal()
     playbackSaveFailed = Signal(str)
 
@@ -99,7 +99,7 @@ class AudioController(QObject):
 
         用 reload_source 而非 stop+start:后者会清空路由器对外下游订阅(MouthSyncController),
         导致保存后唇形同步收不到音频块。reload_source 只重建内部源实例,保留下游订阅与
-        本机播放 sink。mic source 在初始化时绑定 config 对象,故需重建实例而非 restart。
+        音频播放 sink。mic source 在初始化时绑定 config 对象,故需重建实例而非 restart。
         """
 
         try:
@@ -180,7 +180,7 @@ class AudioController(QObject):
         self.saveSucceeded.emit()
 
     def playback_config(self) -> PlaybackConfig:
-        """当前本机播放配置快照"""
+        """当前音频播放配置快照"""
 
         return self._router.config.playback
 
@@ -193,27 +193,14 @@ class AudioController(QObject):
         return choices
 
     async def save_playback_config(self, config: PlaybackConfig) -> None:
-        """保存本机播放配置并重建播放订阅方,使新输出设备/过滤源/音量即时生效"""
+        """保存音频播放配置并重建播放订阅方,使新输出设备/过滤源/音量即时生效"""
 
         try:
             self._router.config.playback = config
             await self._router.config_manager.save()
             await self._router.apply_playback_config()
         except Exception as exc:
-            logger.exception("保存本机播放配置失败")
+            logger.exception("保存音频播放配置失败")
             self.playbackSaveFailed.emit(str(exc))
             return
         self.playbackSaveSucceeded.emit()
-
-    async def speak_test(self, text: str = "测试") -> None:
-        """触发一次 TTS 发声(占位正弦音),验证"总线接管 -> 本机播放 + 唇形"管道。
-
-        真实 engine 接入后由 engine 消费 text;此处仅占位发声。
-        """
-
-        await self._router.speak(text)
-
-    def stop_speaking(self) -> None:
-        """停止进行中的 TTS 发声"""
-
-        self._router.stop_speaking()
