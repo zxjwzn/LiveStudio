@@ -5,6 +5,7 @@ from .audio_stream import (
     AudioChunkAnalysis,
     AudioChunkSubscription,
     AudioPhonemeAnnotation,
+    AudioPlaybackSink,
     AudioSourceKind,
     AudioStreamRouter,
     AudioStreamRouterConfig,
@@ -12,6 +13,8 @@ from .audio_stream import (
     InputDeviceInfo,
     MicrophoneAudioStreamConfig,
     MicrophoneAudioStreamSource,
+    OutputDeviceInfo,
+    PlaybackConfig,
     TTSAudioStreamSource,
 )
 from .platforms.vtubestudio import (
@@ -23,6 +26,7 @@ __all__ = [
     "AudioChunkAnalysis",
     "AudioChunkSubscription",
     "AudioPhonemeAnnotation",
+    "AudioPlaybackSink",
     "AudioSourceKind",
     "AudioStreamRouter",
     "AudioStreamRouterConfig",
@@ -30,6 +34,8 @@ __all__ = [
     "InputDeviceInfo",
     "MicrophoneAudioStreamConfig",
     "MicrophoneAudioStreamSource",
+    "OutputDeviceInfo",
+    "PlaybackConfig",
     "TTSAudioStreamSource",
     "VTubeStudio",
 ]

@@ -280,7 +280,7 @@ class ExpressionControllerSettings(ControllerSettings):
         description="表情语义缓动的优先级，保持期间高于此值的控制器才能接管参数",
     )
     neutral_priority: int = Field(
-        default=0,
+        default=1,
         description="回归静息段的优先级；须低于各待机控制器（默认 10）以使其在 AU 解算收尾时"
         "即时接管对应参数（从当前值平滑过渡到自己的目标，跳过先回中性），"
         "无人接管的参数照常由本段平滑回到静息",
@@ -352,4 +352,3 @@ class AnimationControllerSettingsConfig(BaseModel):
         default_factory=ExpressionControllerSettings,
         description="表情解算控制器配置",
     )
-

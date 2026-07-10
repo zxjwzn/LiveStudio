@@ -73,9 +73,15 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
 
         previous_open = self._current_open
         smoothed_open = self._smooth_open(target_open)
+        # 音量过低(目标开度为 0,即静音/无音频)时让出优先级,使其他请求(如表情解算
+        # au_priority=20)可接管 MOUTH_OPEN;说话时(目标 > 0)保持配置高优先级独占唇形同步。
+        # 让出后本控制器后续仍以优先级 0 发布闭嘴,但被更高优先级占用时会被 _try_acquire
+        # 拒绝、不会反复抢回(0 < 对方优先级)。
+        priority = 0 if target_open <= self._closed_open else self.config.priority
         await self._apply_open(
             smoothed_open,
             is_opening=smoothed_open >= previous_open,
+            priority=priority,
         )
         await asyncio.sleep(self.config.update_interval)
 
@@ -116,7 +122,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         )
         return self._current_open
 
-    async def _apply_open(self, open_value: float, *, is_opening: bool) -> None:
+    async def _apply_open(self, open_value: float, *, is_opening: bool, priority: int) -> None:
         duration = self.config.attack_duration if is_opening else self.config.release_duration
         await self.runtime.platform.tween_semantic(
             [
@@ -125,7 +131,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
                     end_value=self._clamp01(open_value),
                     duration=duration,
                     easing=Easing.linear,
-                    priority=self.config.priority,
+                    priority=priority,
                 ),
             ],
         )

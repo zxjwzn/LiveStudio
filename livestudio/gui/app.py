@@ -6,7 +6,7 @@
 平台在 _build_platform_registrations() 工厂集中登记(后端 app + GUI 桥接成对):新增
 平台只在该工厂多加一项,ServiceBridge 的 startup/shutdown 与各页渲染全自动覆盖。
 
-五页均为真实页面:仪表盘(音频电平+控制器开关)/ 平台(连接+模型配置)/ 音频 / 日志 / 设置。
+六页均为真实页面:仪表盘(音频电平+控制器开关)/ 平台(连接+模型配置)/ 音频 / 本机播放 / 日志 / 设置。
 """
 
 import asyncio
@@ -30,6 +30,7 @@ from livestudio.gui.views.logs_view import LogsView
 from livestudio.gui.views.main_window import MainWindow
 from livestudio.gui.views.mcp_view import McpView
 from livestudio.gui.views.platform_view import PlatformView
+from livestudio.gui.views.playback_view import PlaybackView
 from livestudio.gui.views.settings_view import SettingsView
 from livestudio.mcp import LiveStudioMcpServer, PlatformToolsetRegistration
 from livestudio.mcp.platforms import VTubeStudioToolset
@@ -88,6 +89,7 @@ class GuiApplication:
         self._mcp_server = LiveStudioMcpServer(platforms=mcp_registrations)
         self._service_bridge: ServiceBridge | None = None
         self._audio_view: AudioView | None = None
+        self._playback_view: PlaybackView | None = None
         # 日志告警通知:WARNING/ERROR 弹 InfoBar,按 (级别,消息) 去重节流避免刷屏
         self._notifier = ThrottledNotifier()
 
@@ -111,11 +113,13 @@ class GuiApplication:
         await self._start_mcp_server()
 
         self._audio_view = AudioView(bridge.audio)
+        self._playback_view = PlaybackView(bridge.audio)
         self._mcp_bridge = McpBridge(self._mcp_server)
         self._window = MainWindow(
             dashboard=DashboardView(bridge.audio, bridge.platforms),
             platform=PlatformView(bridge.platforms),
             audio=self._audio_view,
+            playback=self._playback_view,
             logs=LogsView(bridge.logs),
             mcp=McpView(self._mcp_bridge),
             settings=SettingsView(self.settings, self._on_settings_changed),
@@ -128,6 +132,7 @@ class GuiApplication:
 
         await bridge.startup()
         await self._init_audio_view()
+        await self._init_playback_view()
         await self._close_event.wait()
 
     async def _start_mcp_server(self) -> None:
@@ -144,6 +149,13 @@ class GuiApplication:
         if self._audio_view is None:
             return
         self._audio_view.load_config()
+
+    async def _init_playback_view(self) -> None:
+        """本机播放页加载当前配置并刷新输出设备下拉"""
+
+        if self._playback_view is None:
+            return
+        self._playback_view.load_config()
 
     def _on_log_entry(self, entry: LogEntry) -> None:
         """把 WARNING/ERROR 级别日志弹成 InfoBar 通知(去重节流,避免同一告警刷屏)"""

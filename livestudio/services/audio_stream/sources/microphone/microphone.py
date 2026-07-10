@@ -11,7 +11,7 @@ import sounddevice as sd
 from livestudio.utils.log import logger
 
 from ...base import AudioStreamSource
-from ...models import AudioChunk, AudioChunkMetadata
+from ...models import AudioChunk, AudioChunkMetadata, AudioSourceKind
 from .config import MicrophoneAudioStreamConfig
 from .models import InputDeviceInfo, RawInputDeviceInfo, SoundDeviceTimeInfo
 
@@ -186,6 +186,7 @@ class MicrophoneAudioStreamSource(AudioStreamSource):
                 samplerate=samplerate,
                 channels=self.config.channels,
                 data=indata.copy(),
+                source=AudioSourceKind.MICROPHONE,
                 overflowed=bool(status.input_overflow),
                 metadata=AudioChunkMetadata(
                     input_buffer_adc_time=time_info.inputBufferAdcTime,

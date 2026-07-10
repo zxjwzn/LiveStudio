@@ -10,6 +10,7 @@ from .models import (
     AudioPhonemeAnnotation,
     AudioSourceKind,
 )
+from .playback import AudioPlaybackSink, OutputDeviceInfo, PlaybackConfig
 from .service import AudioStreamRouter
 from .sources import (
     InputDeviceInfo,
@@ -24,6 +25,7 @@ __all__ = [
     "AudioChunkMetadata",
     "AudioChunkSubscription",
     "AudioPhonemeAnnotation",
+    "AudioPlaybackSink",
     "AudioSourceKind",
     "AudioStreamRouter",
     "AudioStreamRouterConfig",
@@ -31,6 +33,8 @@ __all__ = [
     "InputDeviceInfo",
     "MicrophoneAudioStreamConfig",
     "MicrophoneAudioStreamSource",
+    "OutputDeviceInfo",
+    "PlaybackConfig",
     "TTSAudioStreamConfig",
     "TTSAudioStreamSource",
 ]

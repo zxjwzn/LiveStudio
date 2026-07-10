@@ -3,6 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import AudioSourceKind
+from .playback import PlaybackConfig
 from .sources.microphone.config import MicrophoneAudioStreamConfig
 from .sources.tts.config import TTSAudioStreamConfig
 
@@ -29,4 +30,8 @@ class AudioStreamRouterConfig(BaseModel):
     tts: TTSAudioStreamConfig = Field(
         default_factory=TTSAudioStreamConfig,
         description="TTS 音频流配置",
+    )
+    playback: PlaybackConfig = Field(
+        default_factory=PlaybackConfig,
+        description="本机播放订阅方配置（订阅总线、按源过滤后输出到本机设备）",
     )

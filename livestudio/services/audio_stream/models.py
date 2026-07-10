@@ -52,6 +52,7 @@ class AudioChunk:
     samplerate: int
     channels: int
     data: NDArray[np.generic]
+    source: AudioSourceKind
     overflowed: bool = False
     metadata: AudioChunkMetadata | None = None
     analysis: AudioChunkAnalysis = field(default_factory=AudioChunkAnalysis)

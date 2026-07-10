@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
@@ -14,8 +15,16 @@ from livestudio.services.animations.controllers import (
     GazeControllerSettings,
     MouthExpressionController,
     MouthExpressionControllerSettings,
+    MouthSyncController,
+    MouthSyncControllerSettings,
 )
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
+from livestudio.services.audio_stream import (
+    AudioChunk,
+    AudioChunkAnalysis,
+    AudioSourceKind,
+    AudioStreamSource,
+)
 from livestudio.services.semantic_actions import SemanticAction
 from tests.conftest import _SemanticPlatform, _TemplatePlayer
 
@@ -177,6 +186,98 @@ async def test_mouth_expression_controller_uses_mouth_smile_semantic_action() ->
     assert platform.requests[0].action_parameter_name == SemanticAction.MOUTH_SMILE.value
     assert platform.requests[0].end_value == 0.0
     assert platform.requests[0].start_value is None
+
+
+class _FakeAudioSource(AudioStreamSource):
+    """最小音频源:仅暴露 _publish_chunk 供测试喂数据块"""
+
+    async def _do_start(self) -> None:
+        pass
+
+    async def _do_stop(self) -> None:
+        self._clear_subscriptions()
+
+    def emit(self, chunk: AudioChunk) -> None:
+        self._publish_chunk(chunk)
+
+
+def _audio_chunk(rms: float) -> AudioChunk:
+    return AudioChunk(
+        frames=128,
+        samplerate=48000,
+        channels=1,
+        data=np.zeros((128, 1), dtype=np.float32),
+        source=AudioSourceKind.TTS,
+        analysis=AudioChunkAnalysis(rms=rms),
+    )
+
+
+def _mouth_sync(platform: _SemanticPlatform, *, priority: int = 99) -> tuple[
+    MouthSyncController, _FakeAudioSource
+]:
+    audio = _FakeAudioSource()
+    controller = MouthSyncController(
+        _runtime(platform),
+        "mouth_sync",
+        MouthSyncControllerSettings(priority=priority, update_interval=0.001),
+        audio,
+    )
+    controller._audio_subscription = audio.subscribe(queue_maxsize=8)  # noqa: SLF001
+    return controller, audio
+
+
+async def test_mouth_sync_silent_yields_priority() -> None:
+    """静音(rms <= noise_floor,目标开度 0)时以优先级 0 发布,让其他请求可接管 MOUTH_OPEN"""
+
+    platform = _SemanticPlatform()
+    controller, audio = _mouth_sync(platform, priority=99)
+
+    audio.emit(_audio_chunk(rms=0.0))
+    await controller.run_cycle()
+
+    request = platform.requests[-1]
+    assert request.action_parameter_name == SemanticAction.MOUTH_OPEN.value
+    assert request.priority == 0
+    assert request.end_value == 0.0
+
+
+async def test_mouth_sync_speaking_holds_priority() -> None:
+    """说话(目标开度 > 0)时保持配置高优先级独占唇形同步"""
+
+    platform = _SemanticPlatform()
+    audio = _FakeAudioSource()
+    controller = MouthSyncController(
+        _runtime(platform),
+        "mouth_sync",
+        MouthSyncControllerSettings(
+            priority=99,
+            noise_floor=0.01,
+            voice_ceiling=0.2,
+            update_interval=0.001,
+        ),
+        audio,
+    )
+    controller._audio_subscription = audio.subscribe(queue_maxsize=8)  # noqa: SLF001
+
+    audio.emit(_audio_chunk(rms=0.1))  # 处于 noise_floor 与 voice_ceiling 之间 -> 语音
+    await controller.run_cycle()
+
+    request = platform.requests[-1]
+    assert request.priority == 99
+    assert request.end_value > 0.0
+
+
+async def test_mouth_sync_no_audio_yields_priority() -> None:
+    """无音频块(超时)时以优先级 0 发布,让出 MOUTH_OPEN"""
+
+    platform = _SemanticPlatform()
+    controller, _audio = _mouth_sync(platform, priority=99)
+
+    await controller.run_cycle()  # 不喂块 -> wait_for 超时
+
+    request = platform.requests[-1]
+    assert request.priority == 0
+    assert request.end_value == 0.0
 
 
 async def _noop() -> None:

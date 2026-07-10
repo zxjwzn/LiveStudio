@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any, cast
 
 import numpy as np
@@ -21,6 +22,7 @@ from livestudio.services.audio_stream import (
     AudioStreamRouterConfig,
     AudioStreamSource,
 )
+from livestudio.services.audio_stream.playback import PlaybackConfig
 from livestudio.services.audio_stream.sources.microphone import (
     microphone as microphone_module,
 )
@@ -69,7 +71,13 @@ class _DummySource(AudioStreamSource):
 
 def _make_chunk(value: float = 0.0) -> AudioChunk:
     samples = np.full((128, 1), value, dtype=np.float32)
-    return AudioChunk(frames=128, samplerate=48000, channels=1, data=samples)
+    return AudioChunk(
+        frames=128,
+        samplerate=48000,
+        channels=1,
+        data=samples,
+        source=AudioSourceKind.MICROPHONE,
+    )
 
 
 async def test_subscribe_receives_published_chunks() -> None:
@@ -150,6 +158,42 @@ async def test_tts_audio_source_start_stop_lifecycle() -> None:
 
     await source.stop()
     assert not source.is_started
+
+
+async def test_tts_idle_emits_silence_chunks() -> None:
+    """TTS 源启动后、未发声时持续发布响度 0 的静音块(source=TTS)"""
+
+    source = TTSAudioStreamSource(TTSAudioStreamConfig())
+    subscription = source.subscribe(queue_maxsize=8)
+    await source.start()
+
+    chunk = await asyncio.wait_for(subscription.queue.get(), timeout=0.5)
+    assert chunk.source is AudioSourceKind.TTS
+    assert float(np.max(np.abs(chunk.data))) == 0.0  # 静音
+
+    await source.stop()
+    assert not source.is_started
+
+
+async def test_tts_speak_emits_non_silence() -> None:
+    """speak 发声期间发布非静音块(正弦音)"""
+
+    source = TTSAudioStreamSource(TTSAudioStreamConfig())
+    subscription = source.subscribe(queue_maxsize=64)
+    await source.start()
+    await asyncio.sleep(0.03)  # 让初始静音块入队
+    while not subscription.queue.empty():
+        subscription.queue.get_nowait()
+
+    source.speak("hi", duration=0.3, frequency=440.0)
+    await asyncio.sleep(0.1)  # 让发声产出若干块
+    await source.stop()  # 停掉发声与空闲循环,停止生产
+
+    chunks: list[AudioChunk] = []
+    while not subscription.queue.empty():
+        chunks.append(subscription.queue.get_nowait())
+    assert chunks, "发声期间应收到音频块"
+    assert any(float(np.max(np.abs(c.data))) > 0.0 for c in chunks), "应含非静音(正弦音)块"
 
 
 async def test_router_switch_source_rolls_back_when_new_source_fails() -> None:
@@ -275,6 +319,51 @@ async def test_restart_active_source_keeps_downstream_subscribers() -> None:
     microphone.emit(chunk)
     received = await asyncio.wait_for(downstream.queue.get(), timeout=0.5)
     assert received is chunk
+
+    await router.stop()
+
+
+async def test_reload_source_preserves_downstream_subscriptions() -> None:
+    """reload_source 重建活动源实例但不清空对外下游订阅(MouthSyncController 等)。
+
+    回归:save_microphone_config/save_tts_config 原走 stop+start,会 _clear_subscriptions
+    清掉下游订阅,导致保存后唇形同步收不到音频块。reload_source 只重建内部源、保留下游。
+    """
+
+    router = AudioStreamRouter()
+    router.config_manager = cast(
+        ConfigManager[AudioStreamRouterConfig],
+        type(
+            "_ConfigManager",
+            (),
+            {
+                "config": AudioStreamRouterConfig(),
+                "save_calls": 0,
+                "save": lambda self: _save_config(self),
+            },
+        )(),
+    )
+    router.config.playback.enabled = False  # 关本机播放,避免测试开真实输出流
+    microphone = _DummySource()
+    tts = _DummySource()
+    router._microphone_source = cast(MicrophoneAudioStreamSource, microphone)
+    router._tts_source = cast(Any, tts)
+    router._sources = {
+        AudioSourceKind.MICROPHONE: microphone,
+        AudioSourceKind.TTS: tts,
+    }
+    router._active_source_kind = AudioSourceKind.TTS
+    router._source_subscription = tts.subscribe(queue_maxsize=4)
+
+    downstream = router.subscribe(queue_maxsize=4)  # 模拟 MouthSyncController 的订阅
+    await router.start()
+
+    # 重建活动 TTS 源(内部用真实 TTSAudioStreamSource 替换 _DummySource 并重启转发)
+    await router.reload_source(AudioSourceKind.TTS)
+
+    # 关键:对外下游订阅未被清空,reload 后仍能收到新 TTS 源的静音块
+    received = await asyncio.wait_for(downstream.queue.get(), timeout=1.0)
+    assert received.source is AudioSourceKind.TTS
 
     await router.stop()
 
@@ -516,4 +605,112 @@ async def test_router_switch_source_round_trip_reinitializes_source() -> None:
     assert router.active_source_kind is AudioSourceKind.MICROPHONE
     assert microphone.is_started
     assert microphone.prepare_calls >= 2  # 初次 + 切回各一次
+    await router.stop()
+
+
+def _router_with_playback_disabled() -> AudioStreamRouter:
+    """路由器 + 假麦克风 + 真 TTS,关闭 playback(避免测试开真实输出设备)。"""
+
+    router = AudioStreamRouter()
+    router.config_manager = cast(
+        ConfigManager[AudioStreamRouterConfig],
+        type(
+            "_ConfigManager",
+            (),
+            {
+                "config": AudioStreamRouterConfig(playback=PlaybackConfig(enabled=False)),
+                "save_calls": 0,
+                "save": lambda self: _save_config(self),
+            },
+        )(),
+    )
+    microphone = _DummySource()
+    tts = TTSAudioStreamSource(TTSAudioStreamConfig())
+    router._microphone_source = cast(MicrophoneAudioStreamSource, microphone)
+    router._tts_source = tts
+    router._sources = {
+        AudioSourceKind.MICROPHONE: microphone,
+        AudioSourceKind.TTS: tts,
+    }
+    router._active_source_kind = AudioSourceKind.MICROPHONE
+    router._source_subscription = microphone.subscribe(queue_maxsize=4)
+    return router
+
+
+async def test_tts_source_speak_publishes_tts_chunks() -> None:
+    """speak 发布的音频块带 TTS 源标识,供下游识别/过滤。"""
+
+    tts = TTSAudioStreamSource(TTSAudioStreamConfig())
+    sub = tts.subscribe(queue_maxsize=16)
+    await tts.start()
+    task = tts.speak("测试", duration=0.05)
+    received = await asyncio.wait_for(sub.queue.get(), timeout=1.0)
+    assert received.source is AudioSourceKind.TTS
+    assert received.samplerate == TTSAudioStreamConfig().samplerate
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    await tts.stop()
+
+
+async def test_tts_source_stop_speaking_cancels() -> None:
+    """stop_speaking 取消进行中的发声任务。"""
+
+    tts = TTSAudioStreamSource(TTSAudioStreamConfig())
+    await tts.start()
+    tts.speak("测试", duration=2.0)
+    await asyncio.sleep(0.02)
+    assert tts.is_speaking
+    tts.stop_speaking()
+    await asyncio.sleep(0.02)
+    assert not tts.is_speaking
+    await tts.stop()
+
+
+async def test_router_speak_routes_tts_via_bus_takeover() -> None:
+    """mic 为活动源时,speak 经总线接管把 TTS 块转发给下游(无需切活动源、不停 mic)。"""
+
+    router = _router_with_playback_disabled()
+    downstream = router.subscribe(queue_maxsize=16)
+    await router.start()
+    await router.speak("测试", duration=0.1)
+    received = await asyncio.wait_for(downstream.queue.get(), timeout=1.0)
+    assert received.source is AudioSourceKind.TTS
+    await router.stop()
+
+
+async def test_router_speak_restores_mic_after_utterance() -> None:
+    """发声自然结束后,总线接管释放,mic 块重新流到下游。"""
+
+    router = _router_with_playback_disabled()
+    microphone = cast(_DummySource, router._microphone_source)
+    downstream = router.subscribe(queue_maxsize=16)
+    await router.start()
+    await router.speak("测试", duration=0.05)
+    await asyncio.sleep(0.2)  # 发声结束 + release 恢复 mic 转发
+    while not downstream.queue.empty():  # 排空残留 TTS 块
+        downstream.queue.get_nowait()
+    microphone.emit(_make_chunk(0.5))
+    received = await asyncio.wait_for(downstream.queue.get(), timeout=1.0)
+    assert received.source is AudioSourceKind.MICROPHONE
+    await router.stop()
+
+
+async def test_router_stop_speaking_restores_mic_forwarding() -> None:
+    """stop_speaking 取消发声后,mic 转发立即恢复。"""
+
+    router = _router_with_playback_disabled()
+    microphone = cast(_DummySource, router._microphone_source)
+    downstream = router.subscribe(queue_maxsize=16)
+    await router.start()
+    await router.speak("测试", duration=2.0)  # 长音
+    await asyncio.sleep(0.05)  # 让接管生效
+    assert router.is_speaking
+    router.stop_speaking()
+    await asyncio.sleep(0.1)  # 让 release 恢复 mic
+    assert not router.is_speaking
+    while not downstream.queue.empty():  # 排空残留 TTS 块
+        downstream.queue.get_nowait()
+    microphone.emit(_make_chunk(0.5))
+    received = await asyncio.wait_for(downstream.queue.get(), timeout=1.0)
+    assert received.source is AudioSourceKind.MICROPHONE
     await router.stop()
