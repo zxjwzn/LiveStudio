@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+
 from livestudio.app import VTubeStudioApp
 from livestudio.app.base import (
     BasePlatformApp,
@@ -17,6 +19,7 @@ from livestudio.app.base import (
     PlatformStateKind,
 )
 from livestudio.services.animations import AnimationManager
+from livestudio.services.animations.constants import EXPRESSION_CONTROLLER
 from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.services.platforms import PlatformService
 from livestudio.services.platforms.vtubestudio import VTubeStudio
@@ -42,6 +45,7 @@ class _StubController:
 class _StubRuntime:
     def __init__(self) -> None:
         self.controllers: dict[str, _StubController] = {}
+        self.execute_kwargs: dict[str, dict[str, object]] = {}
 
     async def start_controller(self, name: str) -> bool:
         return await self.controllers[name].start()
@@ -51,6 +55,10 @@ class _StubRuntime:
 
     def get_controller(self, name: str) -> _StubController:
         return self.controllers[name]
+
+    async def execute_controller(self, name: str, **kwargs: object) -> bool:
+        self.execute_kwargs[name] = kwargs
+        return True
 
 
 class _StubAnimationManager:
@@ -265,3 +273,28 @@ async def test_set_native_expression_no_change_no_event() -> None:
     await app.set_native_expression("foo", True)  # 已激活再激活
 
     assert events == []
+
+
+async def test_play_emotion_forwards_intensity_and_durations() -> None:
+    """app.play_emotion 把 intensity/transition_duration/hold_duration 透传给 execute_controller。"""
+
+    app, anim, _events = _make_app()
+    anim.runtime.controllers[EXPRESSION_CONTROLLER] = _StubController()
+
+    await app.play_emotion("joy", intensity=0.5, transition_duration=0.3, hold_duration=2.0)
+
+    assert anim.runtime.execute_kwargs[EXPRESSION_CONTROLLER] == {
+        "emotion": "joy",
+        "intensity": 0.5,
+        "transition_duration": 0.3,
+        "hold_duration": 2.0,
+    }
+
+
+async def test_play_emotion_rejects_unknown_emotion() -> None:
+    """未知情绪抛 ValueError(MCP 工具据此返回错误串)。"""
+
+    app, _anim, _events = _make_app()
+
+    with pytest.raises(ValueError, match="未知情绪"):
+        await app.play_emotion("definitely-not-an-emotion")

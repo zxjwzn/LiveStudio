@@ -245,15 +245,29 @@ class PlatformToolset(ABC, Generic[TApp]):
         return self._app.available_emotions()
 
     @tool(builtin=True)
-    async def play_emotion(self, emotion: str) -> str:
+    async def play_emotion(
+        self,
+        emotion: str,
+        intensity: float = 1.0,
+        transition_duration: float | None = None,
+        hold_duration: float | None = None,
+    ) -> str:
         """触发一次情绪表情解算(过渡->保持->自动回中性)。需已连接并加载模型。
 
         Args:
             emotion: 情绪标识,须取自 list_emotions 的返回值。
+            intensity: 表情强度 [0,1],缺省 1.0;0 时全脸回归 neutral。仅对 AU 参数生效,不影响原生表情。
+            transition_duration: 过渡时长(秒,>=0),从当前值切到目标表情的时间;缺省用模型配置。
+            hold_duration: 保持时长(秒,>=0),到达目标后停留时间,<=0 跳过保持段;缺省用模型配置。
         """
 
         try:
-            await self._app.play_emotion(emotion)
+            await self._app.play_emotion(
+                emotion,
+                intensity=intensity,
+                transition_duration=transition_duration,
+                hold_duration=hold_duration,
+            )
         except ValueError as exc:
             return f"无法触发情绪：{exc}"
         except RuntimeError as exc:

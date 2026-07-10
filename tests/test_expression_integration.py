@@ -286,6 +286,26 @@ async def test_controller_emits_semantic_and_native() -> None:
     assert "2脸红" in refs
 
 
+async def test_controller_execute_uses_per_call_durations() -> None:
+    """execute 的 transition_duration/hold_duration 覆盖配置缺省;原生 fade_time 跟随过渡时长。"""
+
+    platform = _ExpressionPlatform()
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(),  # transition=0.5, hold=1.0, neutral=0.5
+        _joy_profile(),
+    )
+
+    await controller.execute(emotion=EmotionKind.JOY, transition_duration=0.3, hold_duration=2.0)
+    await _drain(controller)
+
+    # 过渡段(0.3) + 保持段(2.0) + 回归段(配置 0.5)三段缓动的 duration
+    assert [req.duration for req in platform.requests] == [0.3, 2.0, 0.5]
+    # 原生表情激活/停用的 fade_time 跟随本次过渡时长(0.3)
+    assert platform.native_fade_times == [0.3, 0.3]
+
+
 async def test_controller_filters_unbound_semantic_units_before_solving() -> None:
     platform = _ExpressionPlatform()
     platform.bind_semantic_actions([SemanticAction.MOUTH_SMILE])

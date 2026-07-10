@@ -91,3 +91,36 @@ async def test_play_emotion_validates_argument() -> None:
     assert await toolset.call("play_emotion", {"emotion": "joy"}) == "已触发情绪：joy。"
     assert app.played == ["joy"]
     assert await toolset.call("play_emotion", {"emotion": "rage"}) == "无法触发情绪：未知情绪: rage"
+
+
+async def test_play_emotion_forwards_intensity_and_durations() -> None:
+    """play_emotion 把 intensity/transition_duration/hold_duration 透传给 app.play_emotion。"""
+
+    app = _FakeApp()
+    toolset = _FakeToolset(app)
+    result = await toolset.call(
+        "play_emotion",
+        {"emotion": "joy", "intensity": 0.5, "transition_duration": 0.3, "hold_duration": 2.0},
+    )
+
+    assert result == "已触发情绪：joy。"
+    assert app.play_emotion_calls == [
+        {
+            "emotion": "joy",
+            "intensity": 0.5,
+            "transition_duration": 0.3,
+            "hold_duration": 2.0,
+        }
+    ]
+
+
+async def test_play_emotion_defaults_when_params_omitted() -> None:
+    """缺省:intensity=1.0,两段时长=None(由 app/控制器回退模型配置)。"""
+
+    app = _FakeApp()
+    toolset = _FakeToolset(app)
+    await toolset.call("play_emotion", {"emotion": "joy"})
+
+    assert app.play_emotion_calls == [
+        {"emotion": "joy", "intensity": 1.0, "transition_duration": None, "hold_duration": None}
+    ]

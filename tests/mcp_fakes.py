@@ -30,6 +30,7 @@ class _FakeApp:
     def __init__(self) -> None:
         self.connect_calls = 0
         self.played: list[str] = []
+        self.play_emotion_calls: list[dict[str, object]] = []
         self.current_model: tuple[str, str] | None = ("m1", "TestModel")
 
     async def connect(self) -> None:
@@ -53,10 +54,25 @@ class _FakeApp:
     def available_emotions(self) -> list[str]:
         return ["joy", "neutral"]
 
-    async def play_emotion(self, emotion: str, _intensity: float = 1.0) -> None:
+    async def play_emotion(
+        self,
+        emotion: str,
+        intensity: float = 1.0,
+        *,
+        transition_duration: float | None = None,
+        hold_duration: float | None = None,
+    ) -> None:
         if emotion not in self.available_emotions():
             raise ValueError(f"未知情绪: {emotion}")
         self.played.append(emotion)
+        self.play_emotion_calls.append(
+            {
+                "emotion": emotion,
+                "intensity": intensity,
+                "transition_duration": transition_duration,
+                "hold_duration": hold_duration,
+            }
+        )
 
 
 class _FakeToolset(PlatformToolset[Any]):

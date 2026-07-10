@@ -113,7 +113,10 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
 
         kwargs:
             emotion: EmotionKind | str，本次要表达的情绪
-            intensity: float，可选，表情强度 [0,1]，缺省 1.0；0 时全脸回归 neutral
+            intensity: float，可选，表情强度 [0,1]，缺省 1.0；0 时全脸回归 neutral。
+                仅缩放 AU 参数幅度，不影响原生表情开关
+            transition_duration: float，可选，过渡时长(秒,>=0)，缺省用 config.transition_duration
+            hold_duration: float，可选，保持时长(秒,>=0，<=0 跳过保持段)，缺省用 config.hold_duration
         """
 
         emotion = self._coerce_emotion(kwargs.get("emotion"))
@@ -122,6 +125,8 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             return
 
         intensity = self._coerce_intensity(kwargs.get("intensity"))
+        transition_duration = self._coerce_duration(kwargs.get("transition_duration"), self.config.transition_duration)
+        hold_duration = self._coerce_duration(kwargs.get("hold_duration"), self.config.hold_duration)
 
         # 先取消上一次尚未结束的收尾任务，避免它到点 apply([]) 停用本次要激活
         # 的原生表情。语义参数交给 engine 同优先级接管，无需在此释放。
@@ -148,13 +153,13 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         # 仍激活、但本次不再需要的原生表情。
         await self.runtime.platform.apply_native_expressions(
             selected.native_triggers,
-            fade_time=self.config.transition_duration,
+            fade_time=transition_duration,
             scope=EMOTION_NATIVE_SCOPE,
         )
 
         # 过渡缓动 + 保持 + 收尾停用丢到后台，execute 不阻塞调用方。
         if selected.semantic_targets or selected.native_triggers:
-            self._finishing_task = asyncio.create_task(self._drive(selected))
+            self._finishing_task = asyncio.create_task(self._drive(selected, transition_duration, hold_duration))
 
         logger.debug(
             "表情解算: 情绪={}, AU={}, 语义目标={}, 原生触发={}",
@@ -164,7 +169,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             len(selected.native_triggers),
         )
 
-    async def _drive(self, selected: SelectedExpression) -> None:
+    async def _drive(self, selected: SelectedExpression, transition_duration: float, hold_duration: float) -> None:
         """后台收尾：推进过渡段+保持段缓动，结束后停用原生表情并回归静息。
 
         流程：过渡 → 保持 → 停用本次原生表情 → （可选）回归静息。
@@ -175,9 +180,8 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         无人接管的参数照常由本段回到静息。
         """
 
-        transition_duration = self.config.transition_duration
-        hold_duration = self.config.hold_duration
-
+        # transition_duration/hold_duration 由本次 execute 传入(缺省已回退 config)；
+        # 回归静息段时长仍取 config.neutral_transition_duration(非本次可调)。
         if selected.semantic_targets:
             # 过渡段：从当前值缓动到目标值
             await self._tween_targets(selected.semantic_targets, transition_duration)
@@ -292,3 +296,13 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         if isinstance(value, (int, float)):
             return max(0.0, min(1.0, float(value)))
         return 1.0
+
+    @staticmethod
+    def _coerce_duration(value: object, fallback: float) -> float:
+        """把外部传入的时长转换为 >=0 浮点，非法/缺省时回退 fallback(配置值)"""
+
+        if isinstance(value, bool):  # bool 是 int 子类，需先排除
+            return fallback
+        if isinstance(value, (int, float)):
+            return max(0.0, float(value))
+        return fallback
