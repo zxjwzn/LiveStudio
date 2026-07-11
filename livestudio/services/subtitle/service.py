@@ -4,7 +4,7 @@
 浏览器(OBS 源)。独立 uvicorn + Starlette,生命周期与 MCP 同构:传输跑在专用任务,
 避免 anyio cancel scope 跨任务退出。
 
-协议(服务端 → 浏览器,无旧协议兼容):
+协议(服务端 → 浏览器):
   {"type":"begin","data":{text, font_*, audio_delay_ms, clear_delay_ms}}
   {"type":"segments","data":{"segments":[{"text","start","end"}, ...]}}
   {"type":"finish"}
@@ -285,3 +285,4 @@ class SubtitleService(AsyncServiceLifecycleMixin):
                 await task
         async with self._clients_lock:
             self._clients.clear()
+

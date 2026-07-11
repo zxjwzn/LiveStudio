@@ -70,9 +70,6 @@ class SemanticActionBinding(BaseModel):
 
     action: SemanticAction
     platform_params: list[str]
-    # 预留字段：当前语义值↔平台值映射固定为纯线性，curve 暂不参与数值转换。
-    # 保留以兼容已写入该字段的模型配置（binding 为 extra="forbid"，删除会导致旧配置加载失败）。
-    curve: str = "linear"
 
 
 class SemanticActionProfile(BaseModel):

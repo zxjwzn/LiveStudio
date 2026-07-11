@@ -22,7 +22,7 @@ import numpy as np
 import livestudio.services.audio_stream.sources.tts.engines.fish_audio as fish_audio_module
 from livestudio.services.audio_stream.sources.tts.engines.fish_audio import (
     FishAudioEngine,
-    FishAudioEngineConfig,
+    FishAudioConnectionConfig,
 )
 
 
@@ -79,7 +79,7 @@ async def test_synthesize_aclose_cancels_reader_without_noise(monkeypatch) -> No
     """aclose 后 reader 收束,stderr 无 Exception ignored / cancel scope 噪声。"""
 
     _patch_slow_stream(monkeypatch)
-    engine = FishAudioEngine(FishAudioEngineConfig(api_key="test"), sample_rate=24000, channels=1)
+    engine = FishAudioEngine(FishAudioConnectionConfig(api_key="test"), sample_rate=24000, channels=1)
 
     gen = engine.synthesize("hi")
     first = await gen.__anext__()
@@ -95,7 +95,7 @@ async def test_synthesize_outer_cancel_via_aclosing_without_noise(monkeypatch) -
     """外层 consumer 被 cancel(经 aclosing,命中循环体)时,无 Exception ignored。"""
 
     _patch_slow_stream(monkeypatch)
-    engine = FishAudioEngine(FishAudioEngineConfig(api_key="test"), sample_rate=24000, channels=1)
+    engine = FishAudioEngine(FishAudioConnectionConfig(api_key="test"), sample_rate=24000, channels=1)
     blocked = asyncio.Event()
 
     async def consumer() -> None:
@@ -112,3 +112,4 @@ async def test_synthesize_outer_cancel_via_aclosing_without_noise(monkeypatch) -
     noise = await _gc_noise()
     assert "Exception ignored" not in noise, noise
     assert "cancel scope" not in noise, noise
+

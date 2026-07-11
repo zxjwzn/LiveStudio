@@ -14,7 +14,7 @@ import pytest
 import livestudio.services.audio_stream.sources.tts.engines.fish_audio as fish_audio_module
 from livestudio.services.audio_stream.sources.tts.engines.fish_audio import (
     FishAudioEngine,
-    FishAudioEngineConfig,
+    FishAudioConnectionConfig,
 )
 
 
@@ -39,7 +39,7 @@ def _patch_httpx(monkeypatch, lines: list[str]) -> None:
 
 
 async def test_fish_audio_engine_empty_api_key_raises() -> None:
-    engine = FishAudioEngine(FishAudioEngineConfig(api_key=""), sample_rate=24000, channels=1)
+    engine = FishAudioEngine(FishAudioConnectionConfig(api_key=""), sample_rate=24000, channels=1)
     with pytest.raises(RuntimeError, match="api_key"):
         async for _ in engine.synthesize("hi"):
             pass
@@ -47,7 +47,7 @@ async def test_fish_audio_engine_empty_api_key_raises() -> None:
 
 async def test_fish_audio_engine_empty_text_yields_nothing(monkeypatch) -> None:
     _patch_httpx(monkeypatch, [])
-    engine = FishAudioEngine(FishAudioEngineConfig(api_key="test"), sample_rate=24000, channels=1)
+    engine = FishAudioEngine(FishAudioConnectionConfig(api_key="test"), sample_rate=24000, channels=1)
     outputs = [o async for o in engine.synthesize("")]
     assert outputs == []
 
@@ -69,7 +69,7 @@ async def test_fish_audio_engine_opts_override_payload(monkeypatch) -> None:
         return original(*args, **kwargs)
 
     monkeypatch.setattr(fish_audio_module.httpx, "AsyncClient", _factory)
-    engine = FishAudioEngine(FishAudioEngineConfig(api_key="test"), sample_rate=24000, channels=1)
+    engine = FishAudioEngine(FishAudioConnectionConfig(api_key="test"), sample_rate=24000, channels=1)
     _ = [o async for o in engine.synthesize("hi", model="s1", reference_id="voice-1", latency="low", speed=1.5)]
     assert captured["headers_model"] == "s1"
     body = captured["json"]
@@ -79,16 +79,3 @@ async def test_fish_audio_engine_opts_override_payload(monkeypatch) -> None:
     assert body["prosody"]["speed"] == 1.5
 
 
-def test_fish_connection_config_strips_legacy_utterance_fields() -> None:
-    cfg = FishAudioEngineConfig.model_validate(
-        {
-            "api_key": "k",
-            "kind": "fish_audio",
-            "model": "s1",
-            "reference_id": "x",
-            "latency": "low",
-            "speed": 1.2,
-        },
-    )
-    assert cfg.api_key == "k"
-    assert not hasattr(cfg, "model") or "model" not in getattr(cfg, "model_fields_set", set())

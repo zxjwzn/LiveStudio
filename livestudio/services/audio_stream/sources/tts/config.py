@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from .engines.fish_audio import FishAudioConnectionConfig
 
@@ -33,19 +31,3 @@ class TTSAudioStreamConfig(BaseModel):
         description="TTS 输出声道数",
         json_schema_extra={"hidden": True},
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_legacy_engine(cls, data: Any) -> Any:
-        """旧版 ``engine: {kind, api_key, ...}`` → ``fish_audio: {api_key, endpoint}``。"""
-
-        if not isinstance(data, dict):
-            return data
-        engine = data.pop("engine", None)
-        if not isinstance(engine, dict):
-            return data
-        kind = engine.get("kind", "fish_audio")
-        if kind == "fish_audio" and "fish_audio" not in data:
-            slot = {k: v for k, v in engine.items() if k in ("api_key", "endpoint")}
-            data["fish_audio"] = slot
-        return data

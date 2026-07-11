@@ -9,14 +9,12 @@ from .base import (
 from .fish_audio import (
     FishAudioConnectionConfig,
     FishAudioEngine,
-    FishAudioEngineConfig,
 )
 from .types import TtsProviderKind, connection_for_kind
 
 __all__ = [
     "FishAudioConnectionConfig",
     "FishAudioEngine",
-    "FishAudioEngineConfig",
     "TtsAudioOutput",
     "TtsEngine",
     "TtsOutput",

@@ -19,24 +19,6 @@ def test_global_tts_config_has_fish_slot() -> None:
     assert isinstance(cfg.fish_audio, FishAudioConnectionConfig)
 
 
-def test_migrate_legacy_engine_block() -> None:
-    cfg = TTSAudioStreamConfig.model_validate(
-        {
-            "engine": {
-                "kind": "fish_audio",
-                "api_key": "secret",
-                "endpoint": "https://example.com/tts",
-                "model": "s1",
-                "reference_id": "x",
-            },
-            "samplerate": 24000,
-            "channels": 1,
-        },
-    )
-    assert cfg.fish_audio.api_key == "secret"
-    assert cfg.fish_audio.endpoint == "https://example.com/tts"
-
-
 def test_connection_for_kind_fish() -> None:
     conn = FishAudioConnectionConfig(api_key="k")
     assert connection_for_kind(fish_audio=conn, kind="fish_audio") is conn
@@ -64,3 +46,5 @@ def test_tts_speak_settings_flat() -> None:
     assert opts["model"] == "s1"
     assert opts["reference_id"] == "v"
     assert opts["extra"]["speed"] == 1.5
+
+

@@ -15,19 +15,16 @@ import base64
 import contextlib
 import json
 from collections.abc import AsyncGenerator, Mapping
-from typing import Any, Literal
 
 import httpx
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from livestudio.utils.log import logger
 
 from .base import TtsAudioOutput, TtsEngine, TtsOutput
 
 FISH_AUDIO_TTS_URL = "https://api.fish.audio/v1/tts/stream/with-timestamp"
-_FishModel = Literal["s2.1-pro-free", "s2.1-pro", "s2-pro", "s1"]
-_FishLatency = Literal["balanced", "normal", "low"]
 # reader -> outer 队列:有界反压;取消时用 put_nowait 哨兵,满则丢最旧再塞
 _READER_QUEUE_MAXSIZE = 32
 
@@ -46,20 +43,6 @@ class FishAudioConnectionConfig(BaseModel):
         description="TTS SSE 端点 URL(默认官方 with-timestamp 流)",
         json_schema_extra={"hidden": True},
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _drop_legacy_fields(cls, data: Any) -> Any:
-        """兼容旧 engine 嵌套:去掉 kind 与发声字段。"""
-
-        if isinstance(data, dict):
-            for key in ("kind", "model", "reference_id", "latency", "speed"):
-                data.pop(key, None)
-        return data
-
-
-# 兼容旧导入名
-FishAudioEngineConfig = FishAudioConnectionConfig
 
 
 class FishAudioEngine(TtsEngine):
@@ -122,12 +105,15 @@ class FishAudioEngine(TtsEngine):
             """在独立任务里跑 httpx 流,产出放入 queue;结束/异常后塞 None 哨兵。"""
 
             try:
-                async with httpx.AsyncClient(timeout=timeout) as client, client.stream(
-                    "POST",
-                    endpoint,
-                    headers=headers,
-                    json=payload,
-                ) as response:
+                async with (
+                    httpx.AsyncClient(timeout=timeout) as client,
+                    client.stream(
+                        "POST",
+                        endpoint,
+                        headers=headers,
+                        json=payload,
+                    ) as response,
+                ):
                     response.raise_for_status()
                     async for line in response.aiter_lines():
                         if not line or not line.startswith("data: "):
@@ -162,11 +148,7 @@ class FishAudioEngine(TtsEngine):
     def _decode_audio(self, audio_base64: str) -> TtsAudioOutput:
         pcm = base64.b64decode(audio_base64)
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) * (1.0 / 32768.0)
-        samples = (
-            np.repeat(samples.reshape(-1, 1), self._channels, axis=1)
-            if self._channels > 1
-            else samples.reshape(-1, 1)
-        )
+        samples = np.repeat(samples.reshape(-1, 1), self._channels, axis=1) if self._channels > 1 else samples.reshape(-1, 1)
         return TtsAudioOutput(data=samples, frames=int(samples.shape[0]))
 
 

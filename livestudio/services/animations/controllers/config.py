@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+
 from livestudio.services.audio_stream.sources.tts.engines.types import TtsProviderKind
 
 
@@ -360,36 +361,6 @@ class TTSpeakControllerSettings(ControllerSettings):
             "reference_id": self.reference_id,
             "extra": dict(self.extra),
         }
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_legacy_engine(cls, data: object) -> object:
-        """旧版 nested engine → 扁平 kind/model/reference_id/extra。"""
-
-        if not isinstance(data, dict):
-            return data
-        engine = data.pop("engine", None)
-        if not isinstance(engine, dict):
-            return data
-        if "kind" not in data and "kind" in engine:
-            data["kind"] = engine["kind"]
-        if "model" not in data and "model" in engine:
-            data["model"] = engine["model"]
-        if "reference_id" not in data and "reference_id" in engine:
-            data["reference_id"] = engine["reference_id"]
-        extra = dict(data.get("extra") or {})
-        for key in ("latency", "speed"):
-            if key in engine and key not in extra:
-                extra[key] = engine[key]
-        # 其余 engine 字段进 extra
-        for key, value in engine.items():
-            if key in ("kind", "model", "reference_id"):
-                continue
-            if key not in extra:
-                extra[key] = value
-        if extra:
-            data["extra"] = extra
-        return data
 
 
 class AnimationControllerSettingsConfig(BaseModel):
