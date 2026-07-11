@@ -11,8 +11,9 @@
 时钟契约:
 - 麦克风等实时源:块按采集时钟到达,本类短环缓冲丢最旧,懒开流。
 - TTS:源侧按实时节奏上总线(与嘴型同源时钟);调用方在首包前 await prepare()
-  打开输出流。首批真实音频前预填极短 jitter 静音(~1/60s)防欠载爆破音;
-  欠载恢复时短 fade-in 抹平 0->有声接缝。
+  打开输出流。首批真实音频前预填约 2 帧 jitter 静音(~33ms)吸收抖动防欠载爆破音;
+  欠载时固定短窗淡出到零(封顶,避免长欠载 DC 瞬态),恢复时 fade-in 抹平 0->有声接缝。
+  TTS 呈现层做墙钟漂移补偿,使缓冲水位稳定在 ~2 帧,不欠载(爆音)也不溢出(丢帧爆音)。
 
 flush() 供打断丢弃未播残留。
 """
@@ -41,10 +42,14 @@ _BUFFER_SECONDS = 0.5
 _IDLE_CLOSE_SECONDS = 0.5
 # 订阅队列:须覆盖开流/转换尖峰,避免总线丢最旧
 _SUBSCRIPTION_QUEUE_MAXSIZE = 256
-# 首批真实音频前预填 jitter 静音(秒,约 1 帧):吸收调度抖动,远小于旧 100ms 垫
-_JITTER_SECONDS = 1.0 / 60.0
-# 欠载后恢复时的 fade-in 时长
-_FADE_IN_SECONDS = 0.003
+# 首批真实音频前预填缓冲静音(秒,约 2 帧):吸收事件循环/定时器抖动,避免一帧迟到即欠载。
+# 余量即唇音延迟代价:2 帧(33ms)远小于旧 100ms 垫,且人耳对 <~45ms 音视频偏移不敏感;
+# 与 TTS 呈现层漂移补偿配合,缓冲水位稳定在 ~2 帧,既不欠载(爆音)也不破坏唇音同步。
+_JITTER_SECONDS = 2.0 / 60.0
+# 欠载后恢复时的 fade-in 时长(秒):稍长以平滑 0->有声 接缝
+_FADE_IN_SECONDS = 0.008
+# 欠载淡出上限(秒):把最后一个语音采样拉到零的窗口封顶,避免长欠载持留 DC 低频瞬态
+_UNDERRUN_FADE_SECONDS = 0.005
 
 
 class OutputDeviceInfo(BaseModel):
@@ -116,6 +121,8 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         self._need_jitter = False
         # 欠载后下一笔真实音频做短 fade-in(采样帧数;0=不需要)
         self._fade_in_remaining = 0
+        # 欠载淡出窗口(采样帧数;_open_stream 时按采样率计算)
+        self._underrun_fade_frames = 0
 
     async def prepare(self) -> None:
         """为即将开始的实时播放打开输出流并清空残留。
@@ -189,6 +196,7 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         self._remainder = None
         self._open_failed = False
         self._samplerate = None
+        self._underrun_fade_frames = 0
         self._last_admit_monotonic = 0.0
 
     async def _drain(self) -> None:
@@ -283,15 +291,16 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
         self._stream = stream
         self._samplerate = samplerate
         self._buffer_max_frames = buffer_max
+        self._underrun_fade_frames = max(1, round(samplerate * _UNDERRUN_FADE_SECONDS))
         self._last_admit_monotonic = time.monotonic()
         logger.info("音频播放输出流已开启: {}ch @ {}Hz", self._channels, samplerate)
 
     def _prefill_jitter(self) -> None:
-        """预填极短静音,吸收事件循环抖动,避免空缓冲开跑立刻欠载爆破音。"""
+        """预填约 2 帧静音,吸收事件循环/定时器抖动,避免空缓冲开跑立刻欠载爆破音。"""
 
         if self._samplerate is None:
             return
-        frames = max(1, int(round(self._samplerate * _JITTER_SECONDS)))
+        frames = max(1, round(self._samplerate * _JITTER_SECONDS))
         self._push_buffer(np.zeros(frames * self._channels, dtype=np.float32))
 
     def _apply_fade_in(self, pcm: np.ndarray) -> np.ndarray:
@@ -414,14 +423,23 @@ class AudioPlaybackSink(AsyncServiceLifecycleMixin):
             if out_pos > 0:
                 self._last_frame = outdata[out_pos - 1].copy()
             if need > 0:
-                # 欠载:淡出到零,并标记恢复后短 fade-in,避免 0->有声硬切爆破音
-                fade = np.linspace(1.0, 0.0, need, dtype=np.float32).reshape(-1, 1)
-                outdata[out_pos:] = self._last_frame * fade
+                # 欠载:把最后一个语音采样在固定短窗内淡到零(封顶,避免长欠载持留 DC
+                # 低频瞬态),其后补零;并标记恢复后 fade-in,避免 0->有声硬切爆破音
+                fade_out = (
+                    min(need, self._underrun_fade_frames)
+                    if self._underrun_fade_frames > 0
+                    else need
+                )
+                if fade_out > 0:
+                    ramp = np.linspace(1.0, 0.0, fade_out, dtype=np.float32).reshape(-1, 1)
+                    outdata[out_pos : out_pos + fade_out] = self._last_frame * ramp
+                if need - fade_out > 0:
+                    outdata[out_pos + fade_out :] = 0.0
                 self._last_frame = np.zeros(self._channels, dtype=np.float32)
                 if self._samplerate is not None:
                     self._fade_in_remaining = max(
                         self._fade_in_remaining,
-                        max(1, int(round(self._samplerate * _FADE_IN_SECONDS))),
+                        max(1, round(self._samplerate * _FADE_IN_SECONDS)),
                     )
         except Exception:
             with contextlib.suppress(Exception):

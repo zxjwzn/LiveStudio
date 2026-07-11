@@ -19,6 +19,7 @@ from livestudio.services.animations import (
     GazeController,
     MouthExpressionController,
     MouthSyncController,
+    TTSpeakController,
 )
 from livestudio.services.animations.constants import MANUAL_NATIVE_SCOPE
 from livestudio.services.audio_stream import AudioStreamSource
@@ -215,5 +216,6 @@ class VTubeStudioApp(BasePlatformApp[VTubeStudio, VTubeStudioModelConfig]):
                 MouthExpressionController(runtime, "mouth_expression", ctrls.mouth_expression),
                 MouthSyncController(runtime, "mouth_sync", ctrls.mouth_sync, self.audio_stream),
                 ExpressionController(runtime, "expression", ctrls.expression, config.expression_profile),
+                TTSpeakController(runtime, "tts_speak", ctrls.tts_speak, self.audio_stream),
             ]
         )

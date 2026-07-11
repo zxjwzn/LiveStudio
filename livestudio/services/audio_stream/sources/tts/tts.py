@@ -5,10 +5,10 @@
 因此唇音同源。
 
 流程:
-  speak → prepare 播放设备 → 取消旧发声 → 启动合成任务 + 调度任务
-  合成: async for engine → 音频入 _audio_q, 字幕即时发 SubtitleStream
-  调度: 每 1/60s 从 _audio_q 取满一帧(或静音补齐) → _publish_chunk
-  stop/打断: 取消任务 → 清空 _audio_q → on_interrupt(flush 播放缓冲)
+  speak -> prepare 播放设备 -> 取消旧发声 -> 启动合成任务 + 调度任务
+  合成: async for engine -> 音频入 _audio_q, 字幕即时发 SubtitleStream
+  调度: 每 1/60s 从 _audio_q 取满一帧(或静音补齐) -> _publish_chunk
+  stop/打断: 取消任务 -> 清空 _audio_q -> on_interrupt(flush 播放缓冲)
 
 路由器只转发当前激活源:TTS 须为激活源才能驱动唇形/播放。
 """
@@ -53,8 +53,9 @@ class TTSAudioStreamSource(AudioStreamSource):
         self._subtitle_stream = subtitle_stream
         self._on_interrupt = on_interrupt
         self._on_prepare = on_prepare
+        # 默认引擎用 fish 连接槽;speak 时按 opts.kind 再解析连接
         self._engine = make_engine(
-            config.engine,
+            config.fish_audio,
             sample_rate=config.samplerate,
             channels=config.channels,
         )
@@ -64,7 +65,7 @@ class TTSAudioStreamSource(AudioStreamSource):
         # set=空闲发静音; clear=发声中(呈现任务占用总线)
         self._idle_event = asyncio.Event()
         self._idle_event.set()
-        # 合成 → 呈现:存放 float32 (frames, channels) 片段
+        # 合成 -> 呈现:存放 float32 (frames, channels) 片段
         self._audio_q: asyncio.Queue[NDArray[np.float32]] = asyncio.Queue()
         self._queued_frames = 0
         self._queue_space = asyncio.Condition()
@@ -98,7 +99,7 @@ class TTSAudioStreamSource(AudioStreamSource):
     def _frame_params(self) -> tuple[int, int, int]:
         samplerate = self.config.samplerate
         channels = self.config.channels
-        block_frames = max(1, int(round(samplerate * _FRAME_SECONDS)))
+        block_frames = max(1, round(samplerate * _FRAME_SECONDS))
         return samplerate, channels, block_frames
 
     @staticmethod
@@ -200,43 +201,64 @@ class TTSAudioStreamSource(AudioStreamSource):
                 await self._audio_q.put(piece)
                 self._queued_frames += n
 
+    def _engine_for_opts(self, opts: dict[str, object]):
+        """按 opts.kind 选择全局连接槽并构造引擎(缺省 fish_audio)。"""
+
+        from .engines.types import connection_for_kind
+
+        kind = opts.get("kind", "fish_audio")
+        kind_s = kind if isinstance(kind, str) and kind else "fish_audio"
+        conn = connection_for_kind(fish_audio=self.config.fish_audio, kind=kind_s)
+        return make_engine(conn, sample_rate=self.config.samplerate, channels=self.config.channels)
+
     async def _synthesize(self, text: str, **opts: object) -> None:
-        """引擎迭代:音频入队,字幕即时发布。结束不发 finish(由 present 在耗尽后发)。"""
+        """引擎迭代:音频入队,字幕即时发布。结束不发 finish(由 present 在耗尽后发)。
+
+        用 contextlib.aclosing 包住引擎生成器:取消/异常时显式 aclose,触发引擎
+        finally(如 Fish 的 reader 任务 cancel)。httpx 生命周期由引擎侧独立 reader
+        任务收束(见 fish_audio.synthesize),不依赖本层 aclose 处理内部生成器。
+        """
 
         try:
-            async for output in self._engine.synthesize(text, **opts):
-                if isinstance(output, TtsAudioOutput):
-                    if output.frames <= 0:
-                        continue
-                    data = np.asarray(output.data, dtype=np.float32)
-                    if data.ndim == 1:
-                        data = data.reshape(-1, 1)
-                    total = min(int(output.frames), int(data.shape[0]))
-                    channels = max(1, self._engine.channels)
-                    frame = np.ascontiguousarray(data[:total, :channels])
-                    if frame.shape[1] < channels:
-                        pad = np.zeros((total, channels - frame.shape[1]), dtype=np.float32)
-                        frame = np.concatenate([frame, pad], axis=1)
-                    await self._enqueue_audio(frame)
-                elif isinstance(output, TtsSubtitleOutput):
-                    self._subtitle_stream.publish_segments(output.segments)
+            engine = self._engine_for_opts(dict(opts))
+            async with contextlib.aclosing(engine.synthesize(text, **opts)) as gen:
+                async for output in gen:
+                    if isinstance(output, TtsAudioOutput):
+                        if output.frames <= 0:
+                            continue
+                        data = np.asarray(output.data, dtype=np.float32)
+                        if data.ndim == 1:
+                            data = data.reshape(-1, 1)
+                        total = min(int(output.frames), int(data.shape[0]))
+                        channels = max(1, engine.channels)
+                        frame = np.ascontiguousarray(data[:total, :channels])
+                        if frame.shape[1] < channels:
+                            pad = np.zeros((total, channels - frame.shape[1]), dtype=np.float32)
+                            frame = np.concatenate([frame, pad], axis=1)
+                        await self._enqueue_audio(frame)
+                    elif isinstance(output, TtsSubtitleOutput):
+                        self._subtitle_stream.publish_segments(output.segments)
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("TTS 合成异常")
-        # 合成结束:呈现任务会把队列耗尽后自行收尾
 
     async def _present(self) -> None:
         """固定帧率从队列取 PCM 上总线;队列空且合成已结束则 finish 并恢复空闲。
 
         SSE 间隙插静音、句尾零填充时与上一帧做短 crossfade,避免有声/0 硬切爆破音。
+        节拍用墙钟截止时间漂移补偿:每帧截止 += delay,实际睡眠 = 截止 - 当前。单次
+        sleep 偏长(定时器抖动/SSE 等待)时下一帧自动追回,消除相对硬件时钟的累积漂移--
+        否则漂移会让播放缓冲慢慢欠载(爆音)或溢出(丢帧爆音)。
         """
 
         samplerate, channels, block_frames = self._frame_params()
         delay = block_frames / samplerate
-        fade_frames = max(1, int(round(samplerate * 0.003)))
+        fade_frames = max(1, round(samplerate * 0.003))
         carry = np.zeros((0, channels), dtype=np.float32)
         last = np.zeros((block_frames, channels), dtype=np.float32)
+        loop = asyncio.get_running_loop()
+        next_deadline = loop.time()
         try:
             while True:
                 # 尽量凑满一帧
@@ -285,9 +307,12 @@ class TTSAudioStreamSource(AudioStreamSource):
                         source=AudioSourceKind.TTS,
                     ),
                 )
-                await asyncio.sleep(delay)
-        except asyncio.CancelledError:
-            raise
+                next_deadline += delay
+                sleep_for = next_deadline - loop.time()
+                if sleep_for > 0:
+                    await asyncio.sleep(sleep_for)
+                # sleep_for <= 0:本帧已晚于截止(如 SSE 间隙等待耗尽 delay),不补睡,
+                # 下一帧用更短睡眠追回,保持平均节拍不漂移。
         finally:
             self._idle_event.set()
             self._subtitle_stream.finish()

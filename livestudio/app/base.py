@@ -16,7 +16,7 @@ from enum import Enum, auto
 from typing import Generic, TypeVar
 
 from livestudio.services.animations import AnimationManager
-from livestudio.services.animations.constants import EXPRESSION_CONTROLLER
+from livestudio.services.animations.constants import EXPRESSION_CONTROLLER, TTS_SPEAK_CONTROLLER
 from livestudio.services.animations.controllers import AnimationType
 from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.services.expression.models import EmotionKind
@@ -265,6 +265,34 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
             transition_duration=transition_duration,
             hold_duration=hold_duration,
         )
+
+    async def speak(self, text: str, **opts: object) -> None:
+        """触发一次 TTS 发声,经 TTSpeak 控制器(配置驱动音色/连接校验/切源/合成)。
+
+        文本校验在此抛错供 MCP 即时反馈;音色合并、连接槽校验、切源、调 tts_source 全部
+        收敛到 ``TTSpeakController.execute``,本方法仅作平台无关公开入口(供 MCP/GUI 调用),
+        不再直连 tts_source。需已连接并加载模型(控制器就绪)。
+
+        Args:
+            text: 要朗读的文本(非空)。
+            **opts: 可选覆盖(model/reference_id/extra 等),透传给控制器 execute。
+        """
+
+        if not isinstance(text, str):
+            raise TypeError("speak 文本须为 str")
+        if not text.strip():
+            raise ValueError("speak 文本不能为空")
+        runtime = self.animation_manager.get_runtime(self.platform.name)
+        if TTS_SPEAK_CONTROLLER not in runtime.controllers:
+            raise RuntimeError("TTSpeak 控制器未就绪(请先连接并加载模型)")
+        await runtime.execute_controller(TTS_SPEAK_CONTROLLER, text=text.strip(), **opts)
+
+    async def stop_speaking(self) -> None:
+        """停止进行中的 TTS 发声(幂等),经 TTSpeak 控制器。"""
+
+        runtime = self.animation_manager.get_runtime(self.platform.name)
+        if TTS_SPEAK_CONTROLLER in runtime.controllers:
+            await runtime.stop_controller(TTS_SPEAK_CONTROLLER)
 
     async def load_current_model(self) -> None:
         """订阅模型事件并加载当前模型配置"""

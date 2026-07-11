@@ -10,7 +10,7 @@ from typing import Any
 
 from livestudio.mcp.toolset import PlatformToolset, tool
 
-# 基类固有的 9 个通用动词名(connect/disconnect/待机动画/控制器/模型/情绪)。
+# 基类固有通用动词名(connect/disconnect/待机动画/控制器/模型/情绪/TTS)。
 UNIVERSAL_VERBS = {
     "connect",
     "disconnect",
@@ -21,6 +21,8 @@ UNIVERSAL_VERBS = {
     "set_controller",
     "list_emotions",
     "play_emotion",
+    "speak",
+    "stop_speaking",
 }
 
 

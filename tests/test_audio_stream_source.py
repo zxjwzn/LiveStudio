@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any, cast
 
 import numpy as np
@@ -636,6 +637,36 @@ class _SlowEngine:
         yield TtsAudioOutput(data=np.zeros((1, 1), dtype=np.float32), frames=1)
 
 
+class _ImmediateYieldEngine:
+    """立即 yield 一帧的引擎;用 async with 持有资源,__aexit__ 里 await(模拟 httpx
+    ``response.aclose`` 的网络清理),并仅在 await 完成后标记 closed。
+
+    配合 monkeypatch _enqueue_audio 阻塞,可使 _synthesize 停在循环体(生成器停在 yield),
+    复现「取消命中循环体」的真实 bug 场景。closed=True 表示异步清理完整完成(而非被取消打断)。
+    """
+
+    def __init__(self, *, sample_rate: int = 24000, channels: int = 1) -> None:
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.closed = False
+
+    async def synthesize(self, _text: str, **_opts: object):
+        class _Resource:
+            def __init__(self, owner: _ImmediateYieldEngine) -> None:
+                self._owner = owner
+
+            async def __aenter__(self) -> _Resource:
+                return self
+
+            async def __aexit__(self, *_exc: object) -> None:
+                await asyncio.sleep(0.01)  # 模拟 httpx aclose 的网络清理 await
+                self._owner.closed = True
+
+        async with _Resource(self):
+            yield TtsAudioOutput(data=np.zeros((400, 1), dtype=np.float32), frames=400)
+            await asyncio.sleep(10)
+
+
 async def test_tts_speak_publishes_audio_and_subtitle(monkeypatch) -> None:
     """speak 驱动引擎:音频块发音频总线、字幕段发字幕流;begin/segments/finish 顺序"""
 
@@ -717,6 +748,54 @@ async def test_tts_speak_replaces_old_finishes_before_new_begin(monkeypatch) -> 
     await source.stop()
 
 
+async def test_synth_async_generator_closed_on_cancel(monkeypatch) -> None:
+    """取消命中循环体(生成器停在 yield)时,aclosing 显式 aclose 引擎异步生成器。
+
+    回归:旧实现 ``async for`` 不 aclose;新 speak/stop 取消 _synthesize 时,若取消命中
+    ``await self._enqueue_audio(frame)``(循环体内),生成器滞留在 yield,留给 GC 在另一任务
+    跑 aclose,触发「async generator ignored GeneratorExit」与 anyio「cancel scope 跨任务」。
+    本测试用阻塞的 _enqueue_audio 把生成器固定在 yield,再取消,验证 aclose 被显式调用。
+    """
+
+    engines: list[_ImmediateYieldEngine] = []
+
+    def _make(_config: object, **_kw: object) -> _ImmediateYieldEngine:
+        engine = _ImmediateYieldEngine()
+        engines.append(engine)
+        return engine
+
+    monkeypatch.setattr(tts_module, "make_engine", _make)
+
+    # 阻塞 _enqueue_audio:生成器 yield 后 _synthesize 停在循环体,生成器停在 yield
+    blocked = asyncio.Event()
+
+    async def _blocking_enqueue(_self: TTSAudioStreamSource, _data: object) -> None:
+        await blocked.wait()
+
+    monkeypatch.setattr(TTSAudioStreamSource, "_enqueue_audio", _blocking_enqueue)
+
+    source = TTSAudioStreamSource(TTSAudioStreamConfig(), SubtitleStream())
+    await source.start()
+    speak_start = len(engines)  # __init__ 已建一个默认引擎(engines[0],未使用)
+
+    await source.speak("first")
+    await asyncio.sleep(0.02)  # _synthesize 进入 _enqueue_audio 阻塞(生成器停在 yield)
+
+    first = engines[speak_start]
+    assert source.is_speaking
+    assert not first.closed
+
+    synth = source._synth_task
+    assert synth is not None and not synth.done()
+    synth.cancel()  # 取消命中循环体(生成器停在 yield),复现真实 bug 场景
+    with contextlib.suppress(asyncio.CancelledError):
+        await synth
+
+    assert first.closed, "被取消的引擎异步生成器必须显式 aclose(而非留给 GC)"
+    blocked.set()  # 释放 _enqueue_audio(任务已取消,仅做清理)
+    await source.stop()
+
+
 async def test_tts_stop_speaking_invokes_on_interrupt(monkeypatch) -> None:
     """stop_speaking / 新 speak 调用 on_interrupt 冲刷播放残留"""
 
@@ -772,7 +851,7 @@ async def test_tts_present_clock_feeds_bus_at_frame_rate(monkeypatch) -> None:
     monkeypatch.setattr(
         tts_module,
         "make_engine",
-        lambda _config, **kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
+        lambda _config, **_kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
     )
     source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000), SubtitleStream())
     sub = source.subscribe(queue_maxsize=256)
@@ -806,7 +885,7 @@ async def test_tts_present_does_not_burst_whole_utterance(monkeypatch) -> None:
     monkeypatch.setattr(
         tts_module,
         "make_engine",
-        lambda _config, **kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
+        lambda _config, **_kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
     )
     source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000), SubtitleStream())
     sub = source.subscribe(queue_maxsize=256)

@@ -103,3 +103,37 @@ async def test_load_raises_when_auto_create_disabled(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigLoadError):
         await manager.load()
+
+
+async def test_save_with_config_replaces_snapshot_and_persists(tmp_path: Path) -> None:
+    """save(config) 先替换内存快照再落盘:内存与文件同步,供外部新快照场景使用"""
+
+    config_path = tmp_path / "cfg.yaml"
+    manager = ConfigManager(_RootConfig, config_path)
+    await manager.load()
+    assert manager.config.name == "default"
+
+    replacement = _RootConfig(name="replaced", child=_ChildConfig(threshold=0.9))
+
+    await manager.save(replacement)
+
+    # 内存快照已替换为传入实例
+    assert manager.config is replacement
+    assert manager.config.child.threshold == 0.9
+    # 文件已落盘为新快照
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert raw == {"name": "replaced", "child": {"threshold": 0.9}}
+
+
+async def test_save_without_config_persists_existing_snapshot(tmp_path: Path) -> None:
+    """save() 不传 config 时行为不变:持久化现有内存快照"""
+
+    config_path = tmp_path / "cfg.yaml"
+    manager = ConfigManager(_RootConfig, config_path)
+    await manager.load()
+    manager.config.name = "mutated"
+
+    await manager.save()
+
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert raw == {"name": "mutated", "child": {"threshold": 0.5}}

@@ -15,6 +15,8 @@ from .controllers import (
     MouthExpressionControllerSettings,
     MouthSyncController,
     MouthSyncControllerSettings,
+    TTSpeakController,
+    TTSpeakControllerSettings,
 )
 from .manager import AnimationManager
 from .runtime import PlatformAnimationRuntime
@@ -46,4 +48,6 @@ __all__ = [
     "MouthSyncController",
     "MouthSyncControllerSettings",
     "PlatformAnimationRuntime",
+    "TTSpeakController",
+    "TTSpeakControllerSettings",
 ]

@@ -274,6 +274,32 @@ class PlatformToolset(ABC, Generic[TApp]):
             return f"无法触发情绪：{exc}"
         return f"已触发情绪：{emotion}。"
 
+    @tool(builtin=True)
+    async def speak(self, text: str) -> str:
+        """用当前模型配置的 TTS 音色合成并播放文本。需已配置 API 密钥;会切到 TTS 音源。
+
+        Args:
+            text: 要朗读的文本。
+        """
+
+        try:
+            await self._app.speak(text)
+        except ValueError as exc:
+            return f"无法发声：{exc}"
+        except RuntimeError as exc:
+            return f"无法发声：{exc}"
+        return "已开始发声。"
+
+    @tool(builtin=True)
+    async def stop_speaking(self) -> str:
+        """停止进行中的 TTS 发声。"""
+
+        try:
+            await self._app.stop_speaking()
+        except RuntimeError as exc:
+            return f"无法停止发声：{exc}"
+        return "已停止发声。"
+
     @cached_property
     def _compiled(self) -> dict[str, _CompiledTool]:
         """反射收集本实例所有 @tool 方法,编译成 {工具名: 编译产物}。

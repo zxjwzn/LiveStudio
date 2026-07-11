@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import cast
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -38,6 +40,7 @@ class AudioController(QObject):
     def __init__(self, router: AudioStreamRouter, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._router = router
+        self._speak_app: object | None = None
         self._subscription: AudioChunkSubscription | None = None
         self._drain_task: asyncio.Task[None] | None = None
 
@@ -205,13 +208,30 @@ class AudioController(QObject):
             return
         self.playbackSaveSucceeded.emit()
 
-    async def speak(self, text: str) -> None:
-        """触发一次 TTS 发声(音频发总线、字幕发字幕流)。
+    def set_speak_app(self, app: object | None) -> None:
+        """注入平台 app,使测试 speak 走 app.speak -> TTSpeak 控制器(配置驱动音色)。"""
 
-        TTS 须为当前激活音频源才能听到声音/驱动唇形(无总线接管);否则仅字幕流更新。
+        self._speak_app = app
+
+    async def speak(self, text: str) -> None:
+        """触发一次 TTS 发声:经注入的平台 app -> TTSpeak 控制器。
+
+        需已注入 app(service_bridge 注册首个平台 app)且该平台已连接加载模型;否则抛错,
+        由调用方(run_guarded)呈现。统一经控制器触发,不再直连 tts_source。
         """
-        await self._router.tts_source.speak(text)
+
+        app = self._speak_app
+        if app is None:
+            raise RuntimeError("TTS 测试需要一个已连接的平台(请先连接并加载模型)")
+        speak = getattr(app, "speak", None)
+        if not callable(speak):
+            raise TypeError("注入的平台 app 不支持 speak")
+        await cast(Callable[[str], Awaitable[None]], speak)(text)
 
     async def stop_speaking(self) -> None:
-        """停止进行中的 TTS 发声"""
-        await self._router.tts_source.stop_speaking()
+        """停止进行中的 TTS 发声:经注入的平台 app -> TTSpeak 控制器。"""
+
+        app = self._speak_app
+        stop = getattr(app, "stop_speaking", None) if app is not None else None
+        if callable(stop):
+            await cast(Callable[[], Awaitable[None]], stop)()

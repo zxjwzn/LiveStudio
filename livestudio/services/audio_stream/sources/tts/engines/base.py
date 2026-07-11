@@ -1,15 +1,12 @@
 """TTS 引擎基类:规范各 TTS 供应商接入
 
-引擎输入文本,流式产出音频块(``TtsAudioOutput``)与字幕段(``TtsSubtitleOutput``)。
-TTS 源迭代 ``synthesize`` 分发:音频块发到音频总线(``_publish_chunk``),字幕段发到
-字幕流(``SubtitleStream``)。引擎可取消:迭代任务被 cancel 时生成器收到 GeneratorExit,
-引擎应在 ``async with``/``finally`` 里清理(如关闭 HTTP 流)。
+``make_engine`` 按连接配置类型 / kind 分发。
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -19,7 +16,7 @@ from numpy.typing import NDArray
 from livestudio.services.subtitle import SubtitleSegment
 
 if TYPE_CHECKING:
-    from .fish_audio import FishAudioEngineConfig
+    from .fish_audio import FishAudioConnectionConfig
 
 
 @dataclass(slots=True)
@@ -56,20 +53,25 @@ class TtsEngine(ABC):
         return self._channels
 
     @abstractmethod
-    def synthesize(self, text: str, **opts: object) -> AsyncIterator[TtsOutput]:
-        """合成文本,按产出顺序 yield ``TtsAudioOutput | TtsSubtitleOutput``"""
+    def synthesize(self, text: str, **opts: object) -> AsyncGenerator[TtsOutput, None]:
+        """合成文本;opts 含通用字段与 extra 展平字段。
+
+        实现为异步生成器;调用方须 aclose(TTSAudioStreamSource 用 aclosing)。
+        若引擎内部用 httpx 流,应把连接放在独立任务(见 FishAudioEngine),勿在生成器
+        体内 async with 后直接 yield 挂起。
+        """
         raise NotImplementedError
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(sample_rate={self._sample_rate}, channels={self._channels})"
 
 
-def make_engine(config: FishAudioEngineConfig, *, sample_rate: int, channels: int) -> TtsEngine:
-    """按引擎配置分发构造。
+def make_engine(config: FishAudioConnectionConfig, *, sample_rate: int, channels: int) -> TtsEngine:
+    """由连接配置构造引擎(Fish 连接槽 → FishAudioEngine)。"""
 
-    暂用直字段(engine: FishAudioEngineConfig);加第二个引擎时改为判别联合,本函数按
-    ``config.kind``/isinstance 分发即可。
-    """
+    from .fish_audio import FishAudioConnectionConfig as FishConn
     from .fish_audio import FishAudioEngine
 
-    return FishAudioEngine(config, sample_rate=sample_rate, channels=channels)
+    if isinstance(config, FishConn):
+        return FishAudioEngine(config, sample_rate=sample_rate, channels=channels)
+    raise TypeError(f"无法为连接配置类型 {type(config).__name__} 构造引擎")

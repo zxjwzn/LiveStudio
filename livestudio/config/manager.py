@@ -33,7 +33,9 @@ class ConfigManager(Generic[ConfigT]):
     2. **默认仅用于首次创建**：文件不存在且 ``auto_create`` 为真时，用
        ``default_config or model_type()`` 落盘一次作为种子；此后该种子不再参与加载。
     3. **保存即快照**：``save()`` 把当前内存快照 ``model_dump`` 落盘，不读旧文件、
-       不合并。
+       不合并。传入 ``config`` 时先替换内存快照再落盘(同一锁内原子完成),供「外部已
+       持有新快照」的场景(如 GUI 编辑保存)同步内存与文件,避免内存快照滞后于文件、
+       被后续 ``save()`` 覆盖。
 
     推论：seed-once 内容（用户可增删的集合、平台相关默认）只能通过
     ``default_config`` 在首次创建时种入；运行时探测到的瞬态不应写进快照，
@@ -133,10 +135,18 @@ class ConfigManager(Generic[ConfigT]):
 
         return await self.load()
 
-    async def save(self) -> None:
-        """将当前快照持久化到磁盘"""
+    async def save(self, config: ConfigT | None = None) -> None:
+        """将快照持久化到磁盘。
+
+        传入 ``config`` 时先把它替换为当前内存快照(须为已校验实例)再落盘--与
+        ``load()``(从盘同步到内存)对称:此处从外部新快照同步到内存与文件。供「外部已
+        持有新快照」的场景(如 GUI 编辑保存)使用,避免内存快照滞后于文件、被后续
+        ``save()`` 覆盖。不传则持久化现有快照。替换与落盘在同一锁内原子完成。
+        """
 
         async with self._lock:
+            if config is not None:
+                self._current = config
             self._persist_snapshot(self._current)
 
     def _load_from_disk(self) -> ConfigT:

@@ -36,7 +36,7 @@ def test_meta_names_match_builtin_names() -> None:
 
 
 def test_list_tools_constant_full_catalog_no_active() -> None:
-    """恒定全表:元信息3 + 9 通用动词 + 各平台特有工具(ping),与 active 无关。"""
+    """恒定全表:元信息3 + 11 通用动词 + 各平台特有工具(ping),与 active 无关。"""
 
     server = _make_server()
     names = {t.name for t in server._list_tools_impl()}
@@ -54,7 +54,7 @@ async def test_list_tools_constant_across_switch() -> None:
 
 
 def test_builtin_tools_groups_meta_and_universal() -> None:
-    """GUI 用 builtin_tools():元信息3 + 9 通用动词 = 12。"""
+    """GUI 用 builtin_tools():元信息3 + 11 通用动词 = 14。"""
 
     server = _make_server()
     names = {t.name for t in server.builtin_tools()}

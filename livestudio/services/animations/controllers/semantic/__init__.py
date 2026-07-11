@@ -6,6 +6,7 @@ from .expression import ExpressionController
 from .gaze import GazeController
 from .mouth_expression import MouthExpressionController
 from .mouth_sync import MouthSyncController
+from .tts_speak import TTSpeakController
 
 __all__ = [
     "BlinkController",
@@ -14,4 +15,5 @@ __all__ = [
     "GazeController",
     "MouthExpressionController",
     "MouthSyncController",
+    "TTSpeakController",
 ]

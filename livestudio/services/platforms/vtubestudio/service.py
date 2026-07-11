@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Literal, TypeVar
 
 from livestudio.clients.vtube_studio.client import EventHandler as ListenerHandler
@@ -257,6 +258,22 @@ class VTubeStudio(PlatformService):
         self._expression_adapter = VTSExpressionAdapter(
             name_to_file=self._expression_name_to_file(model_config),
         )
+
+    async def save_model_config(self, path: Path, config: VTubeStudioModelConfig) -> None:
+        """保存模型配置到指定路径;编辑当前已加载模型时同步内存快照,避免重连覆盖。
+
+        委托 ``PlatformModelConfigService.save_to``:当前模型路径则替换内存快照(单源事实)再
+        落盘,使 ``model_config`` 即时反映编辑、停机 ``save()`` 不再用旧快照覆盖;非当前模型
+        或未连接(无已加载模型)时仅落盘。供 GUI 桥接保存模型配置使用,修复此前「一次性管理器
+        只写盘不更内存,重连时旧内存覆盖用户编辑」的问题。
+        """
+
+        service = self._model_config_service
+        if service is not None:
+            await service.save_to(path, config)
+        else:
+            manager = ConfigManager(VTubeStudioModelConfig, path, default_config=config)
+            await manager.save()
 
     @staticmethod
     def _expression_name_to_file(model_config: VTubeStudioModelConfig) -> dict[str, str]:

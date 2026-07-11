@@ -15,9 +15,3 @@ def create_gui_settings_manager() -> ConfigManager[GuiSettings]:
     """构造 GUI 配置管理器(configs/gui.yaml)"""
 
     return ConfigManager(GuiSettings, config_path(GUI_SETTINGS_FILENAME))
-
-
-def create_gui_settings_manager_with(settings: GuiSettings) -> ConfigManager[GuiSettings]:
-    """构造一个以给定 settings 为快照的管理器,用于直接落盘(无需读旧文件)"""
-
-    return ConfigManager(GuiSettings, config_path(GUI_SETTINGS_FILENAME), default_config=settings)

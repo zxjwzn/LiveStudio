@@ -260,3 +260,50 @@ def test_apply_fade_in_ramps_from_zero() -> None:
     assert np.allclose(out[4:], 1.0)
     assert sink._fade_in_remaining == 0
 
+
+def test_underrun_fade_out_capped_then_zeros() -> None:
+    """欠载填充:最后一个语音采样在固定短窗淡到零,其后补零(不长持留 DC 低频瞬态)。
+
+    回归:旧实现把 _last_frame 按整块 need 拉到零,长欠载时形成持续 DC 低频爆音;
+    现封顶到 _UNDERRUN_FADE_SECONDS,其后纯零。
+    """
+
+    sink = AudioPlaybackSink(_DummySource(), PlaybackConfig(channels=1, output_device=0))
+    sink._channels = 1
+    sink._samplerate = 48000
+    sink._underrun_fade_frames = round(48000 * 0.005)  # 240 样本 = 5ms
+    sink._last_frame = np.array([0.7], dtype=np.float32)
+    need = 960  # 20ms 欠载块,远大于 5ms 淡出窗
+    outdata = np.empty((need, 1), dtype=np.float32)
+
+    sink._output_callback(outdata, need, None, None)
+
+    # 前 240 样本:0.7 线性淡到 ~0
+    assert outdata[0, 0] == pytest.approx(0.7)
+    assert abs(outdata[239, 0]) < 0.01
+    # 其后纯零(不再持留 0.7 的 DC)
+    assert np.all(outdata[240:] == 0.0)
+    # 标记了 fade-in 供恢复时抹平 0->有声
+    assert sink._fade_in_remaining > 0
+    # _last_frame 复位为零
+    assert np.all(sink._last_frame == 0.0)
+
+
+def test_underrun_fade_out_short_block_fades_whole_need() -> None:
+    """欠载块短于淡出窗时:整块淡到零,无补零段(与旧行为一致,不引入新接缝)"""
+
+    sink = AudioPlaybackSink(_DummySource(), PlaybackConfig(channels=1, output_device=0))
+    sink._channels = 1
+    sink._samplerate = 48000
+    sink._underrun_fade_frames = 240
+    sink._last_frame = np.array([0.5], dtype=np.float32)
+    need = 100  # 短于 240
+    outdata = np.empty((need, 1), dtype=np.float32)
+
+    sink._output_callback(outdata, need, None, None)
+
+    assert outdata[0, 0] == pytest.approx(0.5)
+    assert abs(outdata[99, 0]) < 0.01  # 整块淡到 ~0
+    assert sink._fade_in_remaining > 0
+
+

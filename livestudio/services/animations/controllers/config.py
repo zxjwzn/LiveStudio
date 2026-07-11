@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from livestudio.services.audio_stream.sources.tts.engines.types import TtsProviderKind
+
 
 class ControllerSettings(BaseModel):
     """控制器配置基类"""
@@ -323,6 +325,73 @@ class ExpressionControllerSettings(ControllerSettings):
     )
 
 
+
+class TTSpeakControllerSettings(ControllerSettings):
+    """TTS 发声 oneshot:扁平通用字段 + kind + extra(供应商特有)。
+
+    文本不进配置,运行时传入。密钥在全局 audio_stream.tts.<供应商>。
+    """
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SPEAKERS"})
+
+    kind: TtsProviderKind = Field(
+        default="fish_audio",
+        description="TTS 供应商(决定全局连接槽与 extra 解析)",
+    )
+    model: str | None = Field(
+        default="s2.1-pro-free",
+        description="供应商模型/档位标识(各家语义自定;Fish 为 s2.1-pro-free 等)",
+    )
+    reference_id: str | None = Field(
+        default=None,
+        description="音色/说话人 ID(Fish=reference_id;其他家映射为 voice/speaker)",
+    )
+    extra: dict[str, object] = Field(
+        default_factory=dict,
+        description="供应商特有参数(如 Fish 的 latency/speed)",
+    )
+
+    def as_speak_opts(self) -> dict[str, object]:
+        """展开为 speak(**opts)"""
+
+        return {
+            "kind": self.kind,
+            "model": self.model,
+            "reference_id": self.reference_id,
+            "extra": dict(self.extra),
+        }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_engine(cls, data: object) -> object:
+        """旧版 nested engine → 扁平 kind/model/reference_id/extra。"""
+
+        if not isinstance(data, dict):
+            return data
+        engine = data.pop("engine", None)
+        if not isinstance(engine, dict):
+            return data
+        if "kind" not in data and "kind" in engine:
+            data["kind"] = engine["kind"]
+        if "model" not in data and "model" in engine:
+            data["model"] = engine["model"]
+        if "reference_id" not in data and "reference_id" in engine:
+            data["reference_id"] = engine["reference_id"]
+        extra = dict(data.get("extra") or {})
+        for key in ("latency", "speed"):
+            if key in engine and key not in extra:
+                extra[key] = engine[key]
+        # 其余 engine 字段进 extra
+        for key, value in engine.items():
+            if key in ("kind", "model", "reference_id"):
+                continue
+            if key not in extra:
+                extra[key] = value
+        if extra:
+            data["extra"] = extra
+        return data
+
+
 class AnimationControllerSettingsConfig(BaseModel):
     """随模型切换的全平台通用动画控制器配置"""
 
@@ -351,4 +420,8 @@ class AnimationControllerSettingsConfig(BaseModel):
     expression: ExpressionControllerSettings = Field(
         default_factory=ExpressionControllerSettings,
         description="表情解算控制器配置",
+    )
+    tts_speak: TTSpeakControllerSettings = Field(
+        default_factory=TTSpeakControllerSettings,
+        description="TTS 发声 oneshot(引擎/音色随模型;文本运行时传入)",
     )

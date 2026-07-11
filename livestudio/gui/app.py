@@ -21,7 +21,6 @@ from livestudio.gui.core import (
     ThrottledNotifier,
     apply_all,
     create_gui_settings_manager,
-    create_gui_settings_manager_with,
     run_guarded,
 )
 from livestudio.gui.views.audio_view import AudioView
@@ -181,9 +180,9 @@ class GuiApplication:
         run_guarded(self._persist_settings(settings), on_error=self._log_shutdown_error)
 
     async def _persist_settings(self, settings: GuiSettings) -> None:
-        # ConfigManager 无快照 setter,用 default_config 新建管理器直接落盘(模式 A)。
-        manager = create_gui_settings_manager_with(settings)
-        await manager.save()
+        # 经持久管理器 save(config) 同步内存快照与文件(单源),无需一次性管理器--
+        # 此前用 default_config 新建一次性管理器仅落盘,_settings_manager 内存快照滞后。
+        await self._settings_manager.save(settings)
 
     def _on_close_requested(self) -> None:
         """窗口关闭请求:调度异步停机,完成后放行窗口关闭并结束 run()"""

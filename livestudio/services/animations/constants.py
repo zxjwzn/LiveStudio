@@ -3,6 +3,7 @@
 from typing import Final
 
 EXPRESSION_CONTROLLER: Final[str] = "expression"
+TTS_SPEAK_CONTROLLER: Final[str] = "tts_speak"
 CAP_NATIVE_EXPRESSIONS: Final[str] = "native_expressions"
 LAN_DISCOVERY: Final[str] = "lan_discovery"
 DEFAULT_NATIVE_SCOPE: Final[str] = "default"

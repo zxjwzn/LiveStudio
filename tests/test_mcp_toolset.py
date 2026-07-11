@@ -28,8 +28,8 @@ def _tool_meta_map(cls: type) -> dict[str, Any]:
     return result
 
 
-def test_base_defines_nine_builtin_verbs() -> None:
-    """基类 PlatformToolset 直接定义 9 个 @tool(builtin=True) 通用动词。"""
+def test_base_defines_eleven_builtin_verbs() -> None:
+    """基类 PlatformToolset 直接定义 11 个 @tool(builtin=True) 通用动词。"""
 
     metas = _tool_meta_map(PlatformToolset)
     assert set(metas) == UNIVERSAL_VERBS
@@ -47,7 +47,7 @@ def test_vtubestudio_keeps_only_native_expressions() -> None:
 
 
 def test_reflection_splits_universal_and_specific() -> None:
-    """实例反射:universal_tools() = 9 通用动词;tools() = 平台特有(ping)。"""
+    """实例反射:universal_tools() = 11 通用动词;tools() = 平台特有(ping)。"""
 
     toolset = _FakeToolset(_FakeApp())
     universal_names = {t.name for t in toolset.universal_tools()}

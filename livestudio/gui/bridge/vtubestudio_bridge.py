@@ -428,15 +428,16 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         return await manager.load()
 
     async def save_model_config(self, path: Path, config: BaseModel) -> None:
-        """保存模型配置(模式 A:以校验后的实例为默认值新建管理器直接落盘)"""
+        """保存模型配置:走平台服务,使内存快照与文件同步。
+
+        此前用一次性管理器仅落盘,不更新 app 内 model_config_service 的内存快照,导致:1) 程序
+        内 ``model_config`` 变量滞后于文件;2) 重连时 ``_do_stop`` 把滞后快照写回盘,覆盖用户
+        编辑。改由平台服务统一保存:编辑当前模型时同步内存快照(单源事实)再落盘,非当前模型
+        或未连接时仅落盘(``_do_stop`` 只保存当前模型,不会覆盖)。
+        """
 
         validated = VTubeStudioModelConfig.model_validate(config.model_dump())
-        manager: ConfigManager[VTubeStudioModelConfig] = ConfigManager(
-            VTubeStudioModelConfig,
-            path,
-            default_config=validated,
-        )
-        await manager.save()
+        await self._app.platform.save_model_config(path, validated)
 
     def ws_url(self) -> str:
         """当前连接地址"""

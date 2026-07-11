@@ -8,6 +8,7 @@ from .config import (
     GazeControllerSettings,
     MouthExpressionControllerSettings,
     MouthSyncControllerSettings,
+    TTSpeakControllerSettings,
 )
 from .models import AnimationType
 from .semantic import (
@@ -17,6 +18,7 @@ from .semantic import (
     GazeController,
     MouthExpressionController,
     MouthSyncController,
+    TTSpeakController,
 )
 
 __all__ = [
@@ -36,4 +38,6 @@ __all__ = [
     "MouthExpressionControllerSettings",
     "MouthSyncController",
     "MouthSyncControllerSettings",
+    "TTSpeakController",
+    "TTSpeakControllerSettings",
 ]
