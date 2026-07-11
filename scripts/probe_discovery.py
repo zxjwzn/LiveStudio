@@ -58,7 +58,7 @@ async def collect_all_legacy(discovery: VTubeStudioDiscovery, timeout: float) ->
         return [b async for b in broadcasts]
 
 
-async def timed(label: str, coro) -> None:
+async def timed(_label: str, coro) -> None:
     loop = asyncio.get_running_loop()
     start = loop.time()
     await coro

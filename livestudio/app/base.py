@@ -309,10 +309,10 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
 
     def performance_add_event(
         self,
-        type: str,
+        event_type: str,
         params: dict[str, object] | None = None,
         *,
-        id: str | None = None,
+        event_id: str | None = None,
         start_anchor: str = "group",
         start_phase: str = "start",
         delay: float = 0.0,
@@ -323,9 +323,9 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         """向当前事件组添加事件;可选 end_* 为通用强制结束约束。"""
 
         snap = self.performance.add_event(
-            type,
+            event_type,
             params,
-            id=id,
+            event_id=event_id,
             start_anchor=start_anchor,
             start_phase=start_phase,
             delay=delay,
@@ -379,11 +379,11 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         self,
         job_id: str | None = None,
         *,
-        all: bool = False,
+        clear_all: bool = False,
     ) -> dict[str, object]:
-        """删除 pending job 或取消 running;all=True 清空队列。"""
+        """删除 pending job 或取消 running;clear_all=True 清空队列。"""
 
-        result = await self.performance.remove_job(job_id, all=all)
+        result = await self.performance.remove_job(job_id, clear_all=clear_all)
         return result.model_dump(mode="json")
 
     def performance_summary(self) -> str:

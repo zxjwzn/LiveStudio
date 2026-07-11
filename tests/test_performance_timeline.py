@@ -114,12 +114,12 @@ class RecordingHost:
 def test_add_event_validates_and_binds() -> None:
     host = RecordingHost()
     svc = PerformanceService(host)
-    d1 = svc.add_event("speak", {"text": "hi"}, id="s")
+    d1 = svc.add_event("speak", {"text": "hi"}, event_id="s")
     assert d1.valid
     d2 = svc.add_event(
         "play_emotion",
         {"emotion": "joy"},
-        id="e",
+        event_id="e",
         start_anchor="s",
         start_phase="start",
         delay=0.1,
@@ -132,8 +132,8 @@ def test_add_event_validates_and_binds() -> None:
 
 def test_remove_event_blocks_dependents() -> None:
     svc = PerformanceService(RecordingHost())
-    svc.add_event("speak", {"text": "a"}, id="s")
-    svc.add_event("wait", {"seconds": 0.01}, id="w", start_anchor="s", start_phase="end")
+    svc.add_event("speak", {"text": "a"}, event_id="s")
+    svc.add_event("wait", {"seconds": 0.01}, event_id="w", start_anchor="s", start_phase="end")
     blocked = svc.remove_event("s")
     assert not blocked.valid
     svc.remove_event("w")
@@ -144,7 +144,7 @@ def test_remove_event_blocks_dependents() -> None:
 
 async def test_enqueue_runs_wait_and_completes() -> None:
     svc = PerformanceService(RecordingHost())
-    svc.add_event("wait", {"seconds": 0.05}, id="w")
+    svc.add_event("wait", {"seconds": 0.05}, event_id="w")
     result = await svc.enqueue_draft(delay=0)
     assert result.ok
     job_id = result.job_id
@@ -164,11 +164,11 @@ async def test_enqueue_runs_wait_and_completes() -> None:
 async def test_speak_then_emotion_relative_start() -> None:
     host = RecordingHost()
     svc = PerformanceService(host)
-    svc.add_event("speak", {"text": "hello"}, id="s")
+    svc.add_event("speak", {"text": "hello"}, event_id="s")
     svc.add_event(
         "play_emotion",
         {"emotion": "joy"},
-        id="e",
+        event_id="e",
         start_anchor="s",
         start_phase="start",
         delay=0.02,
@@ -191,9 +191,9 @@ async def test_speak_then_emotion_relative_start() -> None:
 async def test_queue_serial_second_job_waits() -> None:
     host = RecordingHost()
     svc = PerformanceService(host)
-    svc.add_event("wait", {"seconds": 0.12}, id="w1")
+    svc.add_event("wait", {"seconds": 0.12}, event_id="w1")
     r1 = await svc.enqueue_draft()
-    svc.add_event("wait", {"seconds": 0.01}, id="w2")
+    svc.add_event("wait", {"seconds": 0.01}, event_id="w2")
     r2 = await svc.enqueue_draft()
     assert r1.state is JobState.RUNNING
     assert r2.state is JobState.PENDING
@@ -213,7 +213,7 @@ async def test_queue_serial_second_job_waits() -> None:
 async def test_remove_job_cancels_running() -> None:
     host = RecordingHost()
     svc = PerformanceService(host)
-    svc.add_event("wait", {"seconds": 2.0}, id="w")
+    svc.add_event("wait", {"seconds": 2.0}, event_id="w")
     r = await svc.enqueue_draft()
     assert r.job_id
     await asyncio.sleep(0.02)
@@ -227,8 +227,8 @@ async def test_remove_job_cancels_running() -> None:
 
 async def test_speak_overlap_rejected() -> None:
     svc = PerformanceService(RecordingHost())
-    svc.add_event("speak", {"text": "a"}, id="s1")
-    svc.add_event("speak", {"text": "b"}, id="s2")
+    svc.add_event("speak", {"text": "a"}, event_id="s1")
+    svc.add_event("speak", {"text": "b"}, event_id="s2")
     r = await svc.enqueue_draft()
     assert not r.ok
     assert r.error == "speak_overlap"
@@ -239,11 +239,11 @@ async def test_enqueue_delay_and_speak_end_chain() -> None:
 
     host = RecordingHost()
     svc = PerformanceService(host)
-    svc.add_event("speak", {"text": "one"}, id="s1")
+    svc.add_event("speak", {"text": "one"}, event_id="s1")
     svc.add_event(
         "speak",
         {"text": "two"},
-        id="s2",
+        event_id="s2",
         start_anchor="s1",
         start_phase="end",
         delay=0.01,
@@ -287,11 +287,11 @@ async def test_end_constraint_emotion_until_speak_end() -> None:
 
     host = RecordingHost()
     svc = PerformanceService(host)
-    svc.add_event("speak", {"text": "hello"}, id="s")
+    svc.add_event("speak", {"text": "hello"}, event_id="s")
     d = svc.add_event(
         "play_emotion",
         {"emotion": "joy"},
-        id="e",
+        event_id="e",
         start_anchor="s",
         start_phase="start",
         delay=0,
@@ -321,11 +321,11 @@ async def test_end_constraint_emotion_until_speak_end() -> None:
 
 async def test_end_constraint_rejects_self_anchor() -> None:
     svc = PerformanceService(RecordingHost())
-    svc.add_event("speak", {"text": "a"}, id="s")
+    svc.add_event("speak", {"text": "a"}, event_id="s")
     bad = svc.add_event(
         "play_emotion",
         {"emotion": "joy"},
-        id="e",
+        event_id="e",
         end_anchor="e",
         end_phase="end",
     )
@@ -338,11 +338,11 @@ async def test_force_release_completes_event_before_restore() -> None:
     host = RecordingHost()
     host._emotion_auto = True
     svc = PerformanceService(host)
-    svc.add_event("speak", {"text": "hello"}, id="s")
+    svc.add_event("speak", {"text": "hello"}, event_id="s")
     svc.add_event(
         "play_emotion",
         {"emotion": "joy"},
-        id="e",
+        event_id="e",
         start_anchor="s",
         start_phase="start",
         end_anchor="s",

@@ -1,8 +1,11 @@
 """探查单个 VTS 实例是否产生多个 (host, port) 候选，确认去重键。"""
+
 import asyncio
+
 from livestudio.clients.vtube_studio.config import VTubeStudioConfig
 from livestudio.clients.vtube_studio.discovery import VTubeStudioDiscovery
 from livestudio.clients.vtube_studio.errors import DiscoveryError
+
 
 async def main():
     cfg = VTubeStudioConfig(discovery_port=47779, discovery_timeout=3.0)

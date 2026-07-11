@@ -230,19 +230,19 @@ async def enqueue_speak_emotion(
     await s.t("clear_draft", show=False)
     await s.t(
         "add_event",
-        {"type": "speak", "params": {"text": text}, "id": "s"},
+        {"event_type": "speak", "params": {"text": text}, "event_id": "s"},
         show=False,
     )
     await s.t(
         "add_event",
         {
-            "type": "play_emotion",
+            "event_type": "play_emotion",
             "params": {
                 "emotion": emotion,
                 "intensity": intensity,
                 "transition_duration": transition,
             },
-            "id": "e",
+            "event_id": "e",
             "start_anchor": "s",
             "start_phase": "start",
             "delay": 0,
@@ -284,7 +284,7 @@ async def main() -> int:
             return 1
         print("emotions from server:", emotions)
         await ensure_controllers(s)
-        await s.t("remove_job", {"all": True})
+        await s.t("remove_job", {"clear_all": True})
         await s.t("clear_draft")
 
         # ------------------------------------------------------------------
@@ -343,4 +343,4 @@ if __name__ == "__main__":
         raise SystemExit(asyncio.run(main()))
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
-        raise SystemExit(130)
+        raise SystemExit(130) from None

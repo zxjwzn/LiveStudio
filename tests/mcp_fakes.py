@@ -152,10 +152,10 @@ class _FakeApp:
 
     def performance_add_event(
         self,
-        type,
+        event_type,
         params=None,
         *,
-        id=None,
+        event_id=None,
         start_anchor="group",
         start_phase="start",
         delay=0.0,
@@ -164,9 +164,9 @@ class _FakeApp:
         end_delay=0.0,
     ):
         return self.performance.add_event(
-            type,
+            event_type,
             params,
-            id=id,
+            event_id=event_id,
             start_anchor=start_anchor,
             start_phase=start_phase,
             delay=delay,
@@ -194,8 +194,8 @@ class _FakeApp:
         snap = self.performance.get_job(job_id)
         return None if snap is None else snap.model_dump(mode="json")
 
-    async def performance_remove_job(self, job_id=None, *, all: bool = False):
-        return (await self.performance.remove_job(job_id, all=all)).model_dump(mode="json")
+    async def performance_remove_job(self, job_id=None, *, clear_all: bool = False):
+        return (await self.performance.remove_job(job_id, clear_all=clear_all)).model_dump(mode="json")
 
     def performance_summary(self) -> str:
         return self.performance.summary_line()

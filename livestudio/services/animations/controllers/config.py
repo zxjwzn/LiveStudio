@@ -1,6 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 from livestudio.services.audio_stream.sources.tts.engines.types import TtsProviderKind
 
 

@@ -147,10 +147,10 @@ class PerformanceService:
 
     def add_event(
         self,
-        type: str | EventType,
+        event_type: str | EventType,
         params: Mapping[str, Any] | None = None,
         *,
-        id: str | None = None,
+        event_id: str | None = None,
         start_anchor: str = "group",
         start_phase: str | AnchorPhase = AnchorPhase.START,
         delay: float = 0.0,
@@ -161,9 +161,9 @@ class PerformanceService:
         """向当前事件组添加一条事件;可选 end_* 为通用强制结束约束。"""
 
         try:
-            event_type = type if isinstance(type, EventType) else EventType(type)
+            resolved_type = event_type if isinstance(event_type, EventType) else EventType(event_type)
         except ValueError as exc:
-            return self._draft_error(f"未知事件类型: {type}", exc)
+            return self._draft_error(f"未知事件类型: {event_type}", exc)
 
         try:
             phase = start_phase if isinstance(start_phase, AnchorPhase) else AnchorPhase(start_phase)
@@ -177,13 +177,17 @@ class PerformanceService:
 
         raw_params = dict(params or {})
         try:
-            norm_params = validate_event_params(event_type, raw_params)
+            norm_params = validate_event_params(resolved_type, raw_params)
         except (TypeError, ValueError) as exc:
             return self._draft_error(str(exc), exc)
 
-        event_id = id.strip() if isinstance(id, str) and id.strip() else f"e{next(self._id_counter)}"
-        if any(event.id == event_id for event in self._draft):
-            return self._draft_error(f"事件 id 已存在: {event_id}")
+        resolved_id = (
+            event_id.strip()
+            if isinstance(event_id, str) and event_id.strip()
+            else f"e{next(self._id_counter)}"
+        )
+        if any(event.id == resolved_id for event in self._draft):
+            return self._draft_error(f"事件 id 已存在: {resolved_id}")
 
         anchor = (start_anchor or "group").strip() or "group"
         if anchor != "group" and not any(event.id == anchor for event in self._draft):
@@ -196,15 +200,15 @@ class PerformanceService:
                 end_p = end_phase if isinstance(end_phase, AnchorPhase) else AnchorPhase(end_phase)
             except ValueError as exc:
                 return self._draft_error(f"未知 end_phase: {end_phase}", exc)
-            if end_a != "group" and end_a != event_id and not any(event.id == end_a for event in self._draft):
+            if end_a != "group" and end_a != resolved_id and not any(event.id == end_a for event in self._draft):
                 return self._draft_error(f"end_anchor '{end_a}' 不在当前事件组")
-            if end_a == event_id:
+            if end_a == resolved_id:
                 return self._draft_error("end_anchor 不能指向事件自身")
             end_ref = StartRef(anchor=end_a, phase=end_p, delay=float(end_delay))
 
         event = TimelineEvent(
-            id=event_id,
-            type=event_type,
+            id=resolved_id,
+            type=resolved_type,
             params=norm_params,
             start=StartRef(anchor=anchor, phase=phase, delay=float(delay)),
             end=end_ref,
@@ -319,8 +323,8 @@ class PerformanceService:
                 return snap
         return None
 
-    async def remove_job(self, job_id: str | None = None, *, all: bool = False) -> RemoveJobResult:
-        """删除 pending 或取消 running;all=True 清空队列并停当前。
+    async def remove_job(self, job_id: str | None = None, *, clear_all: bool = False) -> RemoveJobResult:
+        """删除 pending 或取消 running;clear_all=True 清空队列并停当前。
 
         取消 running 时先在锁外 await 任务结束,避免与 _on_job_done 抢同一把锁死锁。
         """
@@ -332,13 +336,13 @@ class PerformanceService:
         pending_to_drop: list[_Job] = []
 
         async with self._lock:
-            if all:
+            if clear_all:
                 cancel_all_running = self._running
                 self._running = None
                 pending_to_drop = list(self._pending)
                 self._pending.clear()
             elif job_id is None:
-                return RemoveJobResult(ok=False, message="须提供 job_id 或 all=true", queue=self.list_jobs())
+                return RemoveJobResult(ok=False, message="须提供 job_id 或 clear_all=true", queue=self.list_jobs())
             else:
                 for index, job in enumerate(self._pending):
                     if job.job_id == job_id:
@@ -363,7 +367,7 @@ class PerformanceService:
                     )
 
         # 锁外取消,任务 finally 里的 _on_job_done 可安全获取锁
-        if all:
+        if clear_all:
             if cancel_all_running is not None:
                 removed.append(cancel_all_running.job_id)
                 cancelled_running = True
@@ -378,7 +382,7 @@ class PerformanceService:
                 job.state = JobState.CANCELLED
                 removed.append(job.job_id)
                 self._push_finished(job.snapshot())
-            # 空队列 all=true 也 ok(幂等)
+            # 空队列 clear_all=true 也 ok(幂等)
             return RemoveJobResult(
                 ok=True,
                 removed=removed,
@@ -424,7 +428,7 @@ class PerformanceService:
     async def shutdown(self) -> None:
         """停止服务:取消 running、清空 pending。"""
 
-        await self.remove_job(all=True)
+        await self.remove_job(clear_all=True)
 
     # --- 调度 ---
 
@@ -432,10 +436,7 @@ class PerformanceService:
         try:
             if job.enqueue_delay > 0:
                 job.phase = "starting_delay"
-                try:
-                    await _wait_or_cancel(job.enqueue_delay, job.cancel_event)
-                except asyncio.CancelledError:
-                    raise
+                await _wait_or_cancel(job.enqueue_delay, job.cancel_event)
             if job.cancel_event.is_set():
                 self._finish(job, JobState.CANCELLED)
                 await self._on_job_done(job)
@@ -806,7 +807,7 @@ def _find_cycle(events: list[TimelineEvent]) -> list[str] | None:
         if node in visiting:
             if node in stack:
                 i = stack.index(node)
-                return stack[i:] + [node]
+                return [*stack[i:], node]
             return [node]
         if node in visited:
             return None

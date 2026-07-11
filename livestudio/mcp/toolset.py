@@ -254,9 +254,9 @@ class PlatformToolset(ABC, Generic[TApp]):
     @tool(builtin=True)
     async def add_event(
         self,
-        type: str,
+        event_type: str,
         params: dict[str, object] | None = None,
-        id: str | None = None,
+        event_id: str | None = None,
         start_anchor: str = "group",
         start_phase: str = "start",
         delay: float = 0.0,
@@ -298,8 +298,8 @@ class PlatformToolset(ABC, Generic[TApp]):
         未设 end 时按该动作自然结束。这是通用生命周期,不是 play_emotion 专用参数。
 
         表情撑到语音播完:
-          add_event(type="speak", params={"text":"……"}, id="s")
-          add_event(type="play_emotion", params={"emotion":"joy"},
+          add_event(event_type="speak", params={"text":"……"}, event_id="s")
+          add_event(event_type="play_emotion", params={"emotion":"joy"},
                     start_anchor="s", start_phase="start", delay=0,
                     end_anchor="s", end_phase="end", end_delay=0)
           enqueue_draft()
@@ -309,14 +309,14 @@ class PlatformToolset(ABC, Generic[TApp]):
         ## 推荐编排示例
 
         开口后 2 秒笑:
-          add_event(type="speak", params={"text":"你好"}, id="s")
-          add_event(type="play_emotion", params={"emotion":"joy"},
+          add_event(event_type="speak", params={"text":"你好"}, event_id="s")
+          add_event(event_type="play_emotion", params={"emotion":"joy"},
                     start_anchor="s", start_phase="start", delay=2)
           enqueue_draft()
 
         说完再表情:
-          add_event(type="speak", params={"text":"……"}, id="s")
-          add_event(type="play_emotion", params={"emotion":"sadness"},
+          add_event(event_type="speak", params={"text":"……"}, event_id="s")
+          add_event(event_type="play_emotion", params={"emotion":"sadness"},
                     start_anchor="s", start_phase="end", delay=0)
           enqueue_draft()
 
@@ -331,12 +331,12 @@ class PlatformToolset(ABC, Generic[TApp]):
         成功时可用返回的 id 给后续 add_event 做 start_anchor。
 
         Args:
-            type: 事件类型:speak / play_emotion / set_native_expression /
+            event_type: 事件类型:speak / play_emotion / set_native_expression /
                 clear_native_expressions / wait。
-            params: 与 type 匹配的参数对象。speak 需 {"text":"..."};
+            params: 与 event_type 匹配的参数对象。speak 需 {"text":"..."};
                 play_emotion 需 {"emotion":"joy"} 等;wait 需 {"seconds":1.0}。
                 可传 null 等价 {}。
-            id: 可选事件 id,组内唯一;不传则自动生成 e1,e2…。需要被其它事件
+            event_id: 可选事件 id,组内唯一;不传则自动生成 e1,e2…。需要被其它事件
                 引用时建议显式指定简短 id。
             start_anchor: 启动锚点。"group" 表示本计划开演,或同组事件 id。默认 group。
             start_phase: 相对锚点的相位:"start" 或 "end"。默认 start。
@@ -347,9 +347,9 @@ class PlatformToolset(ABC, Generic[TApp]):
         """
 
         return self._app.performance_add_event(
-            type,
+            event_type,
             params,
-            id=id,
+            event_id=event_id,
             start_anchor=start_anchor,
             start_phase=start_phase,
             delay=delay,
@@ -402,7 +402,7 @@ class PlatformToolset(ABC, Generic[TApp]):
         - 全局 FIFO:**同时最多一个 running Job**。
         - 队列空闲:本 Job 立即变为 running 并开始调度。
         - 已有 running:本 Job 进入 pending 队尾,**不会打断**当前演出。
-        - 想插播/覆盖:先 remove_job 取消 running(或 all=true),再 enqueue。
+        - 想插播/覆盖:先 remove_job 取消 running(或 clear_all=true),再 enqueue。
         - 空草稿、校验失败、多个 speak 可能重叠 → ok=false,草稿保留不动。
 
         ## delay(计划级推迟)
@@ -462,23 +462,23 @@ class PlatformToolset(ABC, Generic[TApp]):
         return {"ok": True, "job": snap}
 
     @tool(builtin=True)
-    async def remove_job(self, job_id: str | None = None, all: bool = False) -> dict[str, object]:
+    async def remove_job(self, job_id: str | None = None, clear_all: bool = False) -> dict[str, object]:
         """删除 pending Job,或**取消**正在执行的 Job(唯一打断入口)。
 
         - pending: 直接移出队列,不启动。
         - running: 停止 TTS、取消表情收尾、取消未触发定时器;cancelled 后自动启动下一个 pending。
-        - all=true: 取消 running(若有)并清空全部 pending;job_id 可省略。
+        - clear_all=true: 取消 running(若有)并清空全部 pending;job_id 可省略。
 
         新 add_event/enqueue **不能**覆盖正在跑的计划;必须先本工具取消再提交新编排。
 
         返回 {ok, removed:[job_id...], cancelled_running, message?, queue?}。
 
         Args:
-            job_id: 要删除或取消的 job_id。all=true 时可省略;否则必填。
-            all: true 时清空整个队列(取消 running + 丢弃 pending)。默认 false。
+            job_id: 要删除或取消的 job_id。clear_all=true 时可省略;否则必填。
+            clear_all: true 时清空整个队列(取消 running + 丢弃 pending)。默认 false。
         """
 
-        return await self._app.performance_remove_job(job_id, all=all)
+        return await self._app.performance_remove_job(job_id, clear_all=clear_all)
 
     @cached_property
     def _compiled(self) -> dict[str, _CompiledTool]:

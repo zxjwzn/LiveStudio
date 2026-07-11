@@ -130,7 +130,7 @@ async def test_add_event_and_get_draft() -> None:
     result = _as_dict(
         await toolset.call(
             "add_event",
-            {"type": "wait", "params": {"seconds": 0.01}, "id": "w1"},
+            {"event_type": "wait", "params": {"seconds": 0.01}, "event_id": "w1"},
         )
     )
     assert result["valid"] is True
@@ -138,7 +138,7 @@ async def test_add_event_and_get_draft() -> None:
     assert result["events"][0]["id"] == "w1"
     draft = _as_dict(await toolset.call("get_draft", {}))
     assert len(draft["events"]) == 1
-    bad = _as_dict(await toolset.call("add_event", {"type": "nope", "params": {}}))
+    bad = _as_dict(await toolset.call("add_event", {"event_type": "nope", "params": {}}))
     assert bad["valid"] is False
 
 
@@ -146,10 +146,10 @@ async def test_remove_event_and_clear_draft() -> None:
     """remove_event 删草稿事件;有依赖时拒绝;clear_draft 清空。"""
 
     toolset = _FakeToolset(_FakeApp())
-    await toolset.call("add_event", {"type": "speak", "params": {"text": "a"}, "id": "s"})
+    await toolset.call("add_event", {"event_type": "speak", "params": {"text": "a"}, "event_id": "s"})
     await toolset.call(
         "add_event",
-        {"type": "wait", "params": {"seconds": 0.01}, "id": "w", "start_anchor": "s", "start_phase": "end"},
+        {"event_type": "wait", "params": {"seconds": 0.01}, "event_id": "w", "start_anchor": "s", "start_phase": "end"},
     )
     blocked = _as_dict(await toolset.call("remove_event", {"event_id": "s"}))
     assert blocked["valid"] is False
@@ -157,7 +157,7 @@ async def test_remove_event_and_clear_draft() -> None:
     ok = _as_dict(await toolset.call("remove_event", {"event_id": "s"}))
     assert ok["valid"] is True
     assert ok["events"] == []
-    await toolset.call("add_event", {"type": "wait", "params": {"seconds": 0.01}})
+    await toolset.call("add_event", {"event_type": "wait", "params": {"seconds": 0.01}})
     cleared = _as_dict(await toolset.call("clear_draft", {}))
     assert cleared["events"] == []
 
@@ -166,7 +166,7 @@ async def test_enqueue_wait_completes() -> None:
     """enqueue_draft 入队 wait 并跑到 completed。"""
 
     toolset = _FakeToolset(_FakeApp())
-    await toolset.call("add_event", {"type": "wait", "params": {"seconds": 0.05}, "id": "w"})
+    await toolset.call("add_event", {"event_type": "wait", "params": {"seconds": 0.05}, "event_id": "w"})
     enq = _as_dict(await toolset.call("enqueue_draft", {"delay": 0}))
     assert enq["ok"] is True
     assert enq["job_id"]
@@ -183,8 +183,8 @@ async def test_enqueue_speak_and_emotion_parallel() -> None:
 
     app = _FakeApp()
     toolset = _FakeToolset(app)
-    await toolset.call("add_event", {"type": "speak", "params": {"text": "hello"}, "id": "s"})
-    await toolset.call("add_event", {"type": "play_emotion", "params": {"emotion": "joy"}, "id": "e"})
+    await toolset.call("add_event", {"event_type": "speak", "params": {"text": "hello"}, "event_id": "s"})
+    await toolset.call("add_event", {"event_type": "play_emotion", "params": {"emotion": "joy"}, "event_id": "e"})
     enq = _as_dict(await toolset.call("enqueue_draft", {}))
     assert enq["ok"] is True
     terminal = await _wait_job_terminal(toolset, enq["job_id"])
@@ -198,13 +198,13 @@ async def test_enqueue_emotion_after_speak_start() -> None:
 
     app = _FakeApp()
     toolset = _FakeToolset(app)
-    await toolset.call("add_event", {"type": "speak", "params": {"text": "hi"}, "id": "s"})
+    await toolset.call("add_event", {"event_type": "speak", "params": {"text": "hi"}, "event_id": "s"})
     await toolset.call(
         "add_event",
         {
-            "type": "play_emotion",
+            "event_type": "play_emotion",
             "params": {"emotion": "joy"},
-            "id": "e",
+            "event_id": "e",
             "start_anchor": "s",
             "start_phase": "start",
             "delay": 0.02,
@@ -222,8 +222,8 @@ async def test_enqueue_rejects_speak_overlap() -> None:
     """两个 speak 都挂 group.start 时 enqueue 拒绝,草稿保留。"""
 
     toolset = _FakeToolset(_FakeApp())
-    await toolset.call("add_event", {"type": "speak", "params": {"text": "a"}, "id": "s1"})
-    await toolset.call("add_event", {"type": "speak", "params": {"text": "b"}, "id": "s2"})
+    await toolset.call("add_event", {"event_type": "speak", "params": {"text": "a"}, "event_id": "s1"})
+    await toolset.call("add_event", {"event_type": "speak", "params": {"text": "b"}, "event_id": "s2"})
     enq = _as_dict(await toolset.call("enqueue_draft", {}))
     assert enq["ok"] is False
     assert enq["error"] == "speak_overlap"
@@ -242,9 +242,9 @@ async def test_queue_serial_and_list_jobs() -> None:
     """第二单 pending;list_jobs 可见;顺序完成后 finished 含两单。"""
 
     toolset = _FakeToolset(_FakeApp())
-    await toolset.call("add_event", {"type": "wait", "params": {"seconds": 0.1}, "id": "w1"})
+    await toolset.call("add_event", {"event_type": "wait", "params": {"seconds": 0.1}, "event_id": "w1"})
     r1 = _as_dict(await toolset.call("enqueue_draft", {}))
-    await toolset.call("add_event", {"type": "wait", "params": {"seconds": 0.01}, "id": "w2"})
+    await toolset.call("add_event", {"event_type": "wait", "params": {"seconds": 0.01}, "event_id": "w2"})
     r2 = _as_dict(await toolset.call("enqueue_draft", {}))
     assert r1["state"] == "running"
     assert r2["state"] == "pending"
@@ -263,7 +263,7 @@ async def test_remove_job_cancels_running() -> None:
     """remove_job 取消 running wait。"""
 
     toolset = _FakeToolset(_FakeApp())
-    await toolset.call("add_event", {"type": "wait", "params": {"seconds": 2.0}, "id": "w"})
+    await toolset.call("add_event", {"event_type": "wait", "params": {"seconds": 2.0}, "event_id": "w"})
     enq = _as_dict(await toolset.call("enqueue_draft", {}))
     await asyncio.sleep(0.02)
     removed = _as_dict(await toolset.call("remove_job", {"job_id": enq["job_id"]}))
@@ -275,14 +275,14 @@ async def test_remove_job_cancels_running() -> None:
 
 
 async def test_remove_job_all_clears_queue() -> None:
-    """remove_job(all=true) 清 running+pending。"""
+    """remove_job(clear_all=true) 清 running+pending。"""
 
     toolset = _FakeToolset(_FakeApp())
-    await toolset.call("add_event", {"type": "wait", "params": {"seconds": 1.0}})
+    await toolset.call("add_event", {"event_type": "wait", "params": {"seconds": 1.0}})
     await toolset.call("enqueue_draft", {})
-    await toolset.call("add_event", {"type": "wait", "params": {"seconds": 1.0}})
+    await toolset.call("add_event", {"event_type": "wait", "params": {"seconds": 1.0}})
     await toolset.call("enqueue_draft", {})
-    removed = _as_dict(await toolset.call("remove_job", {"all": True}))
+    removed = _as_dict(await toolset.call("remove_job", {"clear_all": True}))
     assert removed["ok"] is True
     jobs = _as_dict(await toolset.call("list_jobs", {}))
     assert jobs["running"] is None
@@ -296,9 +296,9 @@ async def test_native_expression_events() -> None:
     toolset = _FakeToolset(app)
     await toolset.call(
         "add_event",
-        {"type": "set_native_expression", "params": {"name": "smile", "active": True}},
+        {"event_type": "set_native_expression", "params": {"name": "smile", "active": True}},
     )
-    await toolset.call("add_event", {"type": "clear_native_expressions", "params": {}})
+    await toolset.call("add_event", {"event_type": "clear_native_expressions", "params": {}})
     enq = _as_dict(await toolset.call("enqueue_draft", {}))
     assert enq["ok"] is True
     terminal = await _wait_job_terminal(toolset, enq["job_id"])
@@ -311,7 +311,7 @@ async def test_enqueue_delay_delays_start() -> None:
     """enqueue_draft(delay) 在 running 后先 starting_delay 再执行。"""
 
     toolset = _FakeToolset(_FakeApp())
-    await toolset.call("add_event", {"type": "wait", "params": {"seconds": 0.01}, "id": "w"})
+    await toolset.call("add_event", {"event_type": "wait", "params": {"seconds": 0.01}, "event_id": "w"})
     enq = _as_dict(await toolset.call("enqueue_draft", {"delay": 0.08}))
     assert enq["ok"] is True
     # 刚入队应仍在 starting_delay 或很快 playing
@@ -334,13 +334,13 @@ async def test_emotion_end_until_speak() -> None:
 
     app = _FakeApp()
     toolset = _FakeToolset(app)
-    await toolset.call("add_event", {"type": "speak", "params": {"text": "hi"}, "id": "s"})
+    await toolset.call("add_event", {"event_type": "speak", "params": {"text": "hi"}, "event_id": "s"})
     await toolset.call(
         "add_event",
         {
-            "type": "play_emotion",
+            "event_type": "play_emotion",
             "params": {"emotion": "joy"},
-            "id": "e",
+            "event_id": "e",
             "start_anchor": "s",
             "start_phase": "start",
             "delay": 0,
