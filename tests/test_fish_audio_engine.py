@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 
 import livestudio.services.audio_stream.sources.tts.engines.fish_audio as fish_audio_module
-from livestudio.services.audio_stream.sources.tts.engines.base import TtsAudioOutput, TtsSubtitleOutput
 from livestudio.services.audio_stream.sources.tts.engines.fish_audio import (
     FishAudioEngine,
     FishAudioEngineConfig,
@@ -39,76 +38,6 @@ def _patch_httpx(monkeypatch, lines: list[str]) -> None:
     monkeypatch.setattr(fish_audio_module.httpx, "AsyncClient", _factory)
 
 
-async def test_fish_audio_engine_yields_audio_and_subtitle(monkeypatch) -> None:
-    lines = [
-        _sse({
-            "audio_base64": _b64([0, 16384, -16384]),
-            "content": "hello world",
-            "chunk_seq": 0,
-            "chunk_audio_offset_sec": 0.0,
-            "alignment": {
-                "audio_duration": 1.0,
-                "segments": [
-                    {"text": "hello", "start": 0, "end": 0.5},
-                    {"text": "world", "start": 0.5, "end": 1.0},
-                ],
-            },
-        }),
-        _sse({
-            "audio_base64": _b64([100, 200]),
-            "content": "foo",
-            "chunk_seq": 1,
-            "chunk_audio_offset_sec": 1.0,
-            "alignment": {
-                "audio_duration": 0.3,
-                "segments": [{"text": "foo", "start": 0, "end": 0.3}],
-            },
-        }),
-    ]
-    _patch_httpx(monkeypatch, lines)
-    engine = FishAudioEngine(FishAudioEngineConfig(api_key="test"), sample_rate=24000, channels=1)
-    outputs = [o async for o in engine.synthesize("hello world foo")]
-    audios = [o for o in outputs if isinstance(o, TtsAudioOutput)]
-    subs = [o for o in outputs if isinstance(o, TtsSubtitleOutput)]
-    assert len(audios) == 2
-    assert len(subs) == 2
-    assert audios[0].frames == 3
-    assert np.allclose(audios[0].data.reshape(-1), [0.0, 0.5, -0.5])
-    assert [s.text for s in subs[0].segments] == ["hello", "world"]
-    assert subs[1].segments[0].start == 1.0
-
-
-async def test_fish_audio_engine_dedupes_growing_snapshot(monkeypatch) -> None:
-    lines = [
-        _sse({
-            "audio_base64": _b64([0]),
-            "content": "ab",
-            "chunk_seq": 0,
-            "chunk_audio_offset_sec": 0.0,
-            "alignment": {"audio_duration": 0.4, "segments": [{"text": "a", "start": 0, "end": 0.2}]},
-        }),
-        _sse({
-            "audio_base64": _b64([0]),
-            "content": "ab",
-            "chunk_seq": 0,
-            "chunk_audio_offset_sec": 0.0,
-            "alignment": {
-                "audio_duration": 0.4,
-                "segments": [
-                    {"text": "a", "start": 0, "end": 0.2},
-                    {"text": "b", "start": 0.2, "end": 0.4},
-                ],
-            },
-        }),
-    ]
-    _patch_httpx(monkeypatch, lines)
-    engine = FishAudioEngine(FishAudioEngineConfig(api_key="test"), sample_rate=24000, channels=1)
-    subs = [o async for o in engine.synthesize("ab") if isinstance(o, TtsSubtitleOutput)]
-    assert len(subs) == 2
-    assert [s.text for s in subs[0].segments] == ["a"]
-    assert [s.text for s in subs[1].segments] == ["b"]
-
-
 async def test_fish_audio_engine_empty_api_key_raises() -> None:
     engine = FishAudioEngine(FishAudioEngineConfig(api_key=""), sample_rate=24000, channels=1)
     with pytest.raises(RuntimeError, match="api_key"):
@@ -121,23 +50,6 @@ async def test_fish_audio_engine_empty_text_yields_nothing(monkeypatch) -> None:
     engine = FishAudioEngine(FishAudioEngineConfig(api_key="test"), sample_rate=24000, channels=1)
     outputs = [o async for o in engine.synthesize("")]
     assert outputs == []
-
-
-async def test_fish_audio_engine_null_alignment_no_subtitle(monkeypatch) -> None:
-    lines = [
-        _sse({
-            "audio_base64": _b64([0, 1]),
-            "content": "x",
-            "chunk_seq": 0,
-            "chunk_audio_offset_sec": 0.0,
-            "alignment": None,
-        }),
-    ]
-    _patch_httpx(monkeypatch, lines)
-    engine = FishAudioEngine(FishAudioEngineConfig(api_key="test"), sample_rate=24000, channels=1)
-    outputs = [o async for o in engine.synthesize("x")]
-    assert len(outputs) == 1
-    assert isinstance(outputs[0], TtsAudioOutput)
 
 
 async def test_fish_audio_engine_opts_override_payload(monkeypatch) -> None:

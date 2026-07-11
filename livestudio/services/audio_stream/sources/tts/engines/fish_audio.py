@@ -21,9 +21,9 @@ import httpx
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from livestudio.services.subtitle import SubtitleSegment
+from livestudio.utils.log import logger
 
-from .base import TtsAudioOutput, TtsEngine, TtsOutput, TtsSubtitleOutput
+from .base import TtsAudioOutput, TtsEngine, TtsOutput
 
 FISH_AUDIO_TTS_URL = "https://api.fish.audio/v1/tts/stream/with-timestamp"
 _FishModel = Literal["s2.1-pro-free", "s2.1-pro", "s2-pro", "s1"]
@@ -129,40 +129,17 @@ class FishAudioEngine(TtsEngine):
                     json=payload,
                 ) as response:
                     response.raise_for_status()
-                    emitted = 0
-                    snapshots: dict[int, list[SubtitleSegment]] = {}
                     async for line in response.aiter_lines():
                         if not line or not line.startswith("data: "):
                             continue
                         event = json.loads(line.removeprefix("data: "))
-
                         audio = self._decode_audio(event["audio_base64"])
                         if audio.frames > 0:
                             await queue.put(audio)
-
-                        alignment = event.get("alignment")
-                        if alignment is not None:
-                            offset = float(event.get("chunk_audio_offset_sec", 0.0))
-                            chunk_seq = int(event.get("chunk_seq", 0))
-                            snapshots[chunk_seq] = [
-                                SubtitleSegment(
-                                    text=str(seg["text"]),
-                                    start=float(seg["start"]) + offset,
-                                    end=float(seg["end"]) + offset,
-                                )
-                                for seg in alignment.get("segments", [])
-                            ]
-                            timeline = [
-                                segment for cs in sorted(snapshots) for segment in snapshots[cs]
-                            ]
-                            new_segments = timeline[emitted:]
-                            if new_segments:
-                                emitted = len(timeline)
-                                await queue.put(TtsSubtitleOutput(segments=list(new_segments)))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                # 把异常交给外层 yield 循环 raise;队列满时丢最旧再塞,避免取消路径死锁
+                logger.exception("Fish SSE reader 异常: {}", exc)
                 _put_sentinel(queue, exc)
             finally:
                 _put_sentinel(queue, None)

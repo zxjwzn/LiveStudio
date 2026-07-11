@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 from numpy.typing import NDArray
 
-from livestudio.services.subtitle import SubtitleSegment
-
 if TYPE_CHECKING:
     from .fish_audio import FishAudioConnectionConfig
 
@@ -27,14 +25,7 @@ class TtsAudioOutput:
     frames: int
 
 
-@dataclass(slots=True)
-class TtsSubtitleOutput:
-    """引擎产出的增量字幕段(仅本次新增段,已去重、全局时间)"""
-
-    segments: list[SubtitleSegment]
-
-
-TtsOutput = TtsAudioOutput | TtsSubtitleOutput
+TtsOutput = TtsAudioOutput
 
 
 class TtsEngine(ABC):
@@ -67,7 +58,7 @@ class TtsEngine(ABC):
 
 
 def make_engine(config: FishAudioConnectionConfig, *, sample_rate: int, channels: int) -> TtsEngine:
-    """由连接配置构造引擎(Fish 连接槽 → FishAudioEngine)。"""
+    """由连接配置构造引擎(Fish 连接槽 -> FishAudioEngine)。"""
 
     from .fish_audio import FishAudioConnectionConfig as FishConn
     from .fish_audio import FishAudioEngine

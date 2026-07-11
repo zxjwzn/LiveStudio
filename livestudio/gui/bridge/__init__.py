@@ -16,6 +16,7 @@ from .platform_bridge import (
     PlatformBridge,
 )
 from .service_bridge import PlatformRegistration, ServiceBridge
+from .subtitle_bridge import SubtitleBridge
 from .vtubestudio_bridge import VTubeStudioPlatformBridge
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "PlatformBridge",
     "PlatformRegistration",
     "ServiceBridge",
+    "SubtitleBridge",
     "ToolGroup",
     "ToolInfo",
     "VTubeStudioPlatformBridge",

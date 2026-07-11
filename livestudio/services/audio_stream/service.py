@@ -157,7 +157,6 @@ class AudioStreamRouter(AudioStreamSource):
 
         return TTSAudioStreamSource(
             self.config.tts,
-            self._subtitle_stream,
             on_interrupt=self.flush_playback,
             on_prepare=self.prepare_playback,
         )

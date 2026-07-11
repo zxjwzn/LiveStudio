@@ -4,7 +4,6 @@ from .base import (
     TtsAudioOutput,
     TtsEngine,
     TtsOutput,
-    TtsSubtitleOutput,
     make_engine,
 )
 from .fish_audio import (
@@ -22,7 +21,6 @@ __all__ = [
     "TtsEngine",
     "TtsOutput",
     "TtsProviderKind",
-    "TtsSubtitleOutput",
     "connection_for_kind",
     "make_engine",
 ]

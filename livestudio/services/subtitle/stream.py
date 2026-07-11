@@ -1,7 +1,7 @@
 """字幕事件总线
 
 镜像音频流(AudioStreamSource)的 pub/sub 模型:生产者(TTS 源)推送字幕事件,
-消费者(将来:网页 WS)订阅。发送频率由生产者控制,流只扇出(满则丢最旧,不调度)。
+消费者(网页 WS)订阅。发送频率由生产者控制,流只扇出(满则丢最旧,不调度)。
 """
 
 import asyncio
@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 
 @dataclass(slots=True)
 class SubtitleSegment:
-    """一段字幕(词/短语)及其在完整音频里的全局时间(秒)"""
+    """一段字幕(词/字)及其在完整音频里的全局时间(秒)"""
 
     text: str
     start: float
@@ -24,8 +24,8 @@ class SubtitleSegment:
 class SubtitleEvent:
     """字幕总线事件
 
-    - ``begin``:一次发声开始,``text`` 为全文(供消费者 force-finish 时整段显示)
-    - ``segments``:增量字幕段(仅本次新增的段,已去重、全局时间)
+    - ``begin``:一次发声开始;``text`` 全文
+    - ``segments``:增量字幕段(仅新增段;start/end 为相对本句音频 0 点的全局秒)
     - ``finish``:发声结束(正常或被取消/被新发声取代)
     """
 
@@ -43,10 +43,7 @@ class SubtitleSubscription:
 
 
 class SubtitleStream:
-    """字幕事件总线:生产者推送事件,消费者订阅(各持一个 asyncio.Queue,慢消费者丢最旧)。
-
-    与音频流同构:流本身是哑管道,不做时间调度--发送频率与内容完全由生产者决定。
-    """
+    """字幕事件总线:生产者推送事件,消费者订阅(各持一个 asyncio.Queue,慢消费者丢最旧)。"""
 
     def __init__(self) -> None:
         self._subscriptions: dict[str, SubtitleSubscription] = {}
@@ -85,7 +82,7 @@ class SubtitleStream:
     # --- 生产者 API(由 TTS 源调用)---
 
     def begin(self, text: str) -> None:
-        """一次发声开始:广播 begin(带全文)"""
+        """一次发声开始:广播 begin(全文)"""
 
         self._publish(SubtitleEvent(kind="begin", text=text))
 

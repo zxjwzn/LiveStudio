@@ -1,6 +1,6 @@
 """主窗口:FluentWindow + 侧边导航
 
-注册 6 个一级页面(仪表盘/平台/音频/音频播放/日志置顶,设置置底)。关闭窗口时不立刻退出,
+注册 7 个一级页面(仪表盘/平台/音频/字幕/音频播放/日志置顶,设置置底)。关闭窗口时不立刻退出,
 而是回调 GuiApplication 触发后端有序停机,停机完成后再真正退出 —— 避免 qasync
 事件循环在后端任务进行中被销毁。
 """
@@ -27,6 +27,7 @@ class MainWindow(FluentWindow):
         dashboard: QWidget,
         platform: QWidget,
         audio: QWidget,
+        subtitle: QWidget,
         playback: QWidget,
         logs: QWidget,
         mcp: QWidget,
@@ -45,6 +46,7 @@ class MainWindow(FluentWindow):
         self.addSubInterface(dashboard, icons.NAV_DASHBOARD, "仪表盘")
         self.addSubInterface(platform, icons.NAV_PLATFORM, "平台")
         self.addSubInterface(audio, icons.NAV_AUDIO, "音频")
+        self.addSubInterface(subtitle, icons.NAV_SUBTITLE, "字幕")
         self.addSubInterface(playback, icons.NAV_PLAYBACK, "音频播放")
         self.addSubInterface(logs, icons.NAV_LOGS, "日志")
         self.addSubInterface(mcp, icons.NAV_MCP, "MCP")

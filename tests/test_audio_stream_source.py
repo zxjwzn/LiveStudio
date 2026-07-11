@@ -34,12 +34,8 @@ from livestudio.services.audio_stream.sources.microphone.microphone import (
 from livestudio.services.audio_stream.sources.microphone.models import InputDeviceInfo
 from livestudio.services.audio_stream.sources.tts import tts as tts_module
 from livestudio.services.audio_stream.sources.tts.config import TTSAudioStreamConfig
-from livestudio.services.audio_stream.sources.tts.engines import (
-    TtsAudioOutput,
-    TtsSubtitleOutput,
-)
+from livestudio.services.audio_stream.sources.tts.engines import TtsAudioOutput
 from livestudio.services.audio_stream.sources.tts.tts import TTSAudioStreamSource
-from livestudio.services.subtitle import SubtitleSegment, SubtitleStream
 
 
 class _DummySource(AudioStreamSource):
@@ -156,7 +152,7 @@ async def test_source_restart_preserves_subscriptions_but_stop_clears_them() -> 
 
 
 async def test_tts_audio_source_start_stop_lifecycle() -> None:
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(), SubtitleStream())
+    source = TTSAudioStreamSource(TTSAudioStreamConfig())
 
     await source.start()
     assert source.is_started
@@ -168,7 +164,7 @@ async def test_tts_audio_source_start_stop_lifecycle() -> None:
 async def test_tts_restart_preserves_subscriptions() -> None:
     """TTS 源软重启保留订阅:重启后块仍能到下游(回归:重载后 speak 无反应)"""
 
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(), SubtitleStream())
+    source = TTSAudioStreamSource(TTSAudioStreamConfig())
     subscription = source.subscribe(queue_maxsize=16)
     await source.start()
 
@@ -188,7 +184,7 @@ async def test_tts_restart_preserves_subscriptions() -> None:
 async def test_tts_idle_emits_silence_chunks() -> None:
     """TTS 源启动后、未发声时持续发布响度 0 的静音块(source=TTS)"""
 
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(), SubtitleStream())
+    source = TTSAudioStreamSource(TTSAudioStreamConfig())
     subscription = source.subscribe(queue_maxsize=8)
     await source.start()
 
@@ -655,7 +651,7 @@ class _ImmediateYieldEngine:
             def __init__(self, owner: _ImmediateYieldEngine) -> None:
                 self._owner = owner
 
-            async def __aenter__(self) -> _Resource:
+            async def __aenter__(self) -> _Resource:  # noqa: PYI034
                 return self
 
             async def __aexit__(self, *_exc: object) -> None:
@@ -667,85 +663,7 @@ class _ImmediateYieldEngine:
             await asyncio.sleep(10)
 
 
-async def test_tts_speak_publishes_audio_and_subtitle(monkeypatch) -> None:
-    """speak 驱动引擎:音频块发音频总线、字幕段发字幕流;begin/segments/finish 顺序"""
 
-    outputs = [
-        TtsAudioOutput(data=np.full((4, 1), 0.3, dtype=np.float32), frames=4),
-        TtsSubtitleOutput(segments=[SubtitleSegment(text="hi", start=0.0, end=0.2)]),
-    ]
-    monkeypatch.setattr(tts_module, "make_engine", lambda _config, **kw: _FakeEngine(outputs, **kw))
-    subtitle = SubtitleStream()
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(), subtitle)
-    audio_sub = source.subscribe(queue_maxsize=16)
-    sub_sub = subtitle.subscribe(queue_maxsize=16)
-    await source.start()
-    await asyncio.sleep(0.02)  # 让空闲静音入队
-    while not audio_sub.queue.empty():
-        audio_sub.queue.get_nowait()  # 排空静音
-
-    await source.speak("hi")
-    await asyncio.sleep(0.05)  # 让 utterance 跑完
-
-    # 音频总线收到 TTS 块(非静音 0.3)
-    achunk = await asyncio.wait_for(audio_sub.queue.get(), timeout=0.5)
-    assert achunk.source is AudioSourceKind.TTS
-    assert float(np.max(np.abs(achunk.data))) > 0.0
-    # 字幕流:begin -> segments -> finish
-    events = []
-    while not sub_sub.queue.empty():
-        events.append(sub_sub.queue.get_nowait())
-    assert [e.kind for e in events] == ["begin", "segments", "finish"]
-    assert events[0].text == "hi"
-    assert events[1].segments[0].text == "hi"
-    await source.stop()
-
-
-async def test_tts_stop_speaking_finishes_subtitle(monkeypatch) -> None:
-    """stop_speaking 取消发声后发 finish、is_speaking 转 False"""
-
-    monkeypatch.setattr(tts_module, "make_engine", lambda _config, **kw: _SlowEngine(**kw))
-    subtitle = SubtitleStream()
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(), subtitle)
-    sub = subtitle.subscribe(queue_maxsize=16)
-    await source.start()
-
-    await source.speak("hi")
-    await asyncio.sleep(0.02)  # 让 utterance 起来(阻塞在慢引擎)
-    assert source.is_speaking
-    await source.stop_speaking()
-    assert not source.is_speaking
-
-    events = []
-    while not sub.queue.empty():
-        events.append(sub.queue.get_nowait())
-    assert "finish" in [e.kind for e in events]
-    await source.stop()
-
-
-async def test_tts_speak_replaces_old_finishes_before_new_begin(monkeypatch) -> None:
-    """新 speak 取消旧发声:旧 finish 先于新 begin(顺序保证)"""
-
-    monkeypatch.setattr(tts_module, "make_engine", lambda _config, **kw: _SlowEngine(**kw))
-    subtitle = SubtitleStream()
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(), subtitle)
-    sub = subtitle.subscribe(queue_maxsize=16)
-    await source.start()
-
-    await source.speak("first")
-    await asyncio.sleep(0.02)  # 让 utterance 1 起来
-    await source.speak("second")  # 取消 first
-    await asyncio.sleep(0.02)  # 让 utterance 2 起来
-    await source.stop_speaking()  # 取消 second
-
-    events = []
-    while not sub.queue.empty():
-        events.append(sub.queue.get_nowait())
-    # begin(first) -> finish(first) -> begin(second) -> finish(second)
-    assert [e.kind for e in events] == ["begin", "finish", "begin", "finish"]
-    assert events[0].text == "first"
-    assert events[2].text == "second"
-    await source.stop()
 
 
 async def test_synth_async_generator_closed_on_cancel(monkeypatch) -> None:
@@ -774,7 +692,7 @@ async def test_synth_async_generator_closed_on_cancel(monkeypatch) -> None:
 
     monkeypatch.setattr(TTSAudioStreamSource, "_enqueue_audio", _blocking_enqueue)
 
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(), SubtitleStream())
+    source = TTSAudioStreamSource(TTSAudioStreamConfig())
     await source.start()
     speak_start = len(engines)  # __init__ 已建一个默认引擎(engines[0],未使用)
 
@@ -803,7 +721,6 @@ async def test_tts_stop_speaking_invokes_on_interrupt(monkeypatch) -> None:
     calls: list[int] = []
     source = TTSAudioStreamSource(
         TTSAudioStreamConfig(),
-        SubtitleStream(),
         on_interrupt=lambda: calls.append(1),
     )
     await source.start()
@@ -828,7 +745,6 @@ async def test_tts_speak_calls_on_prepare(monkeypatch) -> None:
 
     source = TTSAudioStreamSource(
         TTSAudioStreamConfig(),
-        SubtitleStream(),
         on_prepare=_prepare,
         on_interrupt=lambda: order.append("interrupt"),
     )
@@ -853,7 +769,7 @@ async def test_tts_present_clock_feeds_bus_at_frame_rate(monkeypatch) -> None:
         "make_engine",
         lambda _config, **_kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
     )
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000), SubtitleStream())
+    source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000))
     sub = source.subscribe(queue_maxsize=256)
     await source.start()
     await asyncio.sleep(0.02)
@@ -887,7 +803,7 @@ async def test_tts_present_does_not_burst_whole_utterance(monkeypatch) -> None:
         "make_engine",
         lambda _config, **_kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
     )
-    source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000), SubtitleStream())
+    source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000))
     sub = source.subscribe(queue_maxsize=256)
     await source.start()
     await asyncio.sleep(0.02)

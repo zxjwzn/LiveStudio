@@ -6,7 +6,7 @@
 平台在 _build_platform_registrations() 工厂集中登记(后端 app + GUI 桥接成对):新增
 平台只在该工厂多加一项,ServiceBridge 的 startup/shutdown 与各页渲染全自动覆盖。
 
-六页均为真实页面:仪表盘(音频电平+控制器开关)/ 平台(连接+模型配置)/ 音频 / 音频播放 / 日志 / 设置。
+七页均为真实页面:仪表盘/平台/音频/字幕/音频播放/日志/设置。
 """
 
 import asyncio
@@ -16,6 +16,7 @@ from qfluentwidgets import InfoBar, InfoBarPosition
 from livestudio.app import VTubeStudioApp
 from livestudio.gui.bridge import McpBridge, PlatformRegistration, ServiceBridge, VTubeStudioPlatformBridge
 from livestudio.gui.bridge.log_bridge import LogEntry
+from livestudio.gui.bridge.subtitle_bridge import SubtitleBridge
 from livestudio.gui.core import (
     GuiSettings,
     ThrottledNotifier,
@@ -31,10 +32,12 @@ from livestudio.gui.views.mcp_view import McpView
 from livestudio.gui.views.platform_view import PlatformView
 from livestudio.gui.views.playback_view import PlaybackView
 from livestudio.gui.views.settings_view import SettingsView
+from livestudio.gui.views.subtitle_view import SubtitleView
 from livestudio.mcp import LiveStudioMcpServer, PlatformToolsetRegistration
 from livestudio.mcp.platforms import VTubeStudioToolset
 from livestudio.services import AudioStreamRouter
 from livestudio.services.animations import AnimationManager
+from livestudio.services.subtitle import SubtitleService
 from livestudio.utils.log import logger
 
 
@@ -86,9 +89,11 @@ class GuiApplication:
         )
         # MCP 服务与 GUI 共享同一批后端 app(只调 app 公开方法,不另建后端)。
         self._mcp_server = LiveStudioMcpServer(platforms=mcp_registrations)
+        self._subtitle_service = SubtitleService(self.audio_router.subtitle_stream)
         self._service_bridge: ServiceBridge | None = None
         self._audio_view: AudioView | None = None
         self._playback_view: PlaybackView | None = None
+        self._subtitle_view: SubtitleView | None = None
         # 日志告警通知:WARNING/ERROR 弹 InfoBar,按 (级别,消息) 去重节流避免刷屏
         self._notifier = ThrottledNotifier()
 
@@ -110,14 +115,18 @@ class GuiApplication:
 
         # 先启动 MCP 服务,使 MCP 页构建时就能反映真实运行态与已加载的监听配置。
         await self._start_mcp_server()
+        await self._start_subtitle_service()
 
         self._audio_view = AudioView(bridge.audio)
         self._playback_view = PlaybackView(bridge.audio)
+        self._subtitle_bridge = SubtitleBridge(self._subtitle_service)
+        self._subtitle_view = SubtitleView(self._subtitle_bridge)
         self._mcp_bridge = McpBridge(self._mcp_server)
         self._window = MainWindow(
             dashboard=DashboardView(bridge.audio, bridge.platforms),
             platform=PlatformView(bridge.platforms),
             audio=self._audio_view,
+            subtitle=self._subtitle_view,
             playback=self._playback_view,
             logs=LogsView(bridge.logs),
             mcp=McpView(self._mcp_bridge),
@@ -131,6 +140,7 @@ class GuiApplication:
 
         await bridge.startup()
         await self._init_audio_view()
+        await self._init_subtitle_view()
         await self._init_playback_view()
         await self._close_event.wait()
 
@@ -142,12 +152,27 @@ class GuiApplication:
         except Exception:
             logger.exception("MCP 服务启动失败，已隔离(GUI 不受影响，LLM 控制不可用)")
 
+    async def _start_subtitle_service(self) -> None:
+        """启动字幕服务(失败不阻断 GUI)。"""
+
+        try:
+            await self._subtitle_service.start()
+        except Exception:
+            logger.exception("字幕服务启动失败，已隔离(GUI 不受影响，OBS 字幕不可用)")
+
     async def _init_audio_view(self) -> None:
         """音频页按当前音源初始化切换条与对应配置编辑器"""
 
         if self._audio_view is None:
             return
         self._audio_view.load_config()
+
+    async def _init_subtitle_view(self) -> None:
+        """字幕页加载配置与端点展示"""
+
+        if self._subtitle_view is None:
+            return
+        self._subtitle_view.load_config()
 
     async def _init_playback_view(self) -> None:
         """音频播放页加载当前配置并刷新输出设备下拉"""
@@ -194,6 +219,13 @@ class GuiApplication:
 
     async def _shutdown_and_quit(self) -> None:
         try:
+            try:
+                await self._subtitle_service.stop()
+            except Exception as exc:
+                if _is_exception_group(exc):
+                    _log_exception_group("停止字幕服务失败，已隔离继续关闭", exc)
+                else:
+                    logger.exception("停止字幕服务失败，已隔离继续关闭")
             try:
                 await self._mcp_server.stop()
             except Exception as exc:
