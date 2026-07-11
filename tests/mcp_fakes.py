@@ -9,8 +9,95 @@ from __future__ import annotations
 from typing import Any
 
 from livestudio.mcp.toolset import PlatformToolset, tool
+from livestudio.services.performance import PerformanceService
 
-# 基类固有通用动词名(connect/disconnect/待机动画/控制器/模型/情绪/TTS)。
+
+class _FakeHost:
+    """PerformanceHost 桩:speak/emotion 自动触发 start/end 锚点,供 MCP 端到端测。"""
+
+    def __init__(self) -> None:
+        import asyncio
+
+        self.asyncio = asyncio
+        self.speaks: list[str] = []
+        self.emotions: list[str] = []
+        self.natives: list[tuple[str, bool]] = []
+        self._speak_start = None
+        self._speak_end = None
+        self._emotion_start = None
+        self._emotion_end = None
+        self._emotion_hold_event = None
+
+    async def launch_speak(self, text: str) -> None:
+        self.speaks.append(text)
+        if self._speak_start:
+            self._speak_start()
+        await self.asyncio.sleep(0.03)
+        if self._speak_end:
+            self._speak_end()
+
+    async def stop_speak(self) -> None:
+        if self._speak_end:
+            self._speak_end()
+
+    async def launch_play_emotion(
+        self,
+        emotion: str,
+        *,
+        intensity: float = 1.0,
+        transition_duration: float | None = None,
+        hold_duration: float | None | object = ...,
+    ) -> None:
+        _ = (intensity, transition_duration)
+        self.emotions.append(emotion)
+        self._emotion_hold = hold_duration
+        if self._emotion_start:
+            self._emotion_start()
+        if hold_duration is None:
+            # 无限保持:快返回;cancel 发 end,恢复后台
+            self._emotion_hold_open = True
+            return
+        await self.asyncio.sleep(0.02)
+        if self._emotion_end:
+            self._emotion_end()
+
+    async def cancel_play_emotion(self) -> None:
+        if getattr(self, "_emotion_hold_open", False):
+            self._emotion_hold_open = False
+            if self._emotion_end:
+                self._emotion_end()
+            return
+        if self._emotion_end:
+            self._emotion_end()
+
+    async def launch_set_native_expression(self, name: str, active: bool) -> None:
+        self.natives.append((name, active))
+
+    async def launch_clear_native_expressions(self) -> None:
+        self.natives.append(("*", False))
+
+    def bind_speak_anchors(self, on_start, on_end):
+        self._speak_start = on_start
+        self._speak_end = on_end
+
+        def _unbind() -> None:
+            self._speak_start = None
+            self._speak_end = None
+
+        return _unbind
+
+    def bind_emotion_anchors(self, on_start, on_end):
+        self._emotion_start = on_start
+        self._emotion_end = on_end
+
+        def _unbind() -> None:
+            self._emotion_start = None
+            self._emotion_end = None
+
+        return _unbind
+
+
+# 基类固有通用动词名(connect/disconnect/待机动画/控制器/模型/情绪只读 + 时间线)。
 UNIVERSAL_VERBS = {
     "connect",
     "disconnect",
@@ -20,9 +107,14 @@ UNIVERSAL_VERBS = {
     "list_controllers",
     "set_controller",
     "list_emotions",
-    "play_emotion",
-    "speak",
-    "stop_speaking",
+    "add_event",
+    "remove_event",
+    "get_draft",
+    "clear_draft",
+    "enqueue_draft",
+    "list_jobs",
+    "get_job",
+    "remove_job",
 }
 
 
@@ -34,6 +126,8 @@ class _FakeApp:
         self.played: list[str] = []
         self.play_emotion_calls: list[dict[str, object]] = []
         self.current_model: tuple[str, str] | None = ("m1", "TestModel")
+        self.perf_host = _FakeHost()
+        self.performance = PerformanceService(self.perf_host)
 
     async def connect(self) -> None:
         self.connect_calls += 1
@@ -56,25 +150,55 @@ class _FakeApp:
     def available_emotions(self) -> list[str]:
         return ["joy", "neutral"]
 
-    async def play_emotion(
+    def performance_add_event(
         self,
-        emotion: str,
-        intensity: float = 1.0,
+        type,
+        params=None,
         *,
-        transition_duration: float | None = None,
-        hold_duration: float | None = None,
-    ) -> None:
-        if emotion not in self.available_emotions():
-            raise ValueError(f"未知情绪: {emotion}")
-        self.played.append(emotion)
-        self.play_emotion_calls.append(
-            {
-                "emotion": emotion,
-                "intensity": intensity,
-                "transition_duration": transition_duration,
-                "hold_duration": hold_duration,
-            }
-        )
+        id=None,
+        start_anchor="group",
+        start_phase="start",
+        delay=0.0,
+        end_anchor=None,
+        end_phase="end",
+        end_delay=0.0,
+    ):
+        return self.performance.add_event(
+            type,
+            params,
+            id=id,
+            start_anchor=start_anchor,
+            start_phase=start_phase,
+            delay=delay,
+            end_anchor=end_anchor,
+            end_phase=end_phase,
+            end_delay=end_delay,
+        ).model_dump(mode="json")
+
+    def performance_remove_event(self, event_id: str):
+        return self.performance.remove_event(event_id).model_dump(mode="json")
+
+    def performance_get_draft(self):
+        return self.performance.get_draft().model_dump(mode="json")
+
+    def performance_clear_draft(self):
+        return self.performance.clear_draft().model_dump(mode="json")
+
+    async def performance_enqueue_draft(self, delay: float = 0.0):
+        return (await self.performance.enqueue_draft(delay=delay)).model_dump(mode="json")
+
+    def performance_list_jobs(self, *, include_finished: bool = False, limit: int = 20):
+        return self.performance.list_jobs(include_finished=include_finished, limit=limit).model_dump(mode="json")
+
+    def performance_get_job(self, job_id: str):
+        snap = self.performance.get_job(job_id)
+        return None if snap is None else snap.model_dump(mode="json")
+
+    async def performance_remove_job(self, job_id=None, *, all: bool = False):
+        return (await self.performance.remove_job(job_id, all=all)).model_dump(mode="json")
+
+    def performance_summary(self) -> str:
+        return self.performance.summary_line()
 
 
 class _FakeToolset(PlatformToolset[Any]):

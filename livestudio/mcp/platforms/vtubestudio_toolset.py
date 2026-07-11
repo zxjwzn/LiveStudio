@@ -30,18 +30,20 @@ class VTubeStudioToolset(PlatformToolset[VTubeStudioApp]):
         return "VTube Studio：控制 Live2D 模型的连接、待机动画、情绪表情解算与原生表情开关。"
 
     async def runtime_context(self) -> str:
-        """随每次工具调用结果回给 LLM 的实时状态:当前模型 + 已激活的原生表情。
+        """随每次工具调用结果回给 LLM 的实时状态:模型 + 原生表情 + 表演队列。
 
-        让 LLM 每用一次工具就知道最新模型与表情态,无需额外查询(动态注入)。读的都是 app
-        内存态(无 I/O、不抛错)。
+        让 LLM 每用一次工具就知道最新模型、表情态与时间线进度,无需额外查询。
         """
 
         model = self._app.current_model
         if model is None:
-            return "未连接或未加载模型。"
-        active = sorted(self._app.active_native_expressions())
-        active_text = "、".join(active) if active else "无"
-        return f"当前模型：{model[1]}；已激活原生表情：{active_text}。"
+            model_text = "未连接或未加载模型"
+        else:
+            active = sorted(self._app.active_native_expressions())
+            active_text = "、".join(active) if active else "无"
+            model_text = f"当前模型：{model[1]}；已激活原生表情：{active_text}"
+        perf = self._app.performance_summary()
+        return f"{model_text}。timeline: {perf}"
 
     # --- 原生表情(exp3,可激活/取消的 toggle;VTS 特有) ---
 

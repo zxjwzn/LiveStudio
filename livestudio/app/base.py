@@ -21,8 +21,12 @@ from livestudio.services.animations.controllers import AnimationType
 from livestudio.services.audio_stream import AudioStreamSource
 from livestudio.services.expression.models import EmotionKind
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
+from livestudio.services.performance import AppPerformanceHost, PerformanceService
 from livestudio.services.platforms import PlatformModelConfig, PlatformService
 from livestudio.utils.log import logger
+
+# play_emotion: 未传 hold_duration 时用配置;显式 None 表示无限保持(时间线 end 释放)
+_HOLD_UNSPECIFIED: object = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +116,8 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         self.animation_manager.register_runtime(self.platform)
         self._model_changed_listener: ModelChangedListener | None = None
         self._state_changed_listener: StateChangeListener | None = None
+        # 表演时间线(草稿+队列);host 延迟绑定 self,方法在类定义后可用
+        self.performance = PerformanceService(AppPerformanceHost(self))
 
     def set_model_changed_listener(self, listener: ModelChangedListener | None) -> None:
         """注册模型变更监听器（首次加载与运行时换模型都会触发）。
@@ -143,6 +149,7 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
     async def _do_stop(self) -> None:
         """停止应用并释放资源"""
 
+        await self.performance.shutdown()
         await self.animation_manager.stop()
         await self.platform.stop()
         self._on_disconnected()
@@ -161,6 +168,7 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
     async def disconnect(self) -> None:
         """断开平台:先停动画控制器,再停平台(镜像 _do_stop 顺序)。"""
 
+        await self.performance.shutdown()
         await self.animation_manager.stop()
         await self.platform.stop()
         self._on_disconnected()
@@ -241,14 +249,16 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         intensity: float = 1.0,
         *,
         transition_duration: float | None = None,
-        hold_duration: float | None = None,
+        hold_duration: float | None | object = _HOLD_UNSPECIFIED,
     ) -> None:
         """触发一次情绪表情解算(过渡→保持→自动回中性)。需已连接并加载模型。
 
         emotion 须为 available_emotions 中的值;非法值抛 ValueError。表情控制器未就绪
         (未连接/未加载模型)时抛 RuntimeError。intensity 为表情强度 [0,1],缺省 1.0,
-        0 时所有被控参数回归 neutral(仅缩放 AU 参数,不影响原生表情)。transition_duration
-        /hold_duration 为本次过渡/保持时长(秒,>=0),传 None 用模型配置缺省值。
+        0 时所有被控参数回归 neutral(仅缩放 AU 参数,不影响原生表情)。
+        transition_duration 为过渡时长(秒,>=0),None 用模型配置。
+        hold_duration: 未传=配置默认; float=保持秒数; 显式 None=无限保持直到 cancel
+        (供表演时间线 end 约束释放)。
         """
 
         try:
@@ -258,13 +268,14 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         runtime = self.animation_manager.get_runtime(self.platform.name)
         if EXPRESSION_CONTROLLER not in runtime.controllers:
             raise RuntimeError("表情控制器未就绪(请先连接并加载模型)")
-        await runtime.execute_controller(
-            EXPRESSION_CONTROLLER,
-            emotion=kind.value,
-            intensity=intensity,
-            transition_duration=transition_duration,
-            hold_duration=hold_duration,
-        )
+        kwargs: dict[str, object] = {
+            "emotion": kind.value,
+            "intensity": intensity,
+            "transition_duration": transition_duration,
+        }
+        if hold_duration is not _HOLD_UNSPECIFIED:
+            kwargs["hold_duration"] = hold_duration  # may be None = infinite
+        await runtime.execute_controller(EXPRESSION_CONTROLLER, **kwargs)
 
     async def speak(self, text: str, **opts: object) -> None:
         """触发一次 TTS 发声,经 TTSpeak 控制器(配置驱动音色/连接校验/切源/合成)。
@@ -293,6 +304,92 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
         runtime = self.animation_manager.get_runtime(self.platform.name)
         if TTS_SPEAK_CONTROLLER in runtime.controllers:
             await runtime.stop_controller(TTS_SPEAK_CONTROLLER)
+
+    # --- 表演时间线(供 MCP:唯一表演入口为草稿+入队) ---
+
+    def performance_add_event(
+        self,
+        type: str,
+        params: dict[str, object] | None = None,
+        *,
+        id: str | None = None,
+        start_anchor: str = "group",
+        start_phase: str = "start",
+        delay: float = 0.0,
+        end_anchor: str | None = None,
+        end_phase: str = "end",
+        end_delay: float = 0.0,
+    ) -> dict[str, object]:
+        """向当前事件组添加事件;可选 end_* 为通用强制结束约束。"""
+
+        snap = self.performance.add_event(
+            type,
+            params,
+            id=id,
+            start_anchor=start_anchor,
+            start_phase=start_phase,
+            delay=delay,
+            end_anchor=end_anchor,
+            end_phase=end_phase,
+            end_delay=end_delay,
+        )
+        return snap.model_dump(mode="json")
+
+    def performance_remove_event(self, event_id: str) -> dict[str, object]:
+        """从当前事件组删除事件。"""
+
+        return self.performance.remove_event(event_id).model_dump(mode="json")
+
+    def performance_get_draft(self) -> dict[str, object]:
+        """查看当前事件组。"""
+
+        return self.performance.get_draft().model_dump(mode="json")
+
+    def performance_clear_draft(self) -> dict[str, object]:
+        """清空当前事件组。"""
+
+        return self.performance.clear_draft().model_dump(mode="json")
+
+    async def performance_enqueue_draft(self, delay: float = 0.0) -> dict[str, object]:
+        """把当前事件组快照入队;delay 为轮到执行后再推迟开演的秒数。"""
+
+        result = await self.performance.enqueue_draft(delay=delay)
+        return result.model_dump(mode="json")
+
+    def performance_list_jobs(
+        self,
+        *,
+        include_finished: bool = False,
+        limit: int = 20,
+    ) -> dict[str, object]:
+        """列出队列(running/pending/可选 finished)。"""
+
+        return self.performance.list_jobs(
+            include_finished=include_finished,
+            limit=limit,
+        ).model_dump(mode="json")
+
+    def performance_get_job(self, job_id: str) -> dict[str, object] | None:
+        """获取指定 job 详情;不存在返回 None。"""
+
+        snap = self.performance.get_job(job_id)
+        return None if snap is None else snap.model_dump(mode="json")
+
+    async def performance_remove_job(
+        self,
+        job_id: str | None = None,
+        *,
+        all: bool = False,
+    ) -> dict[str, object]:
+        """删除 pending job 或取消 running;all=True 清空队列。"""
+
+        result = await self.performance.remove_job(job_id, all=all)
+        return result.model_dump(mode="json")
+
+    def performance_summary(self) -> str:
+        """一行摘要,供 MCP runtime_context 注入。"""
+
+        return self.performance.summary_line()
 
     async def load_current_model(self) -> None:
         """订阅模型事件并加载当前模型配置"""

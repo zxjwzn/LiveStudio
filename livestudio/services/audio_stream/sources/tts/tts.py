@@ -10,6 +10,10 @@
   调度: 每 1/60s 从 _audio_q 取满一帧 -> _publish_chunk
   stop/打断: 取消任务 -> 清空队列 -> on_interrupt(flush 播放缓冲)
 
+锚点(供表演时间线):
+  speak.start = 呈现层首次上总线
+  speak.end   = 呈现任务结束(正常或取消);不是 SSE 断开
+
 路由器只转发当前激活源:TTS 须为激活源才能驱动唇形/播放。
 """
 
@@ -34,6 +38,8 @@ _FRAME_HZ = 60
 _FRAME_SECONDS = 1.0 / _FRAME_HZ
 # 内部合成队列上限(帧数≈秒);满则阻塞合成,形成反压,避免无界内存
 _AUDIO_QUEUE_MAX_FRAMES = _FRAME_HZ * 120
+
+SpeakAnchorCallback = Callable[[], None]
 
 
 class TTSAudioStreamSource(AudioStreamSource):
@@ -63,12 +69,51 @@ class TTSAudioStreamSource(AudioStreamSource):
         self._audio_q: asyncio.Queue[NDArray[np.float32]] = asyncio.Queue()
         self._queued_frames = 0
         self._queue_space = asyncio.Condition()
+        # 表演时间线锚点监听:(on_start, on_end);start/end 各至多触发一次/句
+        self._speak_listeners: list[tuple[SpeakAnchorCallback, SpeakAnchorCallback]] = []
+        self._utterance_start_fired = False
+        self._utterance_end_fired = False
 
     def set_on_interrupt(self, on_interrupt: Callable[[], None] | None) -> None:
         self._on_interrupt = on_interrupt
 
     def set_on_prepare(self, on_prepare: Callable[[], Awaitable[None]] | None) -> None:
         self._on_prepare = on_prepare
+
+    def bind_speak_anchors(
+        self,
+        on_start: SpeakAnchorCallback,
+        on_end: SpeakAnchorCallback,
+    ) -> Callable[[], None]:
+        """订阅 speak 呈现 start/end;返回 unbind。"""
+
+        pair = (on_start, on_end)
+        self._speak_listeners.append(pair)
+
+        def _unbind() -> None:
+            with contextlib.suppress(ValueError):
+                self._speak_listeners.remove(pair)
+
+        return _unbind
+
+    def _fire_speak_start(self) -> None:
+        if self._utterance_start_fired:
+            return
+        self._utterance_start_fired = True
+        for on_start, _ in list(self._speak_listeners):
+            with contextlib.suppress(Exception):
+                on_start()
+
+    def _fire_speak_end(self) -> None:
+        if self._utterance_end_fired:
+            return
+        # 未 start 过不发 end,避免 stop_speaking 空转时向新订阅者伪造起止
+        if not self._utterance_start_fired:
+            return
+        self._utterance_end_fired = True
+        for _, on_end in list(self._speak_listeners):
+            with contextlib.suppress(Exception):
+                on_end()
 
     async def _do_start(self) -> None:
         self._idle_task = asyncio.ensure_future(self._idle_loop())
@@ -138,6 +183,8 @@ class TTSAudioStreamSource(AudioStreamSource):
         if self._on_prepare is not None:
             await self._on_prepare()
         self._idle_event.clear()
+        self._utterance_start_fired = False
+        self._utterance_end_fired = False
         self._synth_task = asyncio.ensure_future(self._synthesize(text, **opts))
         self._present_task = asyncio.ensure_future(self._present())
 
@@ -156,6 +203,8 @@ class TTSAudioStreamSource(AudioStreamSource):
                     await task
         await self._clear_audio_queue()
         self._idle_event.set()
+        # 若呈现未跑到 finally(极端),仍保证 end
+        self._fire_speak_end()
         if self._on_interrupt is not None:
             self._on_interrupt()
 
@@ -288,10 +337,12 @@ class TTSAudioStreamSource(AudioStreamSource):
                         source=AudioSourceKind.TTS,
                     ),
                 )
+                self._fire_speak_start()
 
                 next_deadline += delay
                 sleep_for = next_deadline - loop.time()
                 if sleep_for > 0:
                     await asyncio.sleep(sleep_for)
         finally:
+            self._fire_speak_end()
             self._idle_event.set()

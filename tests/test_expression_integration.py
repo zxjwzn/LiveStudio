@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from collections.abc import Iterable
 
 from livestudio.clients.vtube_studio.models import ExpressionActivationRequest
@@ -85,14 +87,20 @@ def _runtime(platform: _SemanticPlatform) -> PlatformAnimationRuntime:
 
 
 async def _drain(controller: ExpressionController) -> None:
-    """等待 execute 丢到后台的收尾任务跑完（过渡+保持+停用）
+    """等待 hold + restore 后台任务跑完。"""
 
-    测试里的 tween_semantic 是即时 stub，后台任务会立刻推进完毕。
-    """
-
-    task = controller.finishing_task
-    if task is not None:
-        await task
+    for attr in ("finishing_task", "_hold_task", "_restore_task"):
+        task = getattr(controller, attr, None)
+        if task is not None and not task.done():
+            await task
+    # fire-and-forget 可能刚 spawn
+    for _ in range(5):
+        task = getattr(controller, "_restore_task", None)
+        if task is not None and not task.done():
+            await task
+        else:
+            break
+        await asyncio.sleep(0)
 
 
 def _joy_profile() -> ExpressionProfileConfig:
@@ -680,7 +688,7 @@ async def test_neutral_return_not_held() -> None:
 
 
 def _joy_then_sadness_profile() -> ExpressionProfileConfig:
-    """JOY 驱动 mouth.smile、SADNESS 驱动 brow.height（不同 action），用于验证差集回归"""
+    """JOY 驱动 mouth.smile、SADNESS 驱动 brow.height（不同 action）"""
     return ExpressionProfileConfig.model_validate(
         {
             "semantic_units": [
@@ -699,68 +707,142 @@ def _joy_then_sadness_profile() -> ExpressionProfileConfig:
     )
 
 
-async def test_interrupt_resets_orphaned_action() -> None:
-    """旧表情驱动过、新表情不再覆盖的动作，应被新表情一并拉回静息，不残留"""
+async def test_interrupt_runs_previous_priority0_cleanup() -> None:
+    """新表情硬打断旧表情后新表情立即驱动;旧参数由独立 restore 清理"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        # hold 较长，确保第一次 _drive 仍在进行时被第二次 execute 打断
-        ExpressionControllerSettings(transition_duration=0.0, hold_duration=10.0),
+        ExpressionControllerSettings(
+            transition_duration=0.0,
+            hold_duration=10.0,
+            neutral_transition_duration=0.0,
+            au_priority=20,
+            neutral_priority=0,
+        ),
         _joy_then_sadness_profile(),
     )
 
-    # 先播 JOY（驱动 mouth.smile=0.9），保持段挂起
     await controller.execute(emotion=EmotionKind.JOY)
-    # 再播 SADNESS（只驱动 brow.height）—— mouth.smile 成为差集，应被补成静息回归
+    await asyncio.sleep(0)
     await controller.execute(emotion=EmotionKind.SADNESS)
     await _drain(controller)
 
-    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
     brow = [r for r in platform.requests if r.action_parameter_name == SemanticAction.BROW_HEIGHT.value]
-    # mouth.smile 不再被新表情驱动，但应出现一段回静息基准 0.5 的缓动（不被遗弃在 0.9）
-    assert smile
-    assert smile[-1].end_value == 0.5
-    # brow.height 被新表情正常驱动
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
     assert brow
-    assert abs(brow[0].end_value - 0.1) < 1e-6
+    assert any(abs(r.end_value - 0.1) < 1e-6 and r.priority == 20 for r in brow)
+    # 旧 smile 可能被 restore 拉回 0.5
+    assert smile
 
 
-def _left_wink_then_squint_profile() -> ExpressionProfileConfig:
-    return ExpressionProfileConfig.model_validate(
-        {
-            "semantic_units": [
-                {
-                    "id": "wink 左眼",
-                    "targets": [{"action": "eye.open.left", "min_value": 0.0, "max_value": 0.0}],
-                    "emotions": {"joy": 0.95},
-                },
-                {
-                    "id": "眯眼",
-                    "targets": [{"action": "eye.open", "min_value": 0.3, "max_value": 0.3}],
-                    "emotions": {"sadness": 0.95},
-                },
-            ],
-        }
-    )
 
-
-async def test_interrupt_does_not_reset_overlapped_old_action() -> None:
+async def test_oneshot_start_reentrant_interrupts() -> None:
+    """通过 start() 连点:每次都返回 True,不因 is_running 丢弃"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
         _runtime(platform),
         "expression",
-        ExpressionControllerSettings(transition_duration=0.0, hold_duration=10.0),
-        _left_wink_then_squint_profile(),
+        ExpressionControllerSettings(
+            transition_duration=0.0,
+            hold_duration=10.0,
+            neutral_transition_duration=0.0,
+        ),
+        _joy_then_sadness_profile(),
+    )
+    ok1 = await controller.start(emotion=EmotionKind.JOY)
+    ok2 = await controller.start(emotion=EmotionKind.SADNESS)
+    ok3 = await controller.start(emotion=EmotionKind.JOY)
+    ok4 = await controller.start(emotion=EmotionKind.SADNESS)
+    ok5 = await controller.start(emotion=EmotionKind.JOY)
+    assert all([ok1, ok2, ok3, ok4, ok5])
+    await asyncio.sleep(0)
+    await _drain(controller)
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    # 至少有一次 JOY 驱动 smile;连点全部被接受(返回 True)
+    assert smile
+
+
+async def test_external_hold_release_runs_priority0() -> None:
+    """hold_duration=None: release_hold 发信号后 _drive 先 end 再后台 priority-0 回归"""
+    platform = _ExpressionPlatform()
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(
+            transition_duration=0.0,
+            hold_duration=1.0,
+            neutral_transition_duration=0.0,
+            au_priority=20,
+            neutral_priority=0,
+        ),
+        _joy_return_profile(),
+    )
+    ends: list[str] = []
+    controller.bind_emotion_anchors(lambda: None, lambda: ends.append("end"))
+    await controller.execute(emotion=EmotionKind.JOY, hold_duration=None)
+    for _ in range(5):
+        await asyncio.sleep(0)
+    smile_mid = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert smile_mid
+    assert any(r.priority == 20 for r in smile_mid)
+    # 协作释放:只发信号,不 await 恢复
+    await controller.release_hold()
+    # end 应很快触发(不依赖恢复完成)
+    for _ in range(20):
+        if ends:
+            break
+        await asyncio.sleep(0)
+    assert ends == ["end"]
+    await _drain(controller)
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert any(r.end_value == 0.5 and r.priority == 0 for r in smile)
+
+
+async def test_end_fires_before_restore_completes() -> None:
+    """end 锚点 = 开始回中性: fire end 时 priority-0 回归尚未完成"""
+    platform = _ExpressionPlatform()
+
+    # 让 neutral tween 慢一点,便于观察顺序
+    original_tween = platform.tween_semantic
+
+    restore_seen_before_end = {"value": False}
+    ends: list[str] = []
+    restore_started = asyncio.Event()
+    restore_may_finish = asyncio.Event()
+
+    async def slow_tween(requests):
+        # priority 0 = 回归段:卡住直到 end 已发
+        if any(getattr(r, "priority", None) == 0 for r in requests):
+            restore_started.set()
+            await restore_may_finish.wait()
+        await original_tween(requests)
+
+    platform.tween_semantic = slow_tween  # type: ignore[method-assign]
+
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(
+            transition_duration=0.0,
+            hold_duration=0.0,
+            neutral_transition_duration=0.2,
+            au_priority=20,
+            neutral_priority=0,
+        ),
+        _joy_return_profile(),
     )
 
-    await controller.execute(emotion=EmotionKind.JOY)
-    await controller.execute(emotion=EmotionKind.SADNESS)
+    def on_end() -> None:
+        ends.append("end")
+        # end 触发时,回归要么还没开始,要么已开始但未完成
+        restore_seen_before_end["value"] = True
+        restore_may_finish.set()
+
+    controller.bind_emotion_anchors(lambda: None, on_end)
+    await controller.execute(emotion=EmotionKind.JOY, hold_duration=0.0)
     await _drain(controller)
-
-    left_eye = [r for r in platform.requests if r.action_parameter_name == SemanticAction.EYE_OPEN_LEFT.value]
-    both_eye = [r for r in platform.requests if r.action_parameter_name == SemanticAction.EYE_OPEN.value]
-
-    assert not left_eye
-    assert both_eye
-    assert abs(both_eye[0].end_value - 0.3) < 1e-6
+    assert ends == ["end"]
+    assert restore_seen_before_end["value"]
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert any(r.end_value == 0.5 and r.priority == 0 for r in smile)

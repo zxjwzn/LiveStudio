@@ -46,9 +46,9 @@ class MainWindow(FluentWindow):
         self.addSubInterface(dashboard, icons.NAV_DASHBOARD, "仪表盘")
         self.addSubInterface(platform, icons.NAV_PLATFORM, "平台")
         self.addSubInterface(audio, icons.NAV_AUDIO, "音频")
-        self.addSubInterface(subtitle, icons.NAV_SUBTITLE, "字幕")
         self.addSubInterface(playback, icons.NAV_PLAYBACK, "音频播放")
         self.addSubInterface(logs, icons.NAV_LOGS, "日志")
+        self.addSubInterface(subtitle, icons.NAV_SUBTITLE, "字幕")
         self.addSubInterface(mcp, icons.NAV_MCP, "MCP")
         self.addSubInterface(
             settings,
