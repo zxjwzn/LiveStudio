@@ -193,7 +193,7 @@ class PlatformToolset(ABC, Generic[TApp]):
 
     @tool(builtin=True)
     async def start_idle_animations(self) -> str:
-        """启动全部已启用的待机动画(眨眼、呼吸、注视等)。需已连接并加载模型。"""
+        """启动全部待机动画(眨眼、呼吸、注视等)。需已连接并加载模型。"""
 
         await self._app.start_controllers()
         return "已启动待机动画。"
@@ -209,13 +209,12 @@ class PlatformToolset(ABC, Generic[TApp]):
     async def list_controllers(self) -> list[dict[str, object]]:
         """列出可独立启停的待机动画控制器及其当前状态。
 
-        返回每项含 {name, running, enabled}:name 为控制器标识(供 set_controller 使用),
-        running 是否运行中,enabled 是否在模型配置中启用(禁用的无法启动)。未连接/未加载
-        模型时返回空列表。
+        返回每项含 {name, running}:name 为控制器标识(供 set_controller 使用),
+        running 是否运行中。未连接/未加载模型时返回空列表。
         """
 
         return [
-            {"name": status.name, "running": status.running, "enabled": status.enabled}
+            {"name": status.name, "running": status.running}
             for status in self._app.list_controllers()
         ]
 
@@ -225,15 +224,13 @@ class PlatformToolset(ABC, Generic[TApp]):
 
         Args:
             name: 控制器标识,取自 list_controllers 返回的 name(如 "blink"/"breathing")。
-            running: True 启动,False 停止。被模型配置禁用的控制器无法启动。
+            running: True 启动,False 停止。
         """
 
         try:
             actual = await self._app.set_controller(name, running)
         except KeyError as exc:
             return f"控制器不存在：{name}（{exc}）"
-        if running and not actual:
-            return f"控制器「{name}」在模型配置中已禁用，无法启动。"
         return f"控制器「{name}」当前{'运行中' if actual else '已停止'}。"
 
     # --- 情绪表情解算(一次性) ---

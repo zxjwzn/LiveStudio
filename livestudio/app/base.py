@@ -35,7 +35,6 @@ class ControllerStatus:
 
     name: str  # 控制器内部名(如 "blink"),启停时回传
     running: bool  # 当前是否运行中
-    enabled: bool  # 模型配置中是否启用(禁用的控制器 start 会被守卫跳过)
 
 # 模型变更监听器：参数为 (model_id, model_name)。后端只负责广播「模型已就绪/已切换」，
 # 不关心由谁消费——GUI 适配器等外部观察者据此自我刷新，从而与本应用解耦。
@@ -215,15 +214,15 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
             if controller.animation_type is not AnimationType.IDLE:
                 continue
             statuses.append(
-                ControllerStatus(name=name, running=controller.is_running, enabled=controller.enabled)
+                ControllerStatus(name=name, running=controller.is_running)
             )
         return statuses
 
     async def set_controller(self, name: str, running: bool) -> bool:
         """启停单个待机控制器(仅运行态,不改模型配置),返回操作后该控制器是否运行中。
 
-        running=True 时启动:被模型配置禁用的控制器会被 start 守卫跳过,此时返回 False。
-        running=False 时停止(幂等)。控制器不存在时抛 KeyError,由调用方处理。
+        running=True 时启动(已在运行则幂等);running=False 时停止(幂等)。
+        控制器不存在时抛 KeyError,由调用方处理。
         """
 
         runtime = self.animation_manager.get_runtime(self.platform.name)

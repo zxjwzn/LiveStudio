@@ -221,13 +221,10 @@ class VTubeStudioPlatformBridge(PlatformBridge):
 
     async def _start_controller(self, name: str) -> None:
         runtime = self._app.animation_manager.get_runtime(PLATFORM_NAME)
-        started = await runtime.start_controller(name)
-        # enabled=False 的控制器会被 start() 守卫跳过(started=False)。无论如何按真实
-        # 运行态回报,让 UI 据此回弹开关并提示。
+        await runtime.start_controller(name)
+        # 按真实运行态回报,让 UI 据此同步开关。
         controller = runtime.controllers.get(name)
         running = controller.is_running if controller is not None else False
-        if not started and not running:
-            self.errorOccurred.emit(f"控制器「{name}」在模型配置中已禁用,无法启动")
         self.controllerStateChanged.emit(name, running)
 
     def stop_controller(self, name: str) -> None:

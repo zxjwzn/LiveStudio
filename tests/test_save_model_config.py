@@ -26,14 +26,14 @@ def _load_raw(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _with_blink_disabled(config: VTubeStudioModelConfig) -> VTubeStudioModelConfig:
-    """返回一份仅把 blink.enabled 置 False 的深拷贝(模拟用户在配置页编辑)"""
+def _with_blink_modified(config: VTubeStudioModelConfig) -> VTubeStudioModelConfig:
+    """返回一份仅改 blink.min_interval 的深拷贝(模拟用户在配置页编辑)"""
 
     return config.model_copy(
         update={
             "controllers": config.controllers.model_copy(
                 update={
-                    "blink": config.controllers.blink.model_copy(update={"enabled": False}),
+                    "blink": config.controllers.blink.model_copy(update={"min_interval": 3.0}),
                 },
             ),
         },
@@ -58,14 +58,14 @@ async def test_save_model_config_updates_in_memory_snapshot(platform: VTubeStudi
 
     await platform.reload_model_config("model-1", "avatar")
     original = platform.model_config
-    assert original.controllers.blink.enabled is True
+    assert original.controllers.blink.min_interval == 2.0
 
-    edited = _with_blink_disabled(original)
+    edited = _with_blink_modified(original)
     await platform.save_model_config(platform.model_config_manager.path, edited)
 
     # 程序内 config 变量已实时覆盖
     assert platform.model_config is edited
-    assert platform.model_config.controllers.blink.enabled is False
+    assert platform.model_config.controllers.blink.min_interval == 3.0
 
 
 async def test_save_model_config_survives_stop_save(platform: VTubeStudio) -> None:
@@ -75,13 +75,13 @@ async def test_save_model_config_survives_stop_save(platform: VTubeStudio) -> No
     original = platform.model_config
     await platform.save_model_config(
         platform.model_config_manager.path,
-        _with_blink_disabled(original),
+        _with_blink_modified(original),
     )
 
     # 模拟 _do_stop:用(已同步的)内存快照落盘--修复前此处会用滞后旧快照覆盖编辑
     await platform.model_config_manager.save()
 
-    assert _load_raw(platform.model_config_manager.path)["controllers"]["blink"]["enabled"] is False
+    assert _load_raw(platform.model_config_manager.path)["controllers"]["blink"]["min_interval"] == 3.0
 
 
 async def test_save_model_config_survives_reload(platform: VTubeStudio) -> None:
@@ -91,12 +91,12 @@ async def test_save_model_config_survives_reload(platform: VTubeStudio) -> None:
     original = platform.model_config
     await platform.save_model_config(
         platform.model_config_manager.path,
-        _with_blink_disabled(original),
+        _with_blink_modified(original),
     )
 
     await platform.reload_model_config("model-1", "avatar")
 
-    assert platform.model_config.controllers.blink.enabled is False
+    assert platform.model_config.controllers.blink.min_interval == 3.0
 
 
 async def test_save_model_config_unconnected_only_writes_file(tmp_path: Path) -> None:
@@ -112,12 +112,12 @@ async def test_save_model_config_unconnected_only_writes_file(tmp_path: Path) ->
             model_name="avatar",
         ),
     )
-    edited = _with_blink_disabled(config)
+    edited = _with_blink_modified(config)
 
     await p.save_model_config(identity_path, edited)
 
     assert identity_path.exists()
-    assert _load_raw(identity_path)["controllers"]["blink"]["enabled"] is False
+    assert _load_raw(identity_path)["controllers"]["blink"]["min_interval"] == 3.0
 
 
 async def test_save_model_config_other_path_leaves_current_untouched(
@@ -128,13 +128,13 @@ async def test_save_model_config_other_path_leaves_current_untouched(
     await platform.reload_model_config("model-1", "avatar")
     current_path = platform.model_config_manager.path
     original = platform.model_config
-    assert original.controllers.blink.enabled is True
+    assert original.controllers.blink.min_interval == 2.0
 
     other_path = current_path.parent / "other_model.yaml"
-    await platform.save_model_config(other_path, _with_blink_disabled(original))
+    await platform.save_model_config(other_path, _with_blink_modified(original))
 
     # 当前模型内存快照未变
-    assert platform.model_config.controllers.blink.enabled is True
+    assert platform.model_config.controllers.blink.min_interval == 2.0
     # 另一文件已落盘,当前文件未被动
-    assert _load_raw(other_path)["controllers"]["blink"]["enabled"] is False
-    assert _load_raw(current_path)["controllers"]["blink"]["enabled"] is True
+    assert _load_raw(other_path)["controllers"]["blink"]["min_interval"] == 3.0
+    assert _load_raw(current_path)["controllers"]["blink"]["min_interval"] == 2.0

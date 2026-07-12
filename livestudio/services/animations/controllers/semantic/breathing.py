@@ -5,6 +5,7 @@ from livestudio.services.tween import Easing
 
 from ..base import AnimationController
 from ..config import BreathingControllerSettings
+from ..constants import IDLE_CONTROLLER_PRIORITY
 from ..models import AnimationType
 
 
@@ -27,7 +28,7 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
                     end_value=self.config.pitch_amplitude,
                     duration=self.config.inhale_duration,
                     easing=Easing.in_out_sine,
-                    priority=10,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
             ],
         )
@@ -38,7 +39,7 @@ class BreathingController(AnimationController[BreathingControllerSettings]):
                     end_value=-self.config.pitch_amplitude,
                     duration=self.config.exhale_duration,
                     easing=Easing.in_out_sine,
-                    priority=10,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
             ],
         )

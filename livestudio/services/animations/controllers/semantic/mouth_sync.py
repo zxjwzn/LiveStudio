@@ -14,6 +14,7 @@ from livestudio.utils.log import logger
 
 from ..base import AnimationController
 from ..config import MouthSyncControllerSettings
+from ..constants import MOUTH_SYNC_PRIORITY, MOUTH_SYNC_YIELD_PRIORITY
 from ..models import AnimationType
 
 
@@ -39,7 +40,7 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         return AnimationType.IDLE
 
     async def start(self, **kwargs: object) -> bool:
-        if not self.enabled or self.is_running:
+        if self.is_running:
             return False
 
         self._audio_subscription = self._audio_stream.subscribe(queue_maxsize=8)
@@ -74,10 +75,11 @@ class MouthSyncController(AnimationController[MouthSyncControllerSettings]):
         previous_open = self._current_open
         smoothed_open = self._smooth_open(target_open)
         # 音量过低(目标开度为 0,即静音/无音频)时让出优先级,使其他请求(如表情解算
-        # au_priority=20)可接管 MOUTH_OPEN;说话时(目标 > 0)保持配置高优先级独占唇形同步。
-        # 让出后本控制器后续仍以优先级 0 发布闭嘴,但被更高优先级占用时会被 _try_acquire
-        # 拒绝、不会反复抢回(0 < 对方优先级)。
-        priority = 0 if target_open <= self._closed_open else self.config.priority
+        # EXPRESSION_AU_PRIORITY=20)可接管 MOUTH_OPEN;说话时(目标 > 0)保持高优先级
+        # (MOUTH_SYNC_PRIORITY)独占唇形同步。
+        # 让出后本控制器后续仍以让出优先级发布闭嘴,但被更高优先级占用时会被 _try_acquire
+        # 拒绝、不会反复抢回(让出值 < 对方优先级)。
+        priority = MOUTH_SYNC_YIELD_PRIORITY if target_open <= self._closed_open else MOUTH_SYNC_PRIORITY
         await self._apply_open(
             smoothed_open,
             is_opening=smoothed_open >= previous_open,

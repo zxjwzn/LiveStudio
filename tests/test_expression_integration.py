@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-
 from collections.abc import Iterable
 
 from livestudio.clients.vtube_studio.models import ExpressionActivationRequest
 from livestudio.services.animations.controllers import (
     ExpressionController,
     ExpressionControllerSettings,
+)
+from livestudio.services.animations.controllers.constants import (
+    EXPRESSION_AU_PRIORITY,
+    EXPRESSION_NEUTRAL_PRIORITY,
 )
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.expression import (
@@ -399,8 +402,6 @@ async def test_controller_emits_transition_then_hold() -> None:
         _runtime(platform),
         "expression",
         ExpressionControllerSettings(
-            au_priority=99,
-            neutral_priority=0,
             transition_duration=0.5,
             hold_duration=1.5,
         ),
@@ -417,12 +418,12 @@ async def test_controller_emits_transition_then_hold() -> None:
     assert neutral.duration == 0.5
     assert transition.end_value == hold.end_value
     assert neutral.end_value == 0.5
-    # 过渡/保持段受 au_priority 保护，表情展示期不被待机控制器打断；
-    # 回归段降到 neutral_priority（0），低于各待机控制器（默认 10），使其在
+    # 过渡/保持段受 EXPRESSION_AU_PRIORITY 保护，表情展示期不被待机控制器打断；
+    # 回归段降到 EXPRESSION_NEUTRAL_PRIORITY，低于各待机控制器（默认 10），使其在
     # AU 解算收尾时即时按参数接管，无人接管的参数照常回静息。
-    assert transition.priority == 99
-    assert hold.priority == 99
-    assert neutral.priority == 0
+    assert transition.priority == EXPRESSION_AU_PRIORITY
+    assert hold.priority == EXPRESSION_AU_PRIORITY
+    assert neutral.priority == EXPRESSION_NEUTRAL_PRIORITY
 
 
 async def test_controller_skips_hold_when_zero() -> None:
@@ -707,7 +708,7 @@ def _joy_then_sadness_profile() -> ExpressionProfileConfig:
     )
 
 
-async def test_interrupt_runs_previous_priority0_cleanup() -> None:
+async def test_interrupt_runs_previous_neutral_priority_cleanup() -> None:
     """新表情硬打断旧表情后新表情立即驱动;旧参数由独立 restore 清理"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
@@ -717,8 +718,6 @@ async def test_interrupt_runs_previous_priority0_cleanup() -> None:
             transition_duration=0.0,
             hold_duration=10.0,
             neutral_transition_duration=0.0,
-            au_priority=20,
-            neutral_priority=0,
         ),
         _joy_then_sadness_profile(),
     )
@@ -731,7 +730,7 @@ async def test_interrupt_runs_previous_priority0_cleanup() -> None:
     brow = [r for r in platform.requests if r.action_parameter_name == SemanticAction.BROW_HEIGHT.value]
     smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
     assert brow
-    assert any(abs(r.end_value - 0.1) < 1e-6 and r.priority == 20 for r in brow)
+    assert any(abs(r.end_value - 0.1) < 1e-6 and r.priority == EXPRESSION_AU_PRIORITY for r in brow)
     # 旧 smile 可能被 restore 拉回 0.5
     assert smile
 
@@ -763,8 +762,8 @@ async def test_oneshot_start_reentrant_interrupts() -> None:
     assert smile
 
 
-async def test_external_hold_release_runs_priority0() -> None:
-    """hold_duration=None: release_hold 发信号后 _drive 先 end 再后台 priority-0 回归"""
+async def test_external_hold_release_runs_neutral_priority() -> None:
+    """hold_duration=None: release_hold 发信号后 _drive 先 end 再后台 neutral_priority 回归"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
         _runtime(platform),
@@ -773,8 +772,6 @@ async def test_external_hold_release_runs_priority0() -> None:
             transition_duration=0.0,
             hold_duration=1.0,
             neutral_transition_duration=0.0,
-            au_priority=20,
-            neutral_priority=0,
         ),
         _joy_return_profile(),
     )
@@ -785,7 +782,7 @@ async def test_external_hold_release_runs_priority0() -> None:
         await asyncio.sleep(0)
     smile_mid = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
     assert smile_mid
-    assert any(r.priority == 20 for r in smile_mid)
+    assert any(r.priority == EXPRESSION_AU_PRIORITY for r in smile_mid)
     # 协作释放:只发信号,不 await 恢复
     await controller.release_hold()
     # end 应很快触发(不依赖恢复完成)
@@ -796,11 +793,11 @@ async def test_external_hold_release_runs_priority0() -> None:
     assert ends == ["end"]
     await _drain(controller)
     smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
-    assert any(r.end_value == 0.5 and r.priority == 0 for r in smile)
+    assert any(r.end_value == 0.5 and r.priority == EXPRESSION_NEUTRAL_PRIORITY for r in smile)
 
 
 async def test_end_fires_before_restore_completes() -> None:
-    """end 锚点 = 开始回中性: fire end 时 priority-0 回归尚未完成"""
+    """end 锚点 = 开始回中性: fire end 时 neutral_priority 回归尚未完成"""
     platform = _ExpressionPlatform()
 
     # 让 neutral tween 慢一点,便于观察顺序
@@ -812,8 +809,8 @@ async def test_end_fires_before_restore_completes() -> None:
     restore_may_finish = asyncio.Event()
 
     async def slow_tween(requests):
-        # priority 0 = 回归段:卡住直到 end 已发
-        if any(getattr(r, "priority", None) == 0 for r in requests):
+        # EXPRESSION_NEUTRAL_PRIORITY = 回归段:卡住直到 end 已发
+        if any(getattr(r, "priority", None) == EXPRESSION_NEUTRAL_PRIORITY for r in requests):
             restore_started.set()
             await restore_may_finish.wait()
         await original_tween(requests)
@@ -827,8 +824,6 @@ async def test_end_fires_before_restore_completes() -> None:
             transition_duration=0.0,
             hold_duration=0.0,
             neutral_transition_duration=0.2,
-            au_priority=20,
-            neutral_priority=0,
         ),
         _joy_return_profile(),
     )
@@ -845,4 +840,4 @@ async def test_end_fires_before_restore_completes() -> None:
     assert ends == ["end"]
     assert restore_seen_before_end["value"]
     smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
-    assert any(r.end_value == 0.5 and r.priority == 0 for r in smile)
+    assert any(r.end_value == 0.5 and r.priority == EXPRESSION_NEUTRAL_PRIORITY for r in smile)

@@ -45,10 +45,6 @@ class AnimationController(ABC, Generic[ConfigT]):
         return self._config
 
     @property
-    def enabled(self) -> bool:
-        return self._config.enabled
-
-    @property
     def is_running(self) -> bool:
         return self._task is not None and not self._task.done()
 
@@ -58,9 +54,6 @@ class AnimationController(ABC, Generic[ConfigT]):
         """控制器类型"""
 
     async def start(self, **kwargs: object) -> bool:
-        if not self.enabled:
-            logger.info("动画控制器 {} 未启用，跳过启动", self.name)
-            return False
         async with self._lifecycle_lock:
             if self.is_running:
                 logger.debug("动画控制器 {} 已在运行", self.name)

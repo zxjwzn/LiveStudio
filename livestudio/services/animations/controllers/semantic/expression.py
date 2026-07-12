@@ -27,6 +27,7 @@ from livestudio.utils.log import logger
 
 from ..base import AnimationController
 from ..config import ExpressionControllerSettings
+from ..constants import EXPRESSION_AU_PRIORITY, EXPRESSION_NEUTRAL_PRIORITY
 from ..models import AnimationType
 
 # 外部释放 hold 时超长占权时长;实际由 release 时 duration=0 同优先级瞬时 tween 收口。
@@ -109,9 +110,6 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
     async def start(self, **kwargs: object) -> bool:
         """ONESHOT 可重入:新请求立刻打断旧请求。"""
 
-        if not self.enabled:
-            logger.info("动画控制器 {} 未启用，跳过启动", self.name)
-            return False
         await self._interrupt_previous()
         async with self._lifecycle_lock:
             self._stop_event.clear()
@@ -301,7 +299,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
                     for driven in selected.semantic_targets
                 ],
                 self.config.neutral_transition_duration,
-                priority=self.config.neutral_priority,
+                priority=EXPRESSION_NEUTRAL_PRIORITY,
             )
         self._active_semantic_targets = []
 
@@ -332,7 +330,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
     ) -> None:
         if not targets:
             return
-        resolved_priority = self.config.au_priority if priority is None else priority
+        resolved_priority = EXPRESSION_AU_PRIORITY if priority is None else priority
         await self.runtime.platform.tween_semantic(
             [
                 SemanticTweenRequest(
@@ -376,7 +374,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             await self._tween_targets(
                 targets,
                 self.config.neutral_transition_duration,
-                priority=self.config.neutral_priority,
+                priority=EXPRESSION_NEUTRAL_PRIORITY,
             )
 
     async def _cancel_finishing(self) -> None:

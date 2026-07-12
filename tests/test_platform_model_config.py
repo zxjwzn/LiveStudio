@@ -20,14 +20,14 @@ def _identity() -> PlatformModelIdentity:
     )
 
 
-def _with_blink_disabled(config: PlatformModelConfig) -> PlatformModelConfig:
-    """返回一份仅把 blink.enabled 置 False 的深拷贝(模拟用户在配置页编辑)"""
+def _with_blink_modified(config: PlatformModelConfig) -> PlatformModelConfig:
+    """返回一份仅改 blink.min_interval 的深拷贝(模拟用户在配置页编辑)"""
 
     return config.model_copy(
         update={
             "controllers": config.controllers.model_copy(
                 update={
-                    "blink": config.controllers.blink.model_copy(update={"enabled": False}),
+                    "blink": config.controllers.blink.model_copy(update={"min_interval": 3.0}),
                 },
             ),
         },
@@ -46,7 +46,7 @@ async def test_platform_model_config_service_creates_default_file(
 
     assert config.model.platform_name == "test-platform"
     assert config.model.model_id == "model/id:*"
-    assert config.controllers.blink.enabled
+    assert config.controllers.blink.min_interval == 2.0
     assert service.manager is not None
     assert service.manager.path.exists()
     assert service.manager.path.name == "测试_Model_model.yaml"
@@ -107,17 +107,17 @@ async def test_save_to_current_path_syncs_in_memory_and_file(tmp_path: Path) -> 
     original = await service.load(_identity())
     assert service.manager is not None
     current_path = service.manager.path
-    assert original.controllers.blink.enabled is True
+    assert original.controllers.blink.min_interval == 2.0
 
-    edited = _with_blink_disabled(original)
+    edited = _with_blink_modified(original)
     await service.save_to(current_path, edited)
 
     # 内存快照已同步为编辑后的实例
     assert service.config is edited
-    assert edited.controllers.blink.enabled is False
+    assert edited.controllers.blink.min_interval == 3.0
     # 文件已落盘为新快照
     reloaded = await ConfigManager(PlatformModelConfig, current_path).load()
-    assert reloaded.controllers.blink.enabled is False
+    assert reloaded.controllers.blink.min_interval == 3.0
 
 
 async def test_save_to_current_path_survives_subsequent_save(tmp_path: Path) -> None:
@@ -131,12 +131,12 @@ async def test_save_to_current_path_survives_subsequent_save(tmp_path: Path) -> 
     assert service.manager is not None
     current_path = service.manager.path
 
-    await service.save_to(current_path, _with_blink_disabled(original))
+    await service.save_to(current_path, _with_blink_modified(original))
     # 模拟 _do_stop 的 service.save():用已同步的内存快照落盘
     await service.save()
 
     reloaded = await ConfigManager(PlatformModelConfig, current_path).load()
-    assert reloaded.controllers.blink.enabled is False
+    assert reloaded.controllers.blink.min_interval == 3.0
 
 
 async def test_save_to_other_path_leaves_current_snapshot_untouched(tmp_path: Path) -> None:
@@ -151,13 +151,13 @@ async def test_save_to_other_path_leaves_current_snapshot_untouched(tmp_path: Pa
     current_path = service.manager.path
 
     other_path = tmp_path / "other_model.yaml"
-    await service.save_to(other_path, _with_blink_disabled(original))
+    await service.save_to(other_path, _with_blink_modified(original))
 
     # 当前模型内存快照未受影响
     assert service.config is original
-    assert original.controllers.blink.enabled is True
+    assert original.controllers.blink.min_interval == 2.0
     # 另一文件已落盘,当前文件未被动
     other_reloaded = await ConfigManager(PlatformModelConfig, other_path).load()
-    assert other_reloaded.controllers.blink.enabled is False
+    assert other_reloaded.controllers.blink.min_interval == 3.0
     current_reloaded = await ConfigManager(PlatformModelConfig, current_path).load()
-    assert current_reloaded.controllers.blink.enabled is True
+    assert current_reloaded.controllers.blink.min_interval == 2.0

@@ -209,7 +209,7 @@ def summarize_pair(job: dict[str, Any] | None, label: str) -> dict[str, Any]:
 
 async def ensure_controllers(s: McpSession) -> dict[str, bool]:
     ctrls = await s.t("list_controllers")
-    if isinstance(ctrls, list) and any(c.get("enabled") and not c.get("running") for c in ctrls if isinstance(c, dict)):
+    if isinstance(ctrls, list) and any(not c.get("running") for c in ctrls if isinstance(c, dict)):
         print(">> start_idle_animations (will NOT stop later)")
         await s.t("start_idle_animations")
         ctrls = await s.t("list_controllers")
@@ -325,7 +325,7 @@ async def main() -> int:
         results["emotions_all_ok"] = all(bool(v.get("ok")) for v in emotion_results.values()) if emotion_results else False
 
         ctrls = await s.t("list_controllers", show=False)
-        controllers_ok = all(c.get("running") for c in (ctrls or []) if isinstance(c, dict) and c.get("enabled"))
+        controllers_ok = all(c.get("running") for c in (ctrls or []) if isinstance(c, dict))
         results["controllers_never_stopped"] = controllers_ok
         print("\nPOST controllers:", {c["name"]: c["running"] for c in ctrls if isinstance(c, dict)})
 

@@ -103,7 +103,7 @@ class PlatformAnimationRuntime(AsyncServiceLifecycleMixin):
         """热替换控制器,保留各控制器的运行态(按名匹配)。
 
         换模型时:取消旧控制器、注册新控制器,仅重启替换前在跑的那些(按名匹配)--用户
-        单独关掉的控制器不会被重新启动。新模型配置中禁用的由 start() 守卫跳过,不会强制启动。
+        单独关掉的控制器不会被重新启动。
 
         活跃态以「runtime 已 start 或有控制器实际在跑」判定,而非仅 ``_started``:仪表盘用
         ``start_controller`` 单独起控制器时会绕过 ``runtime.start()``,``_started`` 仍为 False,

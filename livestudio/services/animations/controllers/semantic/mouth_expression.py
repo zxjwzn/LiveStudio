@@ -8,6 +8,7 @@ from livestudio.utils.log import logger
 
 from ..base import AnimationController
 from ..config import MouthExpressionControllerSettings
+from ..constants import IDLE_CONTROLLER_PRIORITY
 from ..models import AnimationType
 
 
@@ -43,7 +44,7 @@ class MouthExpressionController(AnimationController[MouthExpressionControllerSet
                     end_value=target_smile,
                     duration=duration,
                     easing=easing,
-                    priority=10,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
             ],
         )

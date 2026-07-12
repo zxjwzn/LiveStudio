@@ -9,6 +9,7 @@ from livestudio.utils.log import logger
 
 from ..base import AnimationController
 from ..config import BlinkControllerSettings
+from ..constants import IDLE_CONTROLLER_PRIORITY
 from ..models import AnimationType
 
 
@@ -31,7 +32,7 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
                     end_value=0.0,
                     duration=self.config.close_duration,
                     easing=Easing.out_sine,
-                    priority=10,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
             ],
         )
@@ -44,7 +45,7 @@ class BlinkController(AnimationController[BlinkControllerSettings]):
                     end_value=1.0,
                     duration=self.config.open_duration,
                     easing=Easing.out_sine,
-                    priority=10,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
             ],
         )

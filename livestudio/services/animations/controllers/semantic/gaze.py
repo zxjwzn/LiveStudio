@@ -2,11 +2,15 @@
 
 眼睛以中心附近高频轻微扰动为主，偶尔切到随机注视点。头部在 yaw/pitch/roll
 三轴上按本周期随机策略跟随、不跟随或反向移动。
+
+仅 gaze_x/y_amplitude、head_follow_strength、head_follow_chance、reverse_head_chance
+可由用户配置；其余时长/概率/微扰幅度/均衡窗口已固化为本模块常量，行为不变。
 """
 
 import asyncio
 import random
 from collections import deque
+from typing import Final
 
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.semantic_actions import SemanticAction, SemanticTweenRequest
@@ -15,7 +19,36 @@ from livestudio.utils.log import logger
 
 from ..base import AnimationController
 from ..config import GazeControllerSettings
+from ..constants import IDLE_CONTROLLER_PRIORITY
 from ..models import AnimationType
+
+# 头部三轴跟随基础因子：head_follow_strength 统一缩放这三者（strength=1.0 复现旧行为）。
+_HEAD_YAW_FACTOR: Final[float] = 0.6
+_HEAD_PITCH_FACTOR: Final[float] = 0.18
+_HEAD_ROLL_FACTOR: Final[float] = 0.15
+
+_HEAD_FOLLOW_DELAY: Final[float] = 0.12
+_HEAD_FOLLOW_DURATION: Final[float] = 0.8
+_MIN_SACCADE_DURATION: Final[float] = 0.08
+_MAX_SACCADE_DURATION: Final[float] = 0.22
+_REACH_MIN_SCALE: Final[float] = 0.4
+_MIN_FIXATION: Final[float] = 0.45
+_MAX_FIXATION: Final[float] = 1.6
+_CENTER_BIAS: Final[float] = 0.2
+_CENTER_MICRO_CHANCE: Final[float] = 0.85
+_MICRO_GAZE_X_AMPLITUDE: Final[float] = 0.16
+_MICRO_GAZE_Y_AMPLITUDE: Final[float] = 0.12
+_MIN_MICRO_DURATION: Final[float] = 0.018
+_MAX_MICRO_DURATION: Final[float] = 0.045
+_MIN_MICRO_FIXATION: Final[float] = 0.015
+_MAX_MICRO_FIXATION: Final[float] = 0.025
+_BALANCE_WINDOW: Final[int] = 6
+_DRIFT_CHANCE: Final[float] = 0.75
+_MIN_DRIFT_DURATION: Final[float] = 0.75
+_MAX_DRIFT_DURATION: Final[float] = 2.2
+_DART_CHANCE: Final[float] = 0.08
+_MIN_DART_FIXATION: Final[float] = 0.15
+_MAX_DART_FIXATION: Final[float] = 0.5
 
 
 class GazeController(AnimationController[GazeControllerSettings]):
@@ -30,7 +63,7 @@ class GazeController(AnimationController[GazeControllerSettings]):
         super().__init__(runtime, name, config)
         # 记录最近若干次注视方向符号（+1 / -1 / 0 居中），左右、上下各一条，
         # 用于强制两轴均衡，抵消纯随机采样在短时间窗口里偶然偏向一侧的观感。
-        window = max(1, config.balance_window)
+        window = max(1, _BALANCE_WINDOW)
         self._x_history: deque[int] = deque(maxlen=window)
         self._y_history: deque[int] = deque(maxlen=window)
 
@@ -48,9 +81,9 @@ class GazeController(AnimationController[GazeControllerSettings]):
         style, base_duration, eye_easing, fixation = self._pick_style(mode)
 
         # 移动幅度（到注视点的归一化距离 0~1）：小幅度看得快，大幅度看得慢。
-        # 在风格基准时长上按幅度做线性缩放，下限为基准的 reach_min_scale 倍。
+        # 在风格基准时长上按幅度做线性缩放，下限为基准的 _REACH_MIN_SCALE 倍。
         reach = self._reach_magnitude(gaze_x, gaze_y)
-        eye_duration = base_duration * (self.config.reach_min_scale + (1.0 - self.config.reach_min_scale) * reach)
+        eye_duration = base_duration * (_REACH_MIN_SCALE + (1.0 - _REACH_MIN_SCALE) * reach)
 
         head_yaw, head_pitch, head_roll, head_mode = self._head_targets(gaze_x, gaze_y, reach, mode)
 
@@ -69,7 +102,6 @@ class GazeController(AnimationController[GazeControllerSettings]):
             fixation,
         )
 
-        priority = self.config.priority
         await self.runtime.platform.tween_semantic(
             [
                 # 眼睛：按所选风格的时长/缓动移到注视点
@@ -78,38 +110,38 @@ class GazeController(AnimationController[GazeControllerSettings]):
                     end_value=gaze_x,
                     duration=eye_duration,
                     easing=eye_easing,
-                    priority=priority,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
                 SemanticTweenRequest(
                     action_parameter_name=SemanticAction.EYE_GAZE_Y,
                     end_value=gaze_y,
                     duration=eye_duration,
                     easing=eye_easing,
-                    priority=priority,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
                 SemanticTweenRequest(
                     action_parameter_name=SemanticAction.HEAD_YAW,
                     end_value=head_yaw,
-                    duration=self.config.head_follow_duration,
+                    duration=_HEAD_FOLLOW_DURATION,
                     easing=Easing.in_out_sine,
-                    delay=self.config.head_follow_delay,
-                    priority=priority,
+                    delay=_HEAD_FOLLOW_DELAY,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
                 SemanticTweenRequest(
                     action_parameter_name=SemanticAction.HEAD_PITCH,
                     end_value=head_pitch,
-                    duration=self.config.head_follow_duration,
+                    duration=_HEAD_FOLLOW_DURATION,
                     easing=Easing.in_out_sine,
-                    delay=self.config.head_follow_delay,
-                    priority=priority,
+                    delay=_HEAD_FOLLOW_DELAY,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
                 SemanticTweenRequest(
                     action_parameter_name=SemanticAction.HEAD_ROLL,
                     end_value=head_roll,
-                    duration=self.config.head_follow_duration,
+                    duration=_HEAD_FOLLOW_DURATION,
                     easing=Easing.in_out_sine,
-                    delay=self.config.head_follow_delay,
-                    priority=priority,
+                    delay=_HEAD_FOLLOW_DELAY,
+                    priority=IDLE_CONTROLLER_PRIORITY,
                 ),
             ],
         )
@@ -117,7 +149,7 @@ class GazeController(AnimationController[GazeControllerSettings]):
         await asyncio.sleep(fixation)
 
     def _pick_mode(self) -> str:
-        return "micro" if random.random() < self.config.center_micro_chance else "gaze"
+        return "micro" if random.random() < _CENTER_MICRO_CHANCE else "gaze"
 
     def _pick_target(self, mode: str) -> tuple[float, float]:
         """选择中心扰动点或随机注视点。
@@ -126,12 +158,12 @@ class GazeController(AnimationController[GazeControllerSettings]):
         """
 
         if mode == "micro":
-            gaze_x = random.uniform(-self.config.micro_gaze_x_amplitude, self.config.micro_gaze_x_amplitude)
-            gaze_y = random.uniform(-self.config.micro_gaze_y_amplitude, self.config.micro_gaze_y_amplitude)
+            gaze_x = random.uniform(-_MICRO_GAZE_X_AMPLITUDE, _MICRO_GAZE_X_AMPLITUDE)
+            gaze_y = random.uniform(-_MICRO_GAZE_Y_AMPLITUDE, _MICRO_GAZE_Y_AMPLITUDE)
         else:
             gaze_x = self._balanced_axis(self.config.gaze_x_amplitude, self._x_history)
             gaze_y = self._balanced_axis(self.config.gaze_y_amplitude, self._y_history)
-            if random.random() < self.config.center_bias:
+            if random.random() < _CENTER_BIAS:
                 gaze_x *= 0.35
                 gaze_y *= 0.35
         return gaze_x, gaze_y
@@ -175,10 +207,11 @@ class GazeController(AnimationController[GazeControllerSettings]):
 
         follow_sign = -1.0 if random.random() < self.config.reverse_head_chance else 1.0
         mode_name = "反向" if follow_sign < 0 else "跟随"
+        strength = self.config.head_follow_strength
         return (
-            gaze_x * self.config.head_follow_ratio * follow_sign,
-            gaze_y * self.config.head_pitch_ratio * follow_sign,
-            gaze_x * self.config.head_roll_ratio * follow_sign,
+            gaze_x * _HEAD_YAW_FACTOR * strength * follow_sign,
+            gaze_y * _HEAD_PITCH_FACTOR * strength * follow_sign,
+            gaze_x * _HEAD_ROLL_FACTOR * strength * follow_sign,
             mode_name,
         )
 
@@ -192,20 +225,20 @@ class GazeController(AnimationController[GazeControllerSettings]):
         """
 
         if mode == "micro":
-            duration = random.uniform(self.config.min_micro_duration, self.config.max_micro_duration)
-            fixation = random.uniform(self.config.min_micro_fixation, self.config.max_micro_fixation)
+            duration = random.uniform(_MIN_MICRO_DURATION, _MAX_MICRO_DURATION)
+            fixation = random.uniform(_MIN_MICRO_FIXATION, _MAX_MICRO_FIXATION)
             return "micro", duration, Easing.in_out_sine, fixation
 
         roll = random.random()
-        if roll < self.config.drift_chance:
-            duration = random.uniform(self.config.min_drift_duration, self.config.max_drift_duration)
-            fixation = random.uniform(self.config.min_fixation, self.config.max_fixation)
+        if roll < _DRIFT_CHANCE:
+            duration = random.uniform(_MIN_DRIFT_DURATION, _MAX_DRIFT_DURATION)
+            fixation = random.uniform(_MIN_FIXATION, _MAX_FIXATION)
             return "drift", duration, Easing.in_out_sine, fixation
-        if roll < self.config.drift_chance + self.config.dart_chance:
-            duration = self.config.min_saccade_duration
-            fixation = random.uniform(self.config.min_dart_fixation, self.config.max_dart_fixation)
+        if roll < _DRIFT_CHANCE + _DART_CHANCE:
+            duration = _MIN_SACCADE_DURATION
+            fixation = random.uniform(_MIN_DART_FIXATION, _MAX_DART_FIXATION)
             return "dart", duration, Easing.out_cubic, fixation
 
-        duration = random.uniform(self.config.min_saccade_duration, self.config.max_saccade_duration)
-        fixation = random.uniform(self.config.min_fixation, self.config.max_fixation)
+        duration = random.uniform(_MIN_SACCADE_DURATION, _MAX_SACCADE_DURATION)
+        fixation = random.uniform(_MIN_FIXATION, _MAX_FIXATION)
         return "saccade", duration, Easing.out_cubic, fixation

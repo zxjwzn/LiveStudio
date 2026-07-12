@@ -26,15 +26,12 @@ from livestudio.services.platforms.vtubestudio import VTubeStudio
 
 
 class _StubController:
-    """待机控制器桩:start 受 enabled 门控(禁用时返回 False 且不改运行态),镜像真实守卫。"""
+    """待机控制器桩:镜像真实控制器的运行态启停。"""
 
-    def __init__(self, *, running: bool = False, enabled: bool = True) -> None:
+    def __init__(self, *, running: bool = False) -> None:
         self.is_running = running
-        self.enabled = enabled
 
     async def start(self) -> bool:
-        if not self.enabled:
-            return False
         self.is_running = True
         return True
 
@@ -151,18 +148,6 @@ async def test_set_controller_broadcasts_actual_running() -> None:
 
     assert actual is True
     assert events == [PlatformStateEvent.controller("blink", True)]
-
-
-async def test_set_controller_disabled_broadcasts_not_running() -> None:
-    """被禁用的控制器 start 守卫跳过(started=False),事件按真实运行态(False)广播。"""
-
-    app, anim, events = _make_app()
-    anim.runtime.controllers["blink"] = _StubController(enabled=False)
-
-    actual = await app.set_controller("blink", True)
-
-    assert actual is False
-    assert events == [PlatformStateEvent.controller("blink", False)]
 
 
 async def test_no_listener_is_safe() -> None:

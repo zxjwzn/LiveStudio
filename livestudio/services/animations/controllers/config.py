@@ -1,14 +1,67 @@
+from typing import Any, Final
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from livestudio.services.audio_stream.sources.tts.engines.types import TtsProviderKind
 
+# 已从控制器配置中移除的字段名。旧 YAML 落盘时仍可能含这些键,加载前在此剥离,
+# 以兼容历史配置;各子类仍保持 ``extra="forbid"`` 拦截其它未知键(如手误拼写)。
+# 迁移垫片,确认无历史配置后可删。
+_DEPRECATED_CONTROLLER_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        # 通用
+        "enabled",
+        "priority",
+        "au_priority",
+        "neutral_priority",
+        # gaze 已固化为模块常量的字段
+        "head_follow_ratio",
+        "head_roll_ratio",
+        "head_pitch_ratio",
+        "head_follow_delay",
+        "head_follow_duration",
+        "min_saccade_duration",
+        "max_saccade_duration",
+        "reach_min_scale",
+        "min_fixation",
+        "max_fixation",
+        "center_bias",
+        "center_micro_chance",
+        "micro_gaze_x_amplitude",
+        "micro_gaze_y_amplitude",
+        "min_micro_duration",
+        "max_micro_duration",
+        "min_micro_fixation",
+        "max_micro_fixation",
+        "balance_window",
+        "drift_chance",
+        "min_drift_duration",
+        "max_drift_duration",
+        "dart_chance",
+        "min_dart_fixation",
+        "max_dart_fixation",
+    }
+)
+
 
 class ControllerSettings(BaseModel):
-    """控制器配置基类"""
+    """控制器配置基类。
+
+    控制器是否运行由运行态启停(仪表盘开关 / MCP set_controller)决定,不再有
+    配置级 ``enabled`` 开关;各控制器优先级亦固化为代码常量,不进配置。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = Field(default=True, description="是否启用控制器")
+    @model_validator(mode="before")
+    @classmethod
+    def _strip_deprecated_fields(cls, data: Any) -> Any:
+        """剥离历史配置中已移除的字段键,兼容旧 YAML。"""
+
+        if isinstance(data, dict):
+            for key in _DEPRECATED_CONTROLLER_FIELDS:
+                data.pop(key, None)
+        return data
 
 
 class BlinkControllerSettings(ControllerSettings):
@@ -53,10 +106,13 @@ class BreathingControllerSettings(ControllerSettings):
 
 
 class GazeControllerSettings(ControllerSettings):
-    """眼神注视控制器配置
+    """眼神注视控制器配置。
 
-    统一驱动 eye.gaze.x/y 与 head.yaw/head.pitch/head.roll：眼睛以中心高频轻微扰动为主，
-    偶尔随机注视到一处，头部可跟随、不跟随或反向移动。
+    统一驱动 eye.gaze.x/y 与 head.yaw/head.pitch/head.roll:眼睛以中心高频轻微扰动为主,
+    偶尔随机注视到一处,头部可跟随、不跟随或反向移动。
+
+    仅暴露 5 个用户可调旋钮;各时长/概率/微扰幅度/均衡窗口等已固化为 gaze 模块常量,
+    行为不变但禁止用户调整。
     """
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SEARCH"})
@@ -73,11 +129,11 @@ class GazeControllerSettings(ControllerSettings):
         le=1.0,
         description="眼睛上下注视幅度（上下幅度通常略小于左右，避免翻白眼）",
     )
-    head_follow_ratio: float = Field(
-        default=0.6,
+    head_follow_strength: float = Field(
+        default=1.0,
         ge=0.0,
         le=1.0,
-        description="头部偏转跟随眼神方向的比例（head_yaw = gaze_x * ratio），越大眼神转动时头跟得越多",
+        description="头部跟随眼神的整体强度（0=头不动，1=默认）；统一缩放头部 yaw/pitch/roll 三轴跟随",
     )
     head_follow_chance: float = Field(
         default=0.55,
@@ -86,138 +142,12 @@ class GazeControllerSettings(ControllerSettings):
         description="本次眼动是否带动头部转动的基础概率；大幅度注视会在此基础上提高转头倾向，"
         "未命中时只动眼睛、头保持回正，模拟真人小幅扫视纯眼动、大角度才扭头",
     )
-    head_roll_ratio: float = Field(
-        default=0.15,
-        ge=0.0,
-        le=1.0,
-        description="头部侧倾跟随眼神方向的比例（head_roll = gaze_x * ratio）",
-    )
-    head_pitch_ratio: float = Field(
-        default=0.18,
-        ge=0.0,
-        le=1.0,
-        description="头部俯仰跟随眼神上下方向的比例（head_pitch = gaze_y * ratio）",
-    )
-    head_follow_delay: float = Field(
-        default=0.12,
-        ge=0.0,
-        description="头部跟随相对眼睛扫视的启动延迟，模拟前庭眼反射",
-    )
-    head_follow_duration: float = Field(
-        default=0.8,
-        gt=0.0,
-        description="头部跟随到位的过渡时长（比眼睛扫视慢）",
-    )
-    min_saccade_duration: float = Field(
-        default=0.08,
-        gt=0.0,
-        description="眼睛扫视到位的最短时长",
-    )
-    max_saccade_duration: float = Field(
-        default=0.22,
-        gt=0.0,
-        description="眼睛扫视到位的最长时长",
-    )
-    reach_min_scale: float = Field(
-        default=0.4,
-        gt=0.0,
-        le=1.0,
-        description="小幅度眼动相对风格基准时长的最小缩放：移动幅度趋近 0 时按此比例缩短，"
-        "幅度趋近最大时用满基准时长，使小幅看得快、大幅看得慢",
-    )
-    min_fixation: float = Field(default=0.45, ge=0, description="随机注视停留最短时长")
-    max_fixation: float = Field(default=1.6, ge=0, description="随机注视停留最长时长")
-    center_bias: float = Field(
-        default=0.2,
-        ge=0.0,
-        le=1.0,
-        description="每次扫视回到中心附近（而非边缘）的概率",
-    )
-    center_micro_chance: float = Field(
-        default=0.85,
-        ge=0.0,
-        le=1.0,
-        description="本周期采用中心高频轻微扰动的概率；其余周期进入随机注视",
-    )
-    micro_gaze_x_amplitude: float = Field(
-        default=0.16,
-        ge=0.0,
-        le=1.0,
-        description="中心轻微扰动的水平幅度",
-    )
-    micro_gaze_y_amplitude: float = Field(
-        default=0.12,
-        ge=0.0,
-        le=1.0,
-        description="中心轻微扰动的垂直幅度",
-    )
-    min_micro_duration: float = Field(default=0.018, gt=0.0, description="中心扰动到位最短时长")
-    max_micro_duration: float = Field(default=0.045, gt=0.0, description="中心扰动到位最长时长")
-    min_micro_fixation: float = Field(default=0.015, ge=0.0, description="中心扰动停留最短时长")
-    max_micro_fixation: float = Field(default=0.025, ge=0.0, description="中心扰动停留最长时长")
-    balance_window: int = Field(
-        default=6,
-        ge=0,
-        description="左右注视均衡的历史窗口大小：记录最近 N 次水平方向，"
-        "采样偏向已有多数侧时按不平衡程度概率翻转，使长短期左右注视频率趋于一致。0 关闭",
-    )
     reverse_head_chance: float = Field(
         default=0.18,
         ge=0.0,
         le=1.0,
         description="头部反向跟随的概率：看一侧、头却朝另一侧偏/歪，制造俏皮歪头",
     )
-    drift_chance: float = Field(
-        default=0.75,
-        ge=0.0,
-        le=1.0,
-        description="本次眼动为「缓慢漂移」的概率（慢移到新点，像走神/打量）",
-    )
-    min_drift_duration: float = Field(
-        default=0.75,
-        gt=0.0,
-        description="缓慢漂移到位的最短时长",
-    )
-    max_drift_duration: float = Field(
-        default=2.2,
-        gt=0.0,
-        description="缓慢漂移到位的最长时长",
-    )
-    dart_chance: float = Field(
-        default=0.08,
-        ge=0.0,
-        le=1.0,
-        description="本次眼动为「快速连扫」的概率（极短到位 + 极短凝视，连续瞟动）",
-    )
-    min_dart_fixation: float = Field(
-        default=0.15,
-        ge=0.0,
-        description="快速连扫的最短凝视时长",
-    )
-    max_dart_fixation: float = Field(
-        default=0.5,
-        ge=0.0,
-        description="快速连扫的最长凝视时长",
-    )
-    priority: int = Field(default=10, description="眼神/头部语义参数控制优先级")
-
-    @model_validator(mode="after")
-    def validate_gaze_range(self) -> "GazeControllerSettings":
-        if self.max_saccade_duration < self.min_saccade_duration:
-            raise ValueError("max_saccade_duration 不能小于 min_saccade_duration")
-        if self.max_fixation < self.min_fixation:
-            raise ValueError("max_fixation 不能小于 min_fixation")
-        if self.max_drift_duration < self.min_drift_duration:
-            raise ValueError("max_drift_duration 不能小于 min_drift_duration")
-        if self.max_dart_fixation < self.min_dart_fixation:
-            raise ValueError("max_dart_fixation 不能小于 min_dart_fixation")
-        if self.max_micro_duration < self.min_micro_duration:
-            raise ValueError("max_micro_duration 不能小于 min_micro_duration")
-        if self.max_micro_fixation < self.min_micro_fixation:
-            raise ValueError("max_micro_fixation 不能小于 min_micro_fixation")
-        if self.drift_chance + self.dart_chance > 1.0:
-            raise ValueError("drift_chance 与 dart_chance 之和不能大于 1.0")
-        return self
 
 
 class MouthExpressionControllerSettings(ControllerSettings):
@@ -263,7 +193,6 @@ class MouthSyncControllerSettings(ControllerSettings):
     update_interval: float = Field(default=0.0167, gt=0.0, description="更新间隔")
     attack_duration: float = Field(default=0.02, ge=0.0, description="张嘴过渡时长")
     release_duration: float = Field(default=0.04, ge=0.0, description="闭嘴过渡时长")
-    priority: int = Field(default=99, description="嘴型参数控制优先级")
 
     @model_validator(mode="after")
     def validate_mouth_sync_range(self) -> "MouthSyncControllerSettings":
@@ -277,16 +206,6 @@ class ExpressionControllerSettings(ControllerSettings):
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "HEART"})
 
-    au_priority: int = Field(
-        default=20,
-        description="表情语义缓动的优先级，保持期间高于此值的控制器才能接管参数",
-    )
-    neutral_priority: int = Field(
-        default=1,
-        description="回归静息段的优先级；须低于各待机控制器（默认 10）以使其在 AU 解算收尾时"
-        "即时接管对应参数（从当前值平滑过渡到自己的目标，跳过先回中性），"
-        "无人接管的参数照常由本段平滑回到静息",
-    )
     transition_duration: float = Field(
         default=0.5,
         ge=0.0,
