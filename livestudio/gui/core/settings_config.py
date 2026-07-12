@@ -27,6 +27,6 @@ class GuiSettings(BaseModel):
         description="界面主题模式:浅色 / 深色 / 跟随系统",
     )
     accent_color: str = Field(
-        default="#22C55E",
+        default="#F56CCC",
         description="Fluent 强调色(十六进制,如 #22C55E)",
     )

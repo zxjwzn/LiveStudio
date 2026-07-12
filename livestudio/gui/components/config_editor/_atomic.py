@@ -9,9 +9,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QVBoxLayout, QWidget
-from qfluentwidgets import DoubleSpinBox, LineEdit, PushButton, SettingCard, SpinBox, SwitchButton
+from qfluentwidgets import (
+    ColorPickerButton,
+    DoubleSpinBox,
+    LineEdit,
+    PushButton,
+    SettingCard,
+    SpinBox,
+    SwitchButton,
+)
 
 from ._base import FieldEditor
 from ._schema_types import FieldSpec, resolve_icon
@@ -136,10 +145,15 @@ class StrEditor(_CardEditor):
 
 
 class PathEditor(_CardEditor):
-    """文本框 + 浏览按钮(整体右挂)"""
+    """文本框 + 浏览按钮(整体右挂)
+
+    path_mode="dir" 选目录(默认),"file" 选文件;file 模式可用 path_filter 给文件对话框名称过滤器。
+    """
 
     def __init__(self, spec: FieldSpec, parent: QWidget | None = None) -> None:
         super().__init__(spec, parent)
+        self._path_mode = spec.path_mode
+        self._path_filter = spec.path_filter
         row = QWidget(self)
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(0, 0, 0, 0)
@@ -156,7 +170,13 @@ class PathEditor(_CardEditor):
         self._mount(row)
 
     def _pick(self) -> None:
-        selected = QFileDialog.getExistingDirectory(self, "选择路径", self._edit.text() or str(Path.home()))
+        start = self._edit.text() or str(Path.home())
+        if self._path_mode == "file":
+            selected, _ = QFileDialog.getOpenFileName(
+                self, "选择文件", start, self._path_filter or "所有文件 (*)"
+            )
+        else:
+            selected = QFileDialog.getExistingDirectory(self, "选择路径", start)
         if selected:
             self._edit.setText(selected)
 
@@ -165,3 +185,28 @@ class PathEditor(_CardEditor):
 
     def set_value(self, value: Any) -> None:
         self._edit.setText("" if value is None else str(value))
+
+
+class ColorEditor(_CardEditor):
+    """调色板按钮:str 字段标 json_schema_extra={"widget": "color"} 时用。
+
+    复用 qfluentwidgets.ColorPickerButton(同 GuiSettings.accent_color);值为大写 #RRGGBB 字符串。
+    """
+
+    def __init__(self, spec: FieldSpec, parent: QWidget | None = None) -> None:
+        super().__init__(spec, parent)
+        self._picker = ColorPickerButton(QColor("#FFFFFF"), spec.label or "颜色", self)
+        self._picker.colorChanged.connect(self._on_changed)
+        self._mount(self._picker)
+
+    def _on_changed(self, _color: QColor) -> None:
+        self.valueChanged.emit()
+
+    def get_value(self) -> Any:
+        color = QColor(self._picker.color)
+        color.setAlpha(255)  # 保证 #RRGGBB(不带 alpha),与默认 "#FFFFFF" 一致
+        return color.name().upper()
+
+    def set_value(self, value: Any) -> None:
+        with QSignalBlocker(self._picker):
+            self._picker.setColor(QColor("#FFFFFF") if value is None else QColor(str(value)))

@@ -735,7 +735,6 @@ async def test_interrupt_runs_previous_neutral_priority_cleanup() -> None:
     assert smile
 
 
-
 async def test_oneshot_start_reentrant_interrupts() -> None:
     """通过 start() 连点:每次都返回 True,不因 is_running 丢弃"""
     platform = _ExpressionPlatform()
@@ -841,3 +840,29 @@ async def test_end_fires_before_restore_completes() -> None:
     assert restore_seen_before_end["value"]
     smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
     assert any(r.end_value == 0.5 and r.priority == EXPRESSION_NEUTRAL_PRIORITY for r in smile)
+
+
+async def test_drive_via_start_path_mimicking_mcp() -> None:
+    """走 start()(=execute_controller=MCP 路径)而非 execute(),验证 _drive 仍跑恢复。"""
+    platform = _ExpressionPlatform()
+    controller = ExpressionController(
+        _runtime(platform),
+        "expression",
+        ExpressionControllerSettings(
+            transition_duration=0.0,
+            hold_duration=1.0,
+            neutral_transition_duration=0.0,
+        ),
+        _joy_return_profile(),
+    )
+    ok = await controller.start(emotion=EmotionKind.JOY, hold_duration=None)
+    assert ok
+    for _ in range(10):
+        await asyncio.sleep(0)
+    await controller.release_hold()
+    await _drain(controller)
+    smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
+    assert smile, "没有任何 mouth.smile tween -> _drive 根本没跑"
+    assert any(abs(r.end_value - 0.5) < 1e-6 and r.priority == 1 for r in smile), (
+        f"无 neutral 回归段; got {[(r.end_value, r.priority) for r in smile]}"
+    )

@@ -52,6 +52,17 @@ def _extra_flag(info: FieldInfo, key: str) -> bool:
     return isinstance(extra, Mapping) and bool(extra.get(key))
 
 
+def _extra_str(info: FieldInfo, key: str) -> str | None:
+    """读取 json_schema_extra 中字符串型键(如 "filter");非字符串/无 extra 返回 None"""
+
+    extra = info.json_schema_extra
+    if isinstance(extra, Mapping):
+        value = extra.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 def _icon_by_name(name: object) -> FluentIcon | None:
     """按字符串名查 FluentIcon(不用 getattr);非字符串返回 None,未知名告警并回退 None"""
 
@@ -352,13 +363,29 @@ def build_field_spec(
             icon=icon,
         )
 
-    # 路径控件:str 字段显式标注 json_schema_extra={"widget": "path"} 时用 浏览 控件
-    if _widget_hint(info) == "path" and annotation is str:
+    # 路径控件:str 字段标 json_schema_extra={"widget": "path"|"file"} 时用 浏览 控件
+    # "path"=目录选择(默认),"file"=文件选择(可用 "filter" 给文件对话框名称过滤器)
+    widget = _widget_hint(info)
+    if widget in ("path", "file") and annotation is str:
         return FieldSpec(
             name=name,
             label=label,
             description=description,
             kind=FieldKind.PATH,
+            annotation=annotation,
+            readonly=readonly,
+            icon=icon,
+            path_mode="file" if widget == "file" else "dir",
+            path_filter=_extra_str(info, "filter"),
+        )
+
+    # 调色板控件:str 字段标 json_schema_extra={"widget": "color"} 时用调色板按钮
+    if widget == "color" and annotation is str:
+        return FieldSpec(
+            name=name,
+            label=label,
+            description=description,
+            kind=FieldKind.COLOR,
             annotation=annotation,
             readonly=readonly,
             icon=icon,

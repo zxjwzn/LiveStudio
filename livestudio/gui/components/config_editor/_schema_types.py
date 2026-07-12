@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any
+from typing import Any, Literal
 
 from qfluentwidgets import FluentIcon
 
@@ -32,6 +32,7 @@ class FieldKind(Enum):
     FLOAT = auto()
     STR = auto()
     PATH = auto()
+    COLOR = auto()  # str 字段标 widget:"color" -> 调色板按钮
     CHOICE = auto()  # Literal / Enum / 外部注入候选
     MODEL = auto()  # 嵌套 BaseModel
     LIST = auto()
@@ -70,5 +71,8 @@ class FieldSpec:
     union_members: tuple[tuple[str, type], ...] = ()
     # 左侧图标(来自 json_schema_extra["icon"]);None 时由编辑器回退为占位图标
     icon: FluentIcon | None = None
+    # PATH 控件:文件/目录选择模式 + 文件对话框名称过滤器(仅 file 模式)
+    path_mode: Literal["file", "dir"] = "dir"
+    path_filter: str | None = None
     # bare 模式:被容器(Optional/Union/List)复用时只渲染控件、不画 SettingCard 外壳
     bare: bool = False

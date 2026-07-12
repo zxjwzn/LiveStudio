@@ -183,8 +183,6 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
         self,
         current_task: asyncio.Task[None],
         request: TweenRequest,
-        *,
-        context: str = "缓动",
     ) -> bool:
         """在持有 _lock 的前提下，尝试获取参数的缓动控制权
 
@@ -195,13 +193,6 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
 
         existing = self._active_tweens.get(request.parameter_name)
         if existing is not None and request.priority < existing.priority:
-            logger.debug(
-                "参数 {} 的{}被拒绝，当前优先级 {} > 新优先级 {}",
-                request.parameter_name,
-                context,
-                existing.priority,
-                request.priority,
-            )
             return False
         self._active_tweens[request.parameter_name] = ActiveTween(
             task=current_task,
@@ -250,7 +241,7 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
         easing_fn = self._resolve_easing(request.easing)
 
         async with self._lock:
-            if not self._try_acquire(current_task, request, context="缓动"):
+            if not self._try_acquire(current_task, request):
                 return
 
         try:
@@ -292,7 +283,7 @@ class ParameterTweenEngine(AsyncServiceLifecycleMixin):
         request: TweenRequest,
     ) -> None:
         async with self._lock:
-            if not self._try_acquire(current_task, request, context="即时设置"):
+            if not self._try_acquire(current_task, request):
                 return
 
             state = ControlledParameterState(

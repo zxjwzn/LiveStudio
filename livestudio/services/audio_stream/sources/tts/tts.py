@@ -38,6 +38,9 @@ _FRAME_HZ = 60
 _FRAME_SECONDS = 1.0 / _FRAME_HZ
 # 内部合成队列上限(帧数≈秒);满则阻塞合成,形成反压,避免无界内存
 _AUDIO_QUEUE_MAX_FRAMES = _FRAME_HZ * 120
+# 流式获取卡死看门狗:合成未完成且超过此时长无新音频入队,视为网络卡死,
+# cancel 合成并补发 speak.end,避免时间线(speak 事件 + 绑它的 play_emotion hold)永久挂起
+_STREAM_STALL_SECONDS = 3.0
 
 SpeakAnchorCallback = Callable[[], None]
 
@@ -291,8 +294,20 @@ class TTSAudioStreamSource(AudioStreamSource):
         last = np.zeros((block_frames, channels), dtype=np.float32)
         loop = asyncio.get_running_loop()
         next_deadline = loop.time()
+        last_audio_time = loop.time()
         try:
             while True:
+                # 看门狗:合成未完成且超过 _STREAM_STALL_SECONDS 无新音频 -> 视为卡死,补发 end
+                synth_done = self._synth_task is None or self._synth_task.done()
+                if not synth_done and (loop.time() - last_audio_time) > _STREAM_STALL_SECONDS:
+                    logger.warning(
+                        "TTS 流式获取超过 {}s 无数据,视为卡死,补发 speak.end",
+                        _STREAM_STALL_SECONDS,
+                    )
+                    synth = self._synth_task
+                    if synth is not None and not synth.done():
+                        synth.cancel()
+                    return
                 while carry.shape[0] < block_frames:
                     synth_done = self._synth_task is None or self._synth_task.done()
                     if self._audio_q.empty() and synth_done:
@@ -301,6 +316,7 @@ class TTSAudioStreamSource(AudioStreamSource):
                         piece = await asyncio.wait_for(self._audio_q.get(), timeout=delay)
                     except TimeoutError:
                         break
+                    last_audio_time = loop.time()
                     async with self._queue_space:
                         self._queued_frames -= int(piece.shape[0])
                         if self._queued_frames < 0:

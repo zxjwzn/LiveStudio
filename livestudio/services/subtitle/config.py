@@ -25,18 +25,20 @@ class SubtitleConfig(BaseModel):
     font_path: str = Field(
         default="",
         description="自定义字体文件路径(.ttf/.otf)；留空使用网页默认 sans-serif",
-        json_schema_extra={"widget": "path"},
+        json_schema_extra={"widget": "file", "filter": "字体文件 (*.ttf *.otf);;所有文件 (*)"},
     )
     font_size: int = Field(default=48, ge=8, le=400, description="字幕字号(px)")
     font_color: str = Field(
         default="#FFFFFF",
         min_length=1,
         description="字幕字色(CSS 颜色,如 #FFFFFF)",
+        json_schema_extra={"widget": "color"},
     )
     font_edge_color: str = Field(
         default="#000000",
         min_length=1,
         description="字幕描边色",
+        json_schema_extra={"widget": "color"},
     )
     font_edge_width: float = Field(
         default=2.0,

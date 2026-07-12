@@ -213,10 +213,7 @@ class PlatformToolset(ABC, Generic[TApp]):
         running 是否运行中。未连接/未加载模型时返回空列表。
         """
 
-        return [
-            {"name": status.name, "running": status.running}
-            for status in self._app.list_controllers()
-        ]
+        return [{"name": status.name, "running": status.running} for status in self._app.list_controllers()]
 
     @tool(builtin=True)
     async def set_controller(self, name: str, running: bool) -> str:
@@ -271,8 +268,13 @@ class PlatformToolset(ABC, Generic[TApp]):
         - speak: 合成并播放文本。params 必填 text(非空字符串)。
           锚点: start=音频呈现首帧上总线; end=呈现播完(不是 TTS 网络断开)。
         - play_emotion: 情绪表情 oneshot。params 必填 emotion(取自 list_emotions);
-          可选 intensity[0,1]、transition_duration、hold_duration(秒,>=0)。
+          可选 transition_duration(建议0.5s)、hold_duration(秒,>=0)。
           锚点: start=目标表情开始过渡时; end=开始回中性时(脸上可能仍在回落)。
+          生动性原则: 每个 play_emotion 最多覆盖一句 speak;同一种情绪下要讲多句台词时,
+          必须拆成多组「一句 speak + 一个 play_emotion」逐句重新触发该情绪,而不是用一个
+          表情撑住整段话。例如play_emotion("joy")speak("诶嘿嘿～你来啦！今天也要元气满满的哦,我会一直
+          陪着你的～")应改为play_emotion("joy")speak("诶嘿嘿～你来啦！")+play_emotion("joy")speak("今天也要元气满满的哦,我会一直
+          陪着你的～")。各组 speak以前一句 end 串接,不重叠。
         - set_native_expression: 瞬时开关原生表情。params 必填 name、active(bool)。
           start 与 end 同一时刻。
         - clear_native_expressions: 取消全部原生表情。params 用 {}。

@@ -68,6 +68,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             typicality_power=config.typicality_power,
         )
         self._finishing_task: asyncio.Task[None] | None = None
+        self._cleanup_task: asyncio.Task[None] | None = None
         self._active_semantic_targets: list[ResolvedSemanticTarget] = []
         self._active_native_triggers: list = []
         self._emotion_listeners: list[tuple[Callable[[], None], Callable[[], None]]] = []
@@ -313,12 +314,14 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         try:
             await self._hold_release.wait()
         finally:
-            with contextlib.suppress(Exception):
-                await self._tween_targets(targets, 0.0, easing="linear")
+            # 先 cancel hold_task,确保长 tween 一定被收回(即便本协程被 cancel)
             if not hold_task.done():
                 hold_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await hold_task
+            # 瞬时同优先级收口,清理长 tween 留下的占权
+            with contextlib.suppress(Exception):
+                await self._tween_targets(targets, 0.0, easing="linear")
 
     async def _tween_targets(
         self,
@@ -384,7 +387,8 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         driven = list(self._active_semantic_targets)
         fade = float(self.config.transition_duration)
 
-        self._hold_release.set()
+        # 先 cancel _drive 再做后续:避免 set(_hold_release) 在前导致 cancel 丢失、
+        # _drive 照常跑 _restore_phase 同时 cleanup 又发一遍 neutral(双重回归)。
         task = self._finishing_task
         self._finishing_task = None
         if task is not None and not task.done():
@@ -395,7 +399,8 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         self._active_native_triggers = []
         self._active_semantic_targets = []
         if natives or driven:
-            asyncio.create_task(
+            # 存引用,防止 fire-and-forget 任务被 GC 掉导致回归请求发不出去
+            self._cleanup_task = asyncio.create_task(
                 self._cleanup_snapshot(natives, driven, fade_time=fade),
                 name="expression-interrupt-cleanup",
             )

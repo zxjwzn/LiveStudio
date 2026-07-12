@@ -11,7 +11,7 @@
 约束:
   - 不调用 stop_idle_animations / disconnect（保证 mouth_sync 嘴型）
   - 仅在 idle 控制器未跑时 start_idle_animations
-  - 每个情绪: speak + play_emotion(start=s.start, end=s.end)
+  - 每个情绪: 台词按句拆分,每句一个 speak + play_emotion(撑到该句 speak 结束),句间串接不重叠
   - 多队列: 连续 enqueue 多个 Job，验证 pending 串行
 """
 
@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from typing import Any
@@ -29,14 +30,8 @@ import httpx
 BASE = os.environ.get("MCP_URL", "http://127.0.0.1:9999/mcp/")
 PLATFORM = os.environ.get("PLATFORM", "vtubestudio")
 
-# 二次元少女口吻；每种情绪一句
+# 二次元少女口吻；每种情绪一段台词(可含多句,逐句触发)
 EMOTION_LINES: dict[str, str] = {
-    "joy": "诶嘿嘿～你来啦！今天也要元气满满的哦，我会一直陪着你的～",
-    "sadness": "呜……今天好像有一点点小失落呢，你能陪陪人家吗……",
-    "anger": "哼！才、才不是在生气啦，只是有点不服气而已！",
-    "surprise": "欸？！真的假的？！吓人家一跳啦～",
-    "smug": "哼哼～你来啦~哪里也不准去，要乖乖待好哦~",
-    "wry": "哈啊……拿你没办法呢，就稍微帮你一次好了。",
     "shy": "呀……别、别一直盯着看啦，人家会不好意思的……",
 }
 
@@ -162,49 +157,51 @@ def hold_ok(speak: dict[str, Any], emotion: dict[str, Any], *, ratio: float = 0.
     return ed >= sd * ratio and abs(float(emotion["t_end"]) - float(speak["t_end"])) < 1.0
 
 
-def summarize_pair(job: dict[str, Any] | None, label: str) -> dict[str, Any]:
+def summarize_job(job: dict[str, Any] | None, label: str) -> dict[str, Any]:
     print(f"\n--- {label} ---")
     if not job:
         print("NO JOB")
         return {"ok": False, "reason": "no_job"}
     print(f"state={job.get('state')} error={job.get('error')}")
-    by = {e["id"]: e for e in job.get("events", []) if isinstance(e, dict) and "id" in e}
-    # 兼容 id 为 s/e 或 s1/e1
-    speak = by.get("s") or next((e for e in by.values() if e.get("type") == "speak"), None)
-    emotion = by.get("e") or next((e for e in by.values() if e.get("type") == "play_emotion"), None)
-    for e in job.get("events", []):
+    events = [e for e in job.get("events", []) if isinstance(e, dict)]
+    for e in events:
         ts, te = e.get("t_start"), e.get("t_end")
         dur = (float(te) - float(ts)) if ts is not None and te is not None else None
         print(
             f"  {e.get('id')} type={e.get('type')} status={e.get('status')} "
             f"dur={None if dur is None else round(dur, 2)}s err={e.get('error')}"
         )
-    if not speak or not emotion:
+    speaks = sorted((e for e in events if e.get("type") == "speak"), key=lambda e: str(e.get("id")))
+    emotions = sorted((e for e in events if e.get("type") == "play_emotion"), key=lambda e: str(e.get("id")))
+    if not speaks or not emotions:
         return {"ok": False, "reason": "missing_events", "state": job.get("state")}
-    hok = hold_ok(speak, emotion)
-    sd = float(speak["t_end"]) - float(speak["t_start"]) if speak.get("t_end") and speak.get("t_start") else None
-    ed = float(emotion["t_end"]) - float(emotion["t_start"]) if emotion.get("t_end") and emotion.get("t_start") else None
-    detail = {
-        "ok": job.get("state") == "completed"
-        and speak.get("status") == "completed"
-        and emotion.get("status") == "completed"
-        and hok,
+    pairs = list(zip(speaks, emotions))
+    pair_details: list[dict[str, Any]] = []
+    all_hold = True
+    for spk, emo in pairs:
+        hok = hold_ok(spk, emo)
+        all_hold = all_hold and hok
+        sd = float(spk["t_end"]) - float(spk["t_start"]) if spk.get("t_end") and spk.get("t_start") else None
+        ed = float(emo["t_end"]) - float(emo["t_start"]) if emo.get("t_end") and emo.get("t_start") else None
+        pair_details.append(
+            {
+                "speak": spk.get("id"),
+                "emotion": emo.get("id"),
+                "speak_status": spk.get("status"),
+                "emotion_status": emo.get("status"),
+                "speak_dur": sd,
+                "emotion_dur": ed,
+                "hold_ok": hok,
+            }
+        )
+        print(f"  pair {spk.get('id')}/{emo.get('id')}: speak_dur={sd} emotion_dur={ed} HOLD_OK={hok}")
+    all_completed = job.get("state") == "completed" and all(e.get("status") == "completed" for e in events)
+    return {
+        "ok": all_completed and all_hold and bool(pair_details),
         "state": job.get("state"),
-        "speak_status": speak.get("status"),
-        "emotion_status": emotion.get("status"),
-        "speak_dur": sd,
-        "emotion_dur": ed,
-        "start_lag": (float(emotion["t_start"]) - float(speak["t_start"]))
-        if speak.get("t_start") and emotion.get("t_start")
-        else None,
-        "end_delta": (float(emotion["t_end"]) - float(speak["t_end"])) if speak.get("t_end") and emotion.get("t_end") else None,
-        "hold_ok": hok,
+        "pair_count": len(pair_details),
+        "pairs": pair_details,
     }
-    print(
-        f"  speak_dur={detail['speak_dur']} emotion_dur={detail['emotion_dur']} "
-        f"start_lag={detail['start_lag']} end_delta={detail['end_delta']} HOLD_OK={hok}"
-    )
-    return detail
 
 
 async def ensure_controllers(s: McpSession) -> dict[str, bool]:
@@ -218,40 +215,54 @@ async def ensure_controllers(s: McpSession) -> dict[str, bool]:
     return running
 
 
+def split_sentences(text: str) -> list[str]:
+    # 在原有符号集合中加入中文逗号 ，
+    parts = re.findall(r"[^。！？.!?…;；，]*[。！？.!?…;；，]+|[^。！？.!?…;；，]+$", text)
+    sentences = [p.strip() for p in parts if p.strip()]
+    return sentences or [text.strip()]
+
+
 async def enqueue_speak_emotion(
     s: McpSession,
     *,
     text: str,
     emotion: str,
-    intensity: float = 1,
     transition: float = 1,
 ) -> dict[str, Any]:
-    """单 Job: speak + play_emotion 撑到 speak 结束。"""
+    """单 Job: 台词按句拆分,每句一个 speak + play_emotion(撑到该句 speak 结束),句间串接不重叠。"""
+
     await s.t("clear_draft", show=False)
-    await s.t(
-        "add_event",
-        {"event_type": "speak", "params": {"text": text}, "event_id": "s"},
-        show=False,
-    )
-    await s.t(
-        "add_event",
-        {
-            "event_type": "play_emotion",
-            "params": {
-                "emotion": emotion,
-                "intensity": intensity,
-                "transition_duration": transition,
+    prev_speak: str | None = None
+    for i, sentence in enumerate(split_sentences(text), start=1):
+        sid = f"s{i}"
+        eid = f"e{i}"
+        await s.t(
+            "add_event",
+            {
+                "event_type": "speak",
+                "params": {"text": sentence},
+                "event_id": sid,
+                "start_anchor": prev_speak or "group",
+                "start_phase": "end" if prev_speak else "start",
             },
-            "event_id": "e",
-            "start_anchor": "s",
-            "start_phase": "start",
-            "delay": 0,
-            "end_anchor": "s",
-            "end_phase": "end",
-            "end_delay": 0,
-        },
-        show=False,
-    )
+            show=False,
+        )
+        await s.t(
+            "add_event",
+            {
+                "event_type": "play_emotion",
+                "params": {"emotion": emotion, "transition_duration": transition},
+                "event_id": eid,
+                "start_anchor": sid,
+                "start_phase": "start",
+                "delay": 0,
+                "end_anchor": sid,
+                "end_phase": "end",
+                "end_delay": 0,
+            },
+            show=False,
+        )
+        prev_speak = sid
     enq = await s.t("enqueue_draft", {"delay": 0})
     if not isinstance(enq, dict) or not enq.get("ok"):
         return {"ok": False, "enqueue": enq}
@@ -297,12 +308,6 @@ async def main() -> int:
         server_emotions = [str(x) for x in emotions]
         # 保持 list_emotions 顺序
         to_test = [e for e in server_emotions if e in EMOTION_LINES]
-        missing_lines = [e for e in server_emotions if e not in EMOTION_LINES]
-        if missing_lines:
-            # 缺台词时用通用句
-            for e in missing_lines:
-                EMOTION_LINES[e] = f"嗯嗯～这是「{e}」的感觉哦，请好好听人家说完啦～"
-                to_test.append(e)
 
         emotion_results: dict[str, Any] = {}
         for emotion in to_test:
@@ -314,7 +319,7 @@ async def main() -> int:
                 print("  enqueue failed")
                 continue
             job = await s.wait_job(str(enq["job_id"]), emotion)
-            detail = summarize_pair(job, f"emotion:{emotion}")
+            detail = summarize_job(job, f"emotion:{emotion}")
             emotion_results[emotion] = detail
             # 确认控制器仍在
             ctrls = await s.t("list_controllers", show=False)

@@ -149,10 +149,7 @@ def validate_event_params(event_type: EventType, params: dict[str, Any]) -> dict
             raise ValueError("play_emotion 需要非空 params.emotion")
         out: dict[str, Any] = {"emotion": emotion.strip()}
         if "intensity" in params and params["intensity"] is not None:
-            intensity = float(params["intensity"])
-            if intensity < 0.0 or intensity > 1.0:
-                raise ValueError("play_emotion.intensity 须在 [0,1]")
-            out["intensity"] = intensity
+            raise ValueError("play_emotion.intensity 固定为 1,不接受外部传入")
         for key in ("transition_duration", "hold_duration"):
             if key in params and params[key] is not None:
                 value = float(params[key])

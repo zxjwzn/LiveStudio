@@ -18,7 +18,7 @@ from ._schema_types import FieldKind, FieldSpec
 def create_editor(spec: FieldSpec, parent: QWidget | None = None) -> FieldEditor:
     """按 FieldSpec.kind 分派到具体编辑器"""
 
-    from ._atomic import BoolEditor, FloatEditor, IntEditor, PathEditor, StrEditor
+    from ._atomic import BoolEditor, ColorEditor, FloatEditor, IntEditor, PathEditor, StrEditor
     from ._choice import ChoiceEditor
     from ._complex import DictEditor, ListEditor, ModelEditor
     from ._readonly import ReadOnlyEditor
@@ -31,6 +31,7 @@ def create_editor(spec: FieldSpec, parent: QWidget | None = None) -> FieldEditor
         FieldKind.FLOAT: FloatEditor,
         FieldKind.STR: StrEditor,
         FieldKind.PATH: PathEditor,
+        FieldKind.COLOR: ColorEditor,
         FieldKind.CHOICE: ChoiceEditor,
         FieldKind.MODEL: ModelEditor,
         FieldKind.LIST: ListEditor,

@@ -9,7 +9,7 @@ import typing
 from collections.abc import Iterable
 from typing import Any, Literal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import QHBoxLayout, QStackedWidget, QWidget
 from qfluentwidgets import ComboBox, PushButton
 
@@ -34,9 +34,11 @@ def _member_label(annotation: Any) -> str:
 
 
 class OptionalEditor(_CardEditor):
-    """T | None:卡片右侧显示内层控件 + 「清除」按钮。
+    """T | None:卡片右侧显示内层控件 + 「清除/恢复」开关。
 
-    清除=回到默认(写 None);用户一旦编辑内层控件即视为自定义值。
+    清除=回到 None(置 _is_null=True、禁用并灰显内层控件,保留其值作为「恢复」预览);
+    恢复=重新启用内层(值不变);用户编辑内层控件即视为自定义值(_is_null=False)。
+    用禁用灰显而非清空文本:SpinBox 等 int 内层没有「空」态,灰显对所有类型都直观。
     """
 
     def __init__(self, spec: FieldSpec, parent: QWidget | None = None) -> None:
@@ -49,24 +51,35 @@ class OptionalEditor(_CardEditor):
         row_layout.setSpacing(8)
 
         self._inner = create_editor_for_annotation(inner_annotation, spec.label, row, bare=True)
-        # 「是否为默认(None)」标记:清除后为 True;用户改动内层控件即转 False
+        # 「是否为 None」标记:清除后为 True(内层禁用);用户改动内层控件或点「恢复」即转 False
         self._is_null = True
         self._inner.valueChanged.connect(self._on_inner_changed)
         row_layout.addWidget(self._inner, 1)
 
-        self._clear = PushButton("清除", row)
-        self._clear.setEnabled(not spec.readonly)
-        self._clear.clicked.connect(self._on_clear)
-        row_layout.addWidget(self._clear, 0, Qt.AlignmentFlag.AlignVCenter)
+        # 开关按钮:有值时「清除」(置 None),为 None 时「恢复」(重新启用内层)
+        self._toggle = PushButton("清除", row)
+        self._toggle.setEnabled(not spec.readonly)
+        self._toggle.clicked.connect(self._on_toggle)
+        row_layout.addWidget(self._toggle, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._sync_null_ui()
         self._mount(row)
 
     def _on_inner_changed(self) -> None:
         # 用户编辑内层控件 → 不再是默认值
-        self._is_null = False
+        if self._is_null:
+            self._is_null = False
+            self._sync_null_ui()
         self.valueChanged.emit()
 
-    def _on_clear(self) -> None:
-        self._is_null = True
+    def _sync_null_ui(self) -> None:
+        """按 _is_null 同步内层启用态与按钮文本"""
+
+        self._inner.setEnabled(not self._is_null)
+        self._toggle.setText("恢复" if self._is_null else "清除")
+
+    def _on_toggle(self) -> None:
+        self._is_null = not self._is_null
+        self._sync_null_ui()
         self.valueChanged.emit()
 
     def get_value(self) -> Any:
@@ -75,11 +88,15 @@ class OptionalEditor(_CardEditor):
         return self._inner.get_value()
 
     def set_value(self, value: Any) -> None:
+        # QSignalBlocker 抑制内层 set_value 回触的 valueChanged,避免 load 期多余 emit / 翻动 _is_null
         if value is None:
             self._is_null = True
+            self._sync_null_ui()
             return
         self._is_null = False
-        self._inner.set_value(value)
+        with QSignalBlocker(self._inner):
+            self._inner.set_value(value)
+        self._sync_null_ui()
 
     def child_editors(self) -> Iterable[FieldEditor]:
         return (self._inner,)
