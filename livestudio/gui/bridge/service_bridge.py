@@ -20,7 +20,7 @@ from livestudio.utils.log import logger
 
 from .audio_bridge import AudioController
 from .log_bridge import LogController
-from .platform_bridge import PlatformBridge
+from .platform_bridge import ConnectionState, PlatformBridge
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,9 +50,15 @@ class ServiceBridge(QObject):
         self._registrations = list(platforms)
 
         self.audio = AudioController(audio_router, self)
-        # 测试 TTS 走平台 app.speak -> TTSpeak 控制器(配置驱动音色/连接校验/切源)
+        # 测试 TTS 走平台 app.speak -> TTSpeak 控制器(配置驱动音色/连接校验/切源);
+        # 同一平台模型切换转发给 audio,使音频页「当前模型 TTS 发声」区自动刷新
         if self._registrations:
-            self.audio.set_speak_app(self._registrations[0].app)
+            first = self._registrations[0]
+            self.audio.set_speak_app(first.app)
+            first.bridge.modelChanged.connect(lambda *_: self.audio.modelChanged.emit())
+            first.bridge.connectionStateChanged.connect(
+                lambda state: self.audio.platformConnected.emit(state == ConnectionState.CONNECTED)
+            )
         self.logs = LogController(self)
 
         # 平台登记单一事实源:仪表盘/平台页按此列表渲染。

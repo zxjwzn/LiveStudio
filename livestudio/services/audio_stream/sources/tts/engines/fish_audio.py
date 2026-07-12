@@ -1,7 +1,7 @@
 """Fish Audio TTS 引擎(SSE 流式 + 逐词对齐)
 
 全局连接: ``FishAudioConnectionConfig``(api_key/endpoint)
-发声参数: speak(**opts) 中的 model/reference_id 及 extra 展平字段(latency/speed 等)
+发声参数: ``FishAudioSpeakConfig``(model/reference_id/latency/speed),由控制器展平为 opts 传入
 
 取消契约: httpx 流式连接放在独立 reader 任务里,本生成器只从队列 yield。外层 aclose/
 取消时只 cancel reader;httpx 的 anyio cancel scope 在 reader 任务内 enter/exit,避免
@@ -14,7 +14,8 @@ import asyncio
 import base64
 import contextlib
 import json
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator
+from typing import Literal
 
 import httpx
 import numpy as np
@@ -45,6 +46,34 @@ class FishAudioConnectionConfig(BaseModel):
     )
 
 
+class FishAudioSpeakConfig(BaseModel):
+    """Fish Audio 发声参数(per-model 音色:模型档位 / 说话人 / 延迟 / 语速)。
+
+    与 ``FishAudioConnectionConfig`` 分工:连接(api_key/endpoint)全局,发声参数随模型。
+    """
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SPEAKERS"})
+
+    model: str = Field(
+        default="s2.1-pro-free",
+        description="Fish 模型/档位标识(如 s2.1-pro-free)",
+    )
+    reference_id: str | None = Field(
+        default=None,
+        description="音色/说话人 ID(fish.audio 控制台获取)",
+    )
+    latency: Literal["low", "balanced", "normal"] = Field(
+        default="balanced",
+        description="延迟档位(low=低延迟 / balanced=均衡 / normal=常规)",
+    )
+    speed: float = Field(
+        default=1.0,
+        ge=0.5,
+        le=2.0,
+        description="语速倍率(0.5~2.0)",
+    )
+
+
 class FishAudioEngine(TtsEngine):
     """Fish Audio 流式 TTS 引擎(PCM 音频 + 逐词 alignment 字幕)"""
 
@@ -70,11 +99,10 @@ class FishAudioEngine(TtsEngine):
         if not text:
             return
 
-        flat = _flatten_opts(opts)
-        model = _as_str(flat.get("model"), "s2.1-pro-free")
-        reference_id = _as_optional_str(flat.get("reference_id"))
-        latency = _as_str(flat.get("latency"), "balanced")
-        speed = _as_float(flat.get("speed"), 1.0)
+        model = _as_str(opts.get("model"), "s2.1-pro-free")
+        reference_id = _as_optional_str(opts.get("reference_id"))
+        latency = _as_str(opts.get("latency"), "balanced")
+        speed = _as_float(opts.get("speed"), 1.0)
 
         headers = {
             "Authorization": f"Bearer {self._config.api_key}",
@@ -165,22 +193,6 @@ def _put_sentinel(
             queue.get_nowait()
         with contextlib.suppress(asyncio.QueueFull):
             queue.put_nowait(item)
-
-
-def _flatten_opts(opts: Mapping[str, object]) -> dict[str, object]:
-    """合并 opts 与 opts['extra'](dict) 为扁平映射;顶层优先。"""
-
-    flat: dict[str, object] = {}
-    extra = opts.get("extra")
-    if isinstance(extra, Mapping):
-        for key, value in extra.items():
-            if isinstance(key, str):
-                flat[key] = value
-    for key, value in opts.items():
-        if key in ("extra", "kind"):
-            continue
-        flat[key] = value
-    return flat
 
 
 def _as_str(value: object, default: str) -> str:

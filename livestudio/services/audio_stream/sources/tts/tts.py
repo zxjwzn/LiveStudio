@@ -59,11 +59,6 @@ class TTSAudioStreamSource(AudioStreamSource):
         self.config = config
         self._on_interrupt = on_interrupt
         self._on_prepare = on_prepare
-        self._engine = make_engine(
-            config.fish_audio,
-            sample_rate=config.samplerate,
-            channels=config.channels,
-        )
         self._idle_task: asyncio.Task[None] | None = None
         self._synth_task: asyncio.Task[None] | None = None
         self._present_task: asyncio.Task[None] | None = None
@@ -246,14 +241,12 @@ class TTSAudioStreamSource(AudioStreamSource):
                 self._queued_frames += n
 
     def _engine_for_opts(self, opts: dict[str, object]):
-        """按 opts.kind 选择全局连接槽并构造引擎(缺省 fish_audio)。"""
-
-        from .engines.types import connection_for_kind
+        """按 opts.kind 选并列连接槽并查注册表构造引擎(lazy,缺省 fish_audio)。"""
 
         kind = opts.get("kind", "fish_audio")
         kind_s = kind if isinstance(kind, str) and kind else "fish_audio"
-        conn = connection_for_kind(fish_audio=self.config.fish_audio, kind=kind_s)
-        return make_engine(conn, sample_rate=self.config.samplerate, channels=self.config.channels)
+        conn = getattr(self.config, kind_s)  # 并列连接槽,取代 connection_for_kind
+        return make_engine(kind_s, conn, sample_rate=self.config.samplerate, channels=self.config.channels)
 
     async def _synthesize(self, text: str, **opts: object) -> None:
         """引擎迭代:音频入队。"""

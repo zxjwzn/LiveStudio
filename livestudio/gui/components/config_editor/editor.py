@@ -73,9 +73,9 @@ class ConfigEditor(QWidget, Generic[ModelT]):
             editor = create_editor(spec, fields)
             self._editors[spec.name] = editor
             fields_layout.addWidget(editor)
-        fields_layout.addStretch(1)
 
         if scrollable:
+            fields_layout.addStretch(1)  # 卡片置顶滚动视口,不撑满
             scroll = SingleDirectionScrollArea(self)
             scroll.setWidgetResizable(True)
             scroll.enableTransparentBackground()
@@ -96,6 +96,8 @@ class ConfigEditor(QWidget, Generic[ModelT]):
         button_layout.addWidget(self._reload_button)
         button_layout.addWidget(self._save_button)
         root.addWidget(buttons)
+        if not scrollable:
+            root.addStretch(1)  # 非滚动:按钮紧跟字段内容,多余空间沉底(不被拉到容器底部)
 
     def load(self, config: ModelT) -> None:
         """用模型实例填充表单。

@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import cast
+from typing import Any, cast
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from livestudio.gui.components.config_editor import ChoiceItem
 from livestudio.gui.constants import AUDIO_METER_INTERVAL_MS
 from livestudio.services import AudioSourceKind, AudioStreamRouter
+from livestudio.services.animations.controllers.config import TTSpeakControllerSettings
 from livestudio.services.audio_stream.config import MicrophoneAudioStreamConfig
 from livestudio.services.audio_stream.models import AudioChunkSubscription
 from livestudio.services.audio_stream.playback import PlaybackConfig
@@ -36,6 +37,13 @@ class AudioController(QObject):
     # 音频播放保存专用反馈(独立成页,避免与音频页共享 saveSucceeded/saveFailed 串扰)
     playbackSaveSucceeded = Signal()
     playbackSaveFailed = Signal(str)
+    # 平台模型切换(转发自平台 bridge):当前模型 TTS 发声配置可能变了,音频页据此刷新
+    modelChanged = Signal()
+    # 平台连接态(转发自平台 bridge):未连接时音频页隐藏当前模型 TTS 发声段
+    platformConnected = Signal(bool)
+    # 当前模型 TTS 发声配置保存专用反馈(独立于音频页 saveSucceeded/saveFailed,避免串扰)
+    ttsSpeakSaveSucceeded = Signal()
+    ttsSpeakSaveFailed = Signal(str)
 
     def __init__(self, router: AudioStreamRouter, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -181,6 +189,49 @@ class AudioController(QObject):
             self.saveFailed.emit(str(exc))
             return
         self.saveSucceeded.emit()
+
+    def _speak_platform(self) -> Any:
+        """注入的 speak app 的 platform 对象(duck-type);无 app/无 platform 返回 None。
+
+        返回 Any 以便调用方访问 model_config 等属性(保持平台无关,不 import 具体平台类型)。
+        """
+        app = self._speak_app
+        if app is None:
+            return None
+        return getattr(app, "platform", None)
+
+    def current_tts_speak(self) -> TTSpeakControllerSettings | None:
+        """当前模型的 TTS 发声配置(激活供应商音色);未连接/未加载模型返回 None。"""
+
+        platform = self._speak_platform()
+        if platform is None:
+            return None
+        try:
+            return platform.model_config.controllers.tts_speak
+        except RuntimeError:
+            return None
+
+    async def save_tts_speak(self, speak: TTSpeakControllerSettings) -> None:
+        """保存当前模型的 TTS 发声配置:写回模型配置并落盘(同步内存快照,单源事实)。
+
+        经 app.platform.model_config_manager.path 取当前模型路径,save_model_config 同步内存再落盘,
+        使重连/停机 save() 不用旧快照覆盖。失败 emit ttsSpeakSaveFailed,成功 emit ttsSpeakSaveSucceeded。
+        """
+
+        try:
+            platform = self._speak_platform()
+            if platform is None:
+                raise RuntimeError("无可用平台(请先连接)")
+            model_config = platform.model_config  # 无已加载模型时抛 RuntimeError
+            updated = model_config.model_copy(update={
+                "controllers": model_config.controllers.model_copy(update={"tts_speak": speak}),
+            })
+            await platform.save_model_config(platform.model_config_manager.path, updated)
+        except Exception as exc:
+            logger.exception("保存 TTS 发声配置失败")
+            self.ttsSpeakSaveFailed.emit(str(exc))
+            return
+        self.ttsSpeakSaveSucceeded.emit()
 
     def playback_config(self) -> PlaybackConfig:
         """当前音频播放配置快照"""

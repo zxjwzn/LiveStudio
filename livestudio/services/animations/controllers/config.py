@@ -1,7 +1,9 @@
+from collections.abc import Mapping
 from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from livestudio.services.audio_stream.sources.tts.engines import FishAudioSpeakConfig
 from livestudio.services.audio_stream.sources.tts.engines.types import TtsProviderKind
 
 # 已从控制器配置中移除的字段名。旧 YAML 落盘时仍可能含这些键,加载前在此剥离,
@@ -246,39 +248,50 @@ class ExpressionControllerSettings(ControllerSettings):
 
 
 class TTSpeakControllerSettings(ControllerSettings):
-    """TTS 发声 oneshot:扁平通用字段 + kind + extra(供应商特有)。
+    """TTS 发声 oneshot:kind 选中激活供应商,各供应商 speak 配置并列(未用也留配置)。
 
-    文本不进配置,运行时传入。密钥在全局 audio_stream.tts.<供应商>。
+    文本不进配置,运行时传入。密钥在全局 audio_stream.tts.<供应商>;
+    音色等发声参数在各供应商 speak 配置(如 fish_audio),由 kind 选中激活家。
     """
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SPEAKERS"})
 
     kind: TtsProviderKind = Field(
         default="fish_audio",
-        description="TTS 供应商(决定全局连接槽与 extra 解析)",
+        description="激活的 TTS 供应商(决定取哪个 speak 配置与全局连接槽)",
     )
-    model: str | None = Field(
-        default="s2.1-pro-free",
-        description="供应商模型/档位标识(各家语义自定;Fish 为 s2.1-pro-free 等)",
+    fish_audio: FishAudioSpeakConfig = Field(
+        default_factory=FishAudioSpeakConfig,
+        description="Fish Audio 发声参数(模型/说话人/延迟/语速)",
     )
-    reference_id: str | None = Field(
-        default=None,
-        description="音色/说话人 ID(Fish=reference_id;其他家映射为 voice/speaker)",
-    )
-    extra: dict[str, object] = Field(
-        default_factory=dict,
-        description="供应商特有参数(如 Fish 的 latency/speed)",
-    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_flat_fields(cls, data: Any) -> Any:
+        """旧配置顶层 model/reference_id/extra -> fish_audio 子对象(迁移垫片)。"""
+
+        if not isinstance(data, dict) or "fish_audio" in data:
+            return data
+        flat: dict[str, object] = {}
+        for key in ("model", "reference_id"):
+            if key in data:
+                flat[key] = data[key]
+        extra = data.get("extra")
+        if isinstance(extra, Mapping):
+            for key, value in extra.items():
+                if isinstance(key, str):
+                    flat[key] = value
+        if not flat:
+            return data
+        data = {k: v for k, v in data.items() if k not in ("model", "reference_id", "extra")}
+        data["fish_audio"] = flat
+        return data
 
     def as_speak_opts(self) -> dict[str, object]:
-        """展开为 speak(**opts)"""
+        """展开为 speak(**opts):kind + 激活供应商 speak 配置字段。"""
 
-        return {
-            "kind": self.kind,
-            "model": self.model,
-            "reference_id": self.reference_id,
-            "extra": dict(self.extra),
-        }
+        active = getattr(self, self.kind)
+        return {"kind": self.kind, **active.model_dump()}
 
 
 class AnimationControllerSettingsConfig(BaseModel):

@@ -37,3 +37,9 @@ AUDIO_SOURCE_LABEL: Final[dict[AudioSourceKind, str]] = {
     AudioSourceKind.MICROPHONE: "麦克风",
     AudioSourceKind.TTS: "TTS",
 }
+
+# TTS 供应商展示名(键为 TtsProviderKind 值,即 TTSpeakControllerSettings 的并列字段名);
+# 新增供应商在此补一条,未命中者回退为 kind 原文。
+TTS_PROVIDER_LABEL: Final[dict[str, str]] = {
+    "fish_audio": "Fish Audio",
+}

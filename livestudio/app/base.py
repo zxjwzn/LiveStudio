@@ -285,7 +285,7 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
 
         Args:
             text: 要朗读的文本(非空)。
-            **opts: 可选覆盖(model/reference_id/extra 等),透传给控制器 execute。
+            **opts: 可选覆盖激活供应商 speak 配置字段(如 Fish 的 model/reference_id/latency/speed),透传给控制器 execute。
         """
 
         if not isinstance(text, str):

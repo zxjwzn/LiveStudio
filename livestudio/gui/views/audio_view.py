@@ -23,8 +23,10 @@ from qfluentwidgets import (
 from livestudio.gui.bridge import AudioController
 from livestudio.gui.components.audio_meter import AudioMeter
 from livestudio.gui.components.config_editor import ChoiceItem, ConfigEditor
+from livestudio.gui.components.tts_speak_editor import TtsSpeakEditor
 from livestudio.gui.constants import AUDIO_SOURCE_LABEL
 from livestudio.gui.core import run_guarded
+from livestudio.services.animations.controllers.config import TTSpeakControllerSettings
 from livestudio.services.audio_stream.config import MicrophoneAudioStreamConfig
 from livestudio.services.audio_stream.models import AudioSourceKind
 from livestudio.services.audio_stream.sources.tts.config import TTSAudioStreamConfig
@@ -109,18 +111,43 @@ class AudioView(QWidget):
         self._mic_editor.reloadRequested.connect(self.refresh_devices)
         self._stack.addWidget(self._mic_editor)
 
+        # TTS 标签页:全局连接配置 + 当前模型发声配置(供应商切换)
+        self._tts_page = QWidget(self._stack)
+        tts_page_layout = QVBoxLayout(self._tts_page)
+        tts_page_layout.setContentsMargins(0, 0, 0, 0)
+        tts_page_layout.setSpacing(12)
+
         self._tts_editor: ConfigEditor[TTSAudioStreamConfig] = ConfigEditor(
-            TTSAudioStreamConfig, scrollable=False, parent=self._stack
+            TTSAudioStreamConfig, scrollable=False, parent=self._tts_page
         )
         self._tts_editor.saved.connect(self._on_tts_saved)
         self._tts_editor.validationFailed.connect(self._on_validation_failed)
-        self._stack.addWidget(self._tts_editor)
+        tts_page_layout.addWidget(self._tts_editor)
+
+        # 当前模型 TTS 发声:未连接/未加载模型时整段隐藏(不显示占位)
+        self._speak_section = QWidget(self._tts_page)
+        speak_section_layout = QVBoxLayout(self._speak_section)
+        speak_section_layout.setContentsMargins(0, 0, 0, 0)
+        speak_section_layout.setSpacing(8)
+        speak_section_layout.addWidget(SubtitleLabel("当前模型 TTS 配置", self._speak_section))
+        self._speak_editor = TtsSpeakEditor(self._speak_section)
+        self._speak_editor.saved.connect(self._on_speak_saved)
+        self._speak_editor.validationFailed.connect(self._on_validation_failed)
+        speak_section_layout.addWidget(self._speak_editor)
+        self._speak_section.setVisible(False)
+        tts_page_layout.addWidget(self._speak_section)
+
+        self._stack.addWidget(self._tts_page)
         layout.addStretch(1)
 
         audio.saveSucceeded.connect(self._on_save_succeeded)
         audio.saveFailed.connect(self._on_save_failed)
         audio.reloadSucceeded.connect(self._on_reload_succeeded)
         audio.reloadFailed.connect(self._on_save_failed)
+        audio.modelChanged.connect(self._refresh_speak_config)
+        audio.platformConnected.connect(self._on_platform_connected)
+        audio.ttsSpeakSaveSucceeded.connect(self._on_speak_save_succeeded)
+        audio.ttsSpeakSaveFailed.connect(self._on_speak_save_failed)
 
     def load_config(self) -> None:
         """按当前音源初始化切换条与对应编辑器"""
@@ -133,6 +160,7 @@ class AudioView(QWidget):
         self._show_editor(kind)
         self._current_mic = self._audio.microphone_config()
         self._tts_editor.load(self._audio.tts_config())
+        self._refresh_speak_config()
         run_guarded(self._reload_devices_then_fill())
 
     # --- 音源切换 ---
@@ -145,7 +173,7 @@ class AudioView(QWidget):
         run_guarded(self._audio.switch_source(kind))
 
     def _show_editor(self, kind: AudioSourceKind) -> None:
-        self._stack.setCurrentWidget(self._mic_editor if kind is AudioSourceKind.MICROPHONE else self._tts_editor)
+        self._stack.setCurrentWidget(self._mic_editor if kind is AudioSourceKind.MICROPHONE else self._tts_page)
 
     def _on_reload(self) -> None:
         run_guarded(self._audio.reload_source())
@@ -196,3 +224,34 @@ class AudioView(QWidget):
 
     def _on_reload_succeeded(self) -> None:
         InfoBar.success("已重载", "当前音源已重新加载", duration=3000, position=InfoBarPosition.TOP_RIGHT, parent=self)
+
+    # --- 当前模型 TTS 发声配置 ---
+
+    def _refresh_speak_config(self) -> None:
+        """从当前模型加载 TTS 发声配置;无模型(未连接/未加载)时隐藏整段。"""
+
+        speak = self._audio.current_tts_speak()
+        if speak is None:
+            self._speak_section.setVisible(False)
+            return
+        self._speak_section.setVisible(True)
+        self._speak_editor.load(speak)
+
+    def _on_platform_connected(self, connected: bool) -> None:
+        """平台连接态变化:未连接时隐藏发声段;已连接则按当前模型刷新。"""
+
+        if not connected:
+            self._speak_section.setVisible(False)
+            return
+        self._refresh_speak_config()
+
+    def _on_speak_saved(self, speak: object) -> None:
+        if isinstance(speak, TTSpeakControllerSettings):
+            run_guarded(self._audio.save_tts_speak(speak))
+
+    def _on_speak_save_succeeded(self) -> None:
+        InfoBar.success("已保存", "TTS 发声配置已保存", duration=3000, position=InfoBarPosition.TOP_RIGHT, parent=self)
+
+    def _on_speak_save_failed(self, message: str) -> None:
+        InfoBar.error("操作失败", message, duration=4000, position=InfoBarPosition.TOP_RIGHT, parent=self)
+        self._refresh_speak_config()  # 回滚失败的标签切换/恢复到已存状态

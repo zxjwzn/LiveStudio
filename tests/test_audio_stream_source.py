@@ -677,7 +677,7 @@ async def test_synth_async_generator_closed_on_cancel(monkeypatch) -> None:
 
     engines: list[_ImmediateYieldEngine] = []
 
-    def _make(_config: object, **_kw: object) -> _ImmediateYieldEngine:
+    def _make(_kind: object, _conn: object, **_kw: object) -> _ImmediateYieldEngine:
         engine = _ImmediateYieldEngine()
         engines.append(engine)
         return engine
@@ -694,7 +694,7 @@ async def test_synth_async_generator_closed_on_cancel(monkeypatch) -> None:
 
     source = TTSAudioStreamSource(TTSAudioStreamConfig())
     await source.start()
-    speak_start = len(engines)  # __init__ 已建一个默认引擎(engines[0],未使用)
+    speak_start = len(engines)  # lazy:__init__ 不再预建引擎,speak 前列表为空
 
     await source.speak("first")
     await asyncio.sleep(0.02)  # _synthesize 进入 _enqueue_audio 阻塞(生成器停在 yield)
@@ -717,7 +717,7 @@ async def test_synth_async_generator_closed_on_cancel(monkeypatch) -> None:
 async def test_tts_stop_speaking_invokes_on_interrupt(monkeypatch) -> None:
     """stop_speaking / 新 speak 调用 on_interrupt 冲刷播放残留"""
 
-    monkeypatch.setattr(tts_module, "make_engine", lambda _config, **kw: _SlowEngine(**kw))
+    monkeypatch.setattr(tts_module, "make_engine", lambda _kind, _conn, **kw: _SlowEngine(**kw))
     calls: list[int] = []
     source = TTSAudioStreamSource(
         TTSAudioStreamConfig(),
@@ -737,7 +737,7 @@ async def test_tts_stop_speaking_invokes_on_interrupt(monkeypatch) -> None:
 async def test_tts_speak_calls_on_prepare(monkeypatch) -> None:
     """speak 在首包上总线前 await on_prepare(打开播放设备)"""
 
-    monkeypatch.setattr(tts_module, "make_engine", lambda _config, **kw: _SlowEngine(**kw))
+    monkeypatch.setattr(tts_module, "make_engine", lambda _kind, _conn, **kw: _SlowEngine(**kw))
     order: list[str] = []
 
     async def _prepare() -> None:
@@ -767,7 +767,7 @@ async def test_tts_present_clock_feeds_bus_at_frame_rate(monkeypatch) -> None:
     monkeypatch.setattr(
         tts_module,
         "make_engine",
-        lambda _config, **_kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
+        lambda _kind, _conn, **_kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
     )
     source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000))
     sub = source.subscribe(queue_maxsize=256)
@@ -801,7 +801,7 @@ async def test_tts_present_does_not_burst_whole_utterance(monkeypatch) -> None:
     monkeypatch.setattr(
         tts_module,
         "make_engine",
-        lambda _config, **_kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
+        lambda _kind, _conn, **_kw: _FakeEngine(outputs, sample_rate=24000, channels=1),
     )
     source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000))
     sub = source.subscribe(queue_maxsize=256)

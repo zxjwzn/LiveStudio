@@ -1,7 +1,7 @@
 """TTS 发声 oneshot 控制器
 
-扁平配置: kind + model + reference_id + extra。
-execute 合并配置后按 kind 取全局连接槽,调用 tts_source.speak。
+并列 speak 配置: kind + 各供应商 speak 配置(fish_audio 等)。
+execute 按 kind 取激活 speak 配置合并为 opts,校验 kind 已注册,调用 tts_source.speak。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import contextlib
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
 from livestudio.services.audio_stream import AudioStreamRouter, AudioStreamSource
 from livestudio.services.audio_stream.models import AudioSourceKind
-from livestudio.services.audio_stream.sources.tts.engines.types import connection_for_kind
+from livestudio.services.audio_stream.sources.tts.engines import TTS_ENGINES
 from livestudio.utils.log import logger
 
 from ..base import AnimationController
@@ -49,7 +49,7 @@ class TTSpeakController(AnimationController[TTSpeakControllerSettings]):
 
         kwargs:
             text: str,必填
-            model / reference_id / extra: 可选覆盖配置
+            其它键:可选覆盖激活供应商 speak 配置字段(如 Fish 的 model/reference_id/latency/speed)
         """
 
         text = kwargs.get("text")
@@ -59,27 +59,20 @@ class TTSpeakController(AnimationController[TTSpeakControllerSettings]):
         text = text.strip()
 
         opts = self.config.as_speak_opts()
-        for key in ("model", "reference_id", "extra"):
-            if key in kwargs and kwargs[key] is not None:
-                opts[key] = kwargs[key]
-        # 允许把 latency/speed 等直接塞进 kwargs → 并入 extra
-        extra = opts.get("extra")
-        if not isinstance(extra, dict):
-            extra = {}
-            opts["extra"] = extra
-        else:
-            extra = dict(extra)
-            opts["extra"] = extra
+        # kwargs 覆盖已知 speak 字段(kind 不可覆盖;未知键忽略)
         for key, value in kwargs.items():
-            if key in ("text", "kind", "model", "reference_id", "extra") or value is None:
+            if key in ("text", "kind") or value is None:
                 continue
-            extra[key] = value
+            if key in opts:
+                opts[key] = value
 
         router = self._tts_router()
         tts_cfg = getattr(getattr(router, "config", None), "tts", None)
         if tts_cfg is not None:
-            # 校验连接槽存在(缺密钥由引擎报错)
-            connection_for_kind(fish_audio=tts_cfg.fish_audio, kind=str(opts.get("kind", "fish_audio")))
+            # 校验 kind 已注册(连接槽并列,缺密钥由引擎报错)
+            kind = str(opts.get("kind", "fish_audio"))
+            if kind not in TTS_ENGINES:
+                raise RuntimeError(f"未知 TTS 供应商 kind={kind!r}(未在 TTS_ENGINES 注册)")
 
         try:
             active = router.active_source_kind

@@ -1,6 +1,7 @@
 """TTS 引擎基类:规范各 TTS 供应商接入
 
-``make_engine`` 按连接配置类型 / kind 分发。
+引擎按 kind 分发(注册表 ``TTS_ENGINES`` + ``make_engine`` 在 ``engines`` 包)。
+各供应商实现 ``synthesize``:输入文本,流式产出 PCM;锚点/队列/时钟由呈现层负责,引擎不碰。
 """
 
 from __future__ import annotations
@@ -8,13 +9,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
-
-if TYPE_CHECKING:
-    from .fish_audio import FishAudioConnectionConfig
 
 
 @dataclass(slots=True)
@@ -45,7 +42,7 @@ class TtsEngine(ABC):
 
     @abstractmethod
     def synthesize(self, text: str, **opts: object) -> AsyncGenerator[TtsOutput, None]:
-        """合成文本;opts 含通用字段与 extra 展平字段。
+        """合成文本;opts 含 kind 与各供应商发声参数(由 speak 配置展平)。
 
         实现为异步生成器;调用方须 aclose(TTSAudioStreamSource 用 aclosing)。
         若引擎内部用 httpx 流,应把连接放在独立任务(见 FishAudioEngine),勿在生成器
@@ -55,14 +52,3 @@ class TtsEngine(ABC):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(sample_rate={self._sample_rate}, channels={self._channels})"
-
-
-def make_engine(config: FishAudioConnectionConfig, *, sample_rate: int, channels: int) -> TtsEngine:
-    """由连接配置构造引擎(Fish 连接槽 -> FishAudioEngine)。"""
-
-    from .fish_audio import FishAudioConnectionConfig as FishConn
-    from .fish_audio import FishAudioEngine
-
-    if isinstance(config, FishConn):
-        return FishAudioEngine(config, sample_rate=sample_rate, channels=channels)
-    raise TypeError(f"无法为连接配置类型 {type(config).__name__} 构造引擎")
