@@ -16,7 +16,6 @@ from PySide6.QtCore import QObject
 from qfluentwidgets import FluentIcon
 
 from livestudio.app import VTubeStudioApp
-from livestudio.app.base import PlatformStateEvent, PlatformStateKind
 from livestudio.clients.vtube_studio.config import VTubeStudioConfig
 from livestudio.config import ConfigManager
 from livestudio.gui.core import run_guarded
@@ -48,9 +47,6 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         # 传给 apply_native_expressions,由 adapter diff 增删。
         self._active_native: set[str] = set()
         self._app.set_model_changed_listener(self._on_model_changed)
-        # 订阅后端运行态事件:MCP 等非 GUI 调用方经 app 公开方法变更态时,后端广播事件,
-        # 本桥接据此同步连接徽标/控制器开关(否则 GUI 会停在旧态,诱发重复连接/重复运行)。
-        self._app.set_state_changed_listener(self._on_state_event)
 
     @property
     def platform_name(self) -> str:
@@ -96,20 +92,6 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         logger.error("VTube Studio 连接失败: {}", exc)
         self._set_state(ConnectionState.ERROR)
         self.errorOccurred.emit(str(exc))
-
-    def _should_suppress_state_event(self, event: PlatformStateEvent) -> bool:
-        """连接/重连在途时,app 内部 disconnect->connect 触发的 DISCONNECTED 是编排细节
-        (由在途 _connect_task 决定终态),抑制之以避免 UI 闪烁。
-
-        任务已取消(用户在连接中改点断开)时 _connect_task 为 None,此时 DISCONNECTED 是
-        真实的,不抑制。仅抑制 DISCONNECTED;CONNECTED/CONTROLLERS_* 等正常派发。
-        """
-
-        return (
-            event.kind is PlatformStateKind.DISCONNECTED
-            and self._state is ConnectionState.CONNECTING
-            and self._connect_task is not None
-        )
 
     def disconnect_platform(self) -> None:
         """断开连接。若仍在连接中,先取消连接任务再停机。"""
@@ -180,9 +162,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
             controller = controllers.get(spec.name)
             if controller is None:
                 continue
-            entries.append(
-                ControllerEntry(name=spec.name, display_name=spec.display_name, running=controller.is_running)
-            )
+            entries.append(ControllerEntry(name=spec.name, display_name=spec.display_name, running=controller.is_running))
         return entries
 
     async def _cancel_all_controllers(self) -> None:
@@ -323,20 +303,6 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         await self._app.platform.apply_native_expressions(triggers, scope=MANUAL_NATIVE_SCOPE)
         self._active_native = target
 
-    def _on_native_expression_changed(self, name: str, active: bool) -> None:
-        """MCP 等非 GUI 来源变更原生表情时,同步 GUI 激活镜像并通知 chip 刷新。
-
-        GUI toggle 走 bridge._apply_native(直调 platform、不经 app),不触发本方法;仅
-        app.set_native_expression/clear_native_expressions(MCP 路径)广播的事件到达此处。
-        先更新镜像(避免后续刷新读镜像时回弹),再 super 发信号让 chip 即时更新。
-        """
-
-        if active:
-            self._active_native.add(name)
-        else:
-            self._active_native.discard(name)
-        super()._on_native_expression_changed(name, active)
-
     def _on_model_changed(self, model_id: str, model_name: str) -> None:
         # 模型加载时后端 _sync_native_state 已按配置 active 激活了部分 exp3 表情,
         # 这里把 GUI 镜像同步成「配置里 active=True 的表情名」,使仪表盘 chip 反映真相。
@@ -378,9 +344,7 @@ class VTubeStudioPlatformBridge(PlatformBridge):
         entries: list[ModelConfigEntry] = []
         for path in sorted(config_dir.glob("*.yaml")):
             model_name, model_id = self._read_identity(path)
-            entries.append(
-                ModelConfigEntry(display_name=path.stem, path=path, model_name=model_name, model_id=model_id)
-            )
+            entries.append(ModelConfigEntry(display_name=path.stem, path=path, model_name=model_name, model_id=model_id))
         return entries
 
     @staticmethod

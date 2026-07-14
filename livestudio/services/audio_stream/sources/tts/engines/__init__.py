@@ -13,11 +13,13 @@ from .base import (
     TtsAudioOutput,
     TtsEngine,
     TtsOutput,
+    TtsSubtitleOutput,
 )
 from .fish_audio import (
     FishAudioConnectionConfig,
     FishAudioEngine,
     FishAudioSpeakConfig,
+    TtsSpeakRequest,
 )
 from .types import TtsProviderKind
 
@@ -41,13 +43,15 @@ def make_engine(kind: str, connection: object, *, sample_rate: int, channels: in
 
 
 __all__ = [
+    "TTS_ENGINES",
     "FishAudioConnectionConfig",
     "FishAudioEngine",
     "FishAudioSpeakConfig",
-    "TTS_ENGINES",
     "TtsAudioOutput",
     "TtsEngine",
     "TtsOutput",
     "TtsProviderKind",
+    "TtsSpeakRequest",
+    "TtsSubtitleOutput",
     "make_engine",
 ]

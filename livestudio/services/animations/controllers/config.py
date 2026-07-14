@@ -3,7 +3,7 @@ from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from livestudio.services.audio_stream.sources.tts.engines import FishAudioSpeakConfig
+from livestudio.services.audio_stream.sources.tts.engines import FishAudioSpeakConfig, TtsSpeakRequest
 from livestudio.services.audio_stream.sources.tts.engines.types import TtsProviderKind
 
 # 已从控制器配置中移除的字段名。旧 YAML 落盘时仍可能含这些键,加载前在此剥离,
@@ -49,7 +49,7 @@ _DEPRECATED_CONTROLLER_FIELDS: Final[frozenset[str]] = frozenset(
 class ControllerSettings(BaseModel):
     """控制器配置基类。
 
-    控制器是否运行由运行态启停(仪表盘开关 / MCP set_controller)决定,不再有
+    控制器是否运行由仪表盘开关决定,不再有
     配置级 ``enabled`` 开关;各控制器优先级亦固化为代码常量,不进配置。
     """
 
@@ -246,7 +246,6 @@ class ExpressionControllerSettings(ControllerSettings):
     )
 
 
-
 class TTSpeakControllerSettings(ControllerSettings):
     """TTS 发声 oneshot:kind 选中激活供应商,各供应商 speak 配置并列(未用也留配置)。
 
@@ -287,11 +286,31 @@ class TTSpeakControllerSettings(ControllerSettings):
         data["fish_audio"] = flat
         return data
 
-    def as_speak_opts(self) -> dict[str, object]:
-        """展开为 speak(**opts):kind + 激活供应商 speak 配置字段。"""
+    def create_speak_request(
+        self,
+        *,
+        text: str,
+        subtitle: str,
+        overrides: Mapping[str, object] | None = None,
+    ) -> TtsSpeakRequest:
+        """合并运行时覆盖并生成已校验的发声请求。"""
 
-        active = getattr(self, self.kind)
-        return {"kind": self.kind, **active.model_dump()}
+        config_data = self.fish_audio.model_dump()
+        if overrides is not None:
+            for key in FishAudioSpeakConfig.model_fields:
+                if key in overrides and overrides[key] is not None:
+                    config_data[key] = overrides[key]
+        config = FishAudioSpeakConfig.model_validate(config_data)
+        return TtsSpeakRequest(
+            text=text,
+            subtitle=subtitle,
+            kind=self.kind,
+            fish_audio=config,
+            model=config.model,
+            reference_id=config.reference_id,
+            latency=config.latency,
+            prosody={"speed": config.speed, "volume": 0.0},
+        )
 
 
 class AnimationControllerSettingsConfig(BaseModel):

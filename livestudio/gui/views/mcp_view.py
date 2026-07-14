@@ -1,24 +1,14 @@
-"""MCP 页:工具一览 + 监听配置
-
-上半为监听配置卡:host / port 编辑 + 端点地址展示 + 运行态徽标 + 应用按钮(改动落盘并
-按需重启传输)。下半按分组展示已知工具:固有工具一组,每个平台一组,逐工具显示名称与
-来自 docstring 的描述。
-
-全部使用 qfluentwidgets 原生组件;遵循 ui-ux 规范:SettingCard 自带标签(form-labels)、
-端口/主机失焦或点击「应用」时反馈 InfoBar(submit-feedback)、按钮异步期间禁用
-(loading-buttons)、图标用 FluentIcon 矢量(no-emoji)。
-"""
+"""MCP 服务监听配置页。"""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     CardWidget,
-    FluentStyleSheet,
     InfoBar,
     InfoBarPosition,
     LineEdit,
@@ -28,44 +18,11 @@ from qfluentwidgets import (
     SpinBox,
     StrongBodyLabel,
     SubtitleLabel,
-    TransparentToolButton,
 )
 from qfluentwidgets import FluentIcon as FIF
 
-from livestudio.gui.bridge import McpBridge, ToolGroup
+from livestudio.gui.bridge import McpBridge
 from livestudio.gui.core import colors
-
-
-class _ToolRow(CardWidget):
-    """单个工具行:名称 + 描述(描述来自工具方法 docstring)。
-
-    与平台页 _ModelCard 同款:用裸 QLabel + SettingCard 同款 objectName(titleLabel/contentLabel),
-    并对整卡 apply SETTING_CARD 样式表,使名称/描述的字体与字色与 SettingCard 的标题/副标题
-    (如「监听端口」「1-65535」)完全一致,且字色随主题(dark/light)自动切换,不再手设颜色。
-    """
-
-    def __init__(self, name: str, description: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 10, 16, 10)
-        layout.setSpacing(12)
-
-        icon = TransparentToolButton(FIF.COMMAND_PROMPT, self)
-        icon.setEnabled(False)  # 纯装饰,不可点
-        layout.addWidget(icon)
-
-        text_box = QVBoxLayout()
-        text_box.setSpacing(2)
-        title = QLabel(name, self)
-        title.setObjectName("titleLabel")
-        text_box.addWidget(title)
-        desc = QLabel(description or "（无描述）", self)
-        desc.setObjectName("contentLabel")
-        desc.setWordWrap(True)
-        text_box.addWidget(desc)
-        layout.addLayout(text_box, 1)
-
-        FluentStyleSheet.SETTING_CARD.apply(self)
 
 
 class _ConfigCard(CardWidget):
@@ -167,43 +124,8 @@ class _ConfigCard(CardWidget):
         self._apply_button.setText("应用并重启")
 
 
-class _ToolGroupCard(CardWidget):
-    """一个工具分组卡:标题 + 副标题 + 该组工具行。
-
-    标题/数量/副标题与 _ToolRow 同款:裸 QLabel + SettingCard objectName + apply SETTING_CARD,
-    使字体字色与 SettingCard 标题/副标题一致并随主题切换,不手设颜色。
-    """
-
-    def __init__(self, group: ToolGroup, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        root = QVBoxLayout(self)
-        root.setContentsMargins(20, 16, 20, 16)
-        root.setSpacing(8)
-
-        header = QHBoxLayout()
-        header.setSpacing(10)
-        title = QLabel(group.title, self)
-        title.setObjectName("titleLabel")
-        header.addWidget(title)
-        count = QLabel(f"{len(group.tools)} 个工具", self)
-        count.setObjectName("contentLabel")
-        header.addWidget(count)
-        header.addStretch(1)
-        root.addLayout(header)
-
-        subtitle = QLabel(group.subtitle, self)
-        subtitle.setObjectName("contentLabel")
-        subtitle.setWordWrap(True)
-        root.addWidget(subtitle)
-
-        for tool in group.tools:
-            root.addWidget(_ToolRow(tool.name, tool.description, self))
-
-        FluentStyleSheet.SETTING_CARD.apply(self)
-
-
 class McpView(QWidget):
-    """MCP 页:监听配置 + 已知工具一览"""
+    """MCP 服务监听配置页。"""
 
     def __init__(self, bridge: McpBridge, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -227,7 +149,4 @@ class McpView(QWidget):
         layout.addWidget(SubtitleLabel("MCP 服务", content))
         layout.addWidget(_ConfigCard(bridge, content))
 
-        layout.addWidget(StrongBodyLabel("已知工具", content))
-        for group in bridge.tool_groups():
-            layout.addWidget(_ToolGroupCard(group, content))
         layout.addStretch(1)

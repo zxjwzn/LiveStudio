@@ -1,6 +1,6 @@
 """把 VTube Studio 应用流程串起来"""
 
-from livestudio.app.base import BasePlatformApp, PlatformStateEvent
+from livestudio.app.base import BasePlatformApp
 from livestudio.clients.vtube_studio.models import (
     EventSubscriptionResponse,
     ExpressionActivationRequest,
@@ -21,9 +21,7 @@ from livestudio.services.animations import (
     MouthSyncController,
     TTSpeakController,
 )
-from livestudio.services.animations.constants import MANUAL_NATIVE_SCOPE
 from livestudio.services.audio_stream import AudioStreamSource
-from livestudio.services.expression.models import NativeExpressionTrigger
 from livestudio.services.platforms.vtubestudio import (
     VTubeStudio,
     VTubeStudioExpressionStateConfig,
@@ -46,67 +44,11 @@ class VTubeStudioApp(BasePlatformApp[VTubeStudio, VTubeStudioModelConfig]):
             audio_stream=audio_stream,
         )
         self._model_subscription: EventSubscriptionResponse | None = None
-        # 当前由手动/MCP 来源激活的原生表情名镜像(adapter 为集合替换式,toggle 时把整集下发)。
-        self._active_native: set[str] = set()
 
     def _on_disconnected(self) -> None:
-        """断开后清空模型事件订阅句柄与原生表情镜像,使下次连接重新订阅/对齐"""
+        """断开后清空模型事件订阅句柄，使下次连接重新订阅。"""
 
         self._model_subscription = None
-        self._active_native = set()
-
-    # --- 原生表情(exp3,可激活/取消的 toggle;VTS 特有,供上层消费者直接调用) ---
-
-    def native_expressions(self) -> list[str]:
-        """当前模型可 toggle 的 exp3 表情名列表;未加载模型时为空。"""
-
-        try:
-            model_config = self.platform.model_config
-        except RuntimeError:
-            return []
-        return [expression.name for expression in model_config.expressions]
-
-    def active_native_expressions(self) -> set[str]:
-        """当前由手动/MCP 来源激活的 exp3 表情名集合快照。"""
-
-        return set(self._active_native)
-
-    async def set_native_expression(self, name: str, active: bool) -> bool:
-        """激活/取消单个 exp3 表情,返回操作后该表情是否处于激活态。
-
-        把更新后的整集下发给平台 adapter(集合替换式,由 adapter diff 增删)。需已连接。
-        name 不在当前模型表情清单中时 adapter 会告警跳过,返回值仍按本地镜像反映意图。
-        """
-
-        target = set(self._active_native)
-        if active:
-            target.add(name)
-        else:
-            target.discard(name)
-        await self._apply_native(target)
-        return name in self._active_native
-
-    async def clear_native_expressions(self) -> None:
-        """取消所有已激活的 exp3 表情。需已连接。"""
-
-        await self._apply_native(set())
-
-    async def _apply_native(self, target: set[str]) -> None:
-        """把目标激活集合下发给平台 adapter(diff 增删),成功后更新本地镜像。
-
-        成功后按新旧镜像 diff 广播 NATIVE_EXPRESSION_CHANGED,使 GUI 桥接能同步
-        仪表盘 chip(MCP 等非 GUI 来源的激活/取消也能反映到界面)。
-        """
-
-        triggers = [NativeExpressionTrigger(platform=self.platform.name, native_ref=name) for name in target]
-        await self.platform.apply_native_expressions(triggers, scope=MANUAL_NATIVE_SCOPE)
-        old = self._active_native
-        self._active_native = target
-        for name in old | target:
-            was_active = name in old
-            now_active = name in target
-            if was_active != now_active:
-                await self._notify_state(PlatformStateEvent.native_expression(name, now_active))
 
     async def _subscribe_model_events(self) -> None:
         """监听 VTube Studio 的模型加载事件"""
@@ -164,8 +106,7 @@ class VTubeStudioApp(BasePlatformApp[VTubeStudio, VTubeStudioModelConfig]):
         expressions = expression_response.data.expressions
         if not config.expressions:
             config.expressions = [
-                VTubeStudioExpressionStateConfig(name=expr.name, file=expr.file, active=expr.active)
-                for expr in expressions
+                VTubeStudioExpressionStateConfig(name=expr.name, file=expr.file, active=expr.active) for expr in expressions
             ]
             await self.platform.model_config_manager.save()
             self.platform.refresh_expression_adapter(config)

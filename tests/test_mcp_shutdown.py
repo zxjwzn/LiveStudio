@@ -9,9 +9,7 @@ timeout_graceful_shutdown=None 会在 shutdown() 的 _wait_tasks_to_complete 里
 修复:在 uvicorn.Config 设 timeout_graceful_shutdown 上限(见 _GRACEFUL_SHUTDOWN_TIMEOUT),
 使停机有界。本测试直接守卫该配置项--无修复时为 None,测试失败。
 
-(不采用「真实 MCP 客户端连上再 stop」的行为测试:initialize 握手在测试桩环境下不稳,
-且 stop() 卡死时其自身的 await task 取消会被 contextlib.suppress 吞掉、传输任务变孤儿
-令测试收尾也吊死。配置项守卫已足以覆盖回归点。)
+客户端握手与空工具列表由 test_mcp_server 覆盖；本模块只守卫停机配置。
 """
 
 from __future__ import annotations
@@ -20,10 +18,8 @@ import socket
 from pathlib import Path
 
 from livestudio.config import ConfigManager
-from livestudio.mcp import LiveStudioMcpServer, PlatformToolsetRegistration
+from livestudio.mcp import LiveStudioMcpServer
 from livestudio.mcp.config import McpConfig
-
-from .mcp_fakes import _FakeApp, _FakeToolset
 
 
 def _free_port() -> int:
@@ -40,10 +36,7 @@ def _make_server(port: int, config_path: Path) -> LiveStudioMcpServer:
         config_path,
         default_config=McpConfig(host="127.0.0.1", port=port),
     )
-    return LiveStudioMcpServer(
-        platforms=[PlatformToolsetRegistration(name="fake", toolset=_FakeToolset(_FakeApp()))],
-        config_manager=config_manager,
-    )
+    return LiveStudioMcpServer(config_manager=config_manager)
 
 
 async def test_uvicorn_config_bounded_graceful_shutdown(tmp_path: Path) -> None:

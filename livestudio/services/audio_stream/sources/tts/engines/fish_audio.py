@@ -1,11 +1,7 @@
-"""Fish Audio TTS 引擎(SSE 流式 + 逐词对齐)
+"""Fish Audio TTS 引擎。
 
-全局连接: ``FishAudioConnectionConfig``(api_key/endpoint)
-发声参数: ``FishAudioSpeakConfig``(model/reference_id/latency/speed),由控制器展平为 opts 传入
-
-取消契约: httpx 流式连接放在独立 reader 任务里,本生成器只从队列 yield。外层 aclose/
-取消时只 cancel reader;httpx 的 anyio cancel scope 在 reader 任务内 enter/exit,避免
-「cancel scope 跨任务」与「async generator ignored GeneratorExit」。
+引擎直接读取 ``TtsSpeakRequest`` 中已校验的文本与 ``FishAudioSpeakConfig``，
+SSE 仅消费音频字段；Fish alignment 接口不可靠，字幕统一使用基类固定速率时间轴。
 """
 
 from __future__ import annotations
@@ -24,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from livestudio.utils.log import logger
 
 from .base import TtsAudioOutput, TtsEngine, TtsOutput
+from .types import TtsProviderKind
 
 FISH_AUDIO_TTS_URL = "https://api.fish.audio/v1/tts/stream/with-timestamp"
 # reader -> outer 队列:有界反压;取消时用 put_nowait 哨兵,满则丢最旧再塞
@@ -41,7 +38,7 @@ class FishAudioConnectionConfig(BaseModel):
     )
     endpoint: str = Field(
         default=FISH_AUDIO_TTS_URL,
-        description="TTS SSE 端点 URL(默认官方 with-timestamp 流)",
+        description="TTS SSE 音频端点 URL；仅使用 audio_base64，忽略 alignment",
         json_schema_extra={"hidden": True},
     )
 
@@ -74,8 +71,31 @@ class FishAudioSpeakConfig(BaseModel):
     )
 
 
+class TtsSpeakRequest(BaseModel):
+    """一次发声所需的文本、字幕文本和供应商配置。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    text: str = Field(min_length=1)
+    subtitle: str = Field(min_length=1, exclude=True)
+    kind: TtsProviderKind = Field(default="fish_audio", exclude=True)
+    fish_audio: FishAudioSpeakConfig = Field(default_factory=FishAudioSpeakConfig, exclude=True)
+    model: str = Field(default="s2.1-pro-free", exclude=True)
+    reference_id: str | None = None
+    format: Literal["pcm"] = "pcm"
+    sample_rate: int = Field(default=24000, gt=0)
+    latency: Literal["low", "balanced", "normal"] = "balanced"
+    normalize: bool = True
+    temperature: float = Field(default=0.7, ge=0.0, le=1.0)
+    top_p: float = Field(default=0.7, ge=0.0, le=1.0)
+    chunk_length: int = Field(default=300, ge=100, le=300)
+    prosody: dict[str, float] = Field(default_factory=lambda: {"speed": 1.0, "volume": 0.0})
+
+
 class FishAudioEngine(TtsEngine):
-    """Fish Audio 流式 TTS 引擎(PCM 音频 + 逐词 alignment 字幕)"""
+    """Fish Audio 流式 TTS 引擎，只消费 PCM 音频。"""
+
+    supports_alignment = False
 
     def __init__(
         self,
@@ -87,7 +107,7 @@ class FishAudioEngine(TtsEngine):
         super().__init__(sample_rate=sample_rate, channels=channels)
         self._config = config
 
-    async def synthesize(self, text: str, **opts: object) -> AsyncGenerator[TtsOutput, None]:
+    async def synthesize(self, request: TtsSpeakRequest) -> AsyncGenerator[TtsOutput, None]:
         """合成文本:httpx 在独立 reader 任务,本生成器只从队列 yield。
 
         取消/aclose 时 finally 取消 reader;httpx ``async with`` 在 reader 任务内退出,
@@ -96,32 +116,13 @@ class FishAudioEngine(TtsEngine):
 
         if not self._config.api_key:
             raise RuntimeError("Fish Audio api_key 未配置")
-        if not text:
-            return
-
-        model = _as_str(opts.get("model"), "s2.1-pro-free")
-        reference_id = _as_optional_str(opts.get("reference_id"))
-        latency = _as_str(opts.get("latency"), "balanced")
-        speed = _as_float(opts.get("speed"), 1.0)
+        request = request.model_copy(update={"sample_rate": self._sample_rate})
 
         headers = {
             "Authorization": f"Bearer {self._config.api_key}",
             "Content-Type": "application/json",
-            "model": model,
+            "model": request.model,
         }
-        payload: dict[str, object] = {
-            "text": text,
-            "format": "pcm",
-            "sample_rate": self._sample_rate,
-            "latency": latency,
-            "normalize": True,
-            "temperature": 0.7,
-            "top_p": 0.7,
-            "chunk_length": 300,
-            "prosody": {"speed": speed, "volume": 0},
-        }
-        if reference_id:
-            payload["reference_id"] = reference_id
 
         endpoint = self._config.endpoint or FISH_AUDIO_TTS_URL
         timeout = httpx.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
@@ -139,7 +140,7 @@ class FishAudioEngine(TtsEngine):
                         "POST",
                         endpoint,
                         headers=headers,
-                        json=payload,
+                        content=request.model_dump_json(exclude_none=True),
                     ) as response,
                 ):
                     response.raise_for_status()
@@ -193,23 +194,3 @@ def _put_sentinel(
             queue.get_nowait()
         with contextlib.suppress(asyncio.QueueFull):
             queue.put_nowait(item)
-
-
-def _as_str(value: object, default: str) -> str:
-    return value if isinstance(value, str) and value else default
-
-
-def _as_optional_str(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
-
-
-def _as_float(value: object, default: float) -> float:
-    if isinstance(value, bool):
-        return default
-    if isinstance(value, (int, float)):
-        return float(value)
-    return default

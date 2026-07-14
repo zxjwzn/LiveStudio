@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 from pathlib import Path
 
 import uvicorn
+from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
@@ -31,7 +31,19 @@ from livestudio.utils.log import logger
 from livestudio.utils.paths import PROJECT_ROOT, config_path
 
 from .config import SubtitleConfig
-from .stream import SubtitleEvent, SubtitleStream, SubtitleSubscription
+from .models import (
+    SubtitleBeginData,
+    SubtitleBeginMessage,
+    SubtitleClientRequest,
+    SubtitleEvent,
+    SubtitleEventKind,
+    SubtitleFinishMessage,
+    SubtitlePongMessage,
+    SubtitleSegmentsData,
+    SubtitleSegmentsMessage,
+    SubtitleServerMessage,
+)
+from .stream import SubtitleStream, SubtitleSubscription
 
 _GRACEFUL_SHUTDOWN_TIMEOUT = 1
 _HTML_CANDIDATES = (
@@ -140,43 +152,35 @@ class SubtitleService(AsyncServiceLifecycleMixin):
             while True:
                 event = await sub.queue.get()
                 message = self._event_to_message(event)
-                if message is not None:
-                    await self._broadcast(message)
+                await self._broadcast(message)
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("字幕中继任务异常")
 
-    def _event_to_message(self, event: SubtitleEvent) -> dict[str, object] | None:
+    def _event_to_message(self, event: SubtitleEvent) -> SubtitleServerMessage:
         cfg = self.config
-        if event.kind == "begin":
-            return {
-                "type": "begin",
-                "data": {
-                    "text": event.text or "",
-                    "font_path": cfg.font_path,
-                    "font_size": cfg.font_size,
-                    "font_color": cfg.font_color,
-                    "font_edge_color": cfg.font_edge_color,
-                    "font_edge_width": cfg.font_edge_width,
-                    "audio_delay_ms": cfg.audio_delay_ms,
-                    "clear_delay_ms": cfg.clear_delay_ms,
-                },
-            }
-        if event.kind == "segments":
-            segs = event.segments or []
-            return {
-                "type": "segments",
-                "data": {
-                    "segments": [{"text": s.text, "start": s.start, "end": s.end} for s in segs],
-                },
-            }
-        if event.kind == "finish":
-            return {"type": "finish"}
-        return None
+        if event.kind is SubtitleEventKind.BEGIN:
+            return SubtitleBeginMessage(
+                data=SubtitleBeginData(
+                    text=event.text or "",
+                    font_path=cfg.font_path,
+                    font_size=cfg.font_size,
+                    font_color=cfg.font_color,
+                    font_edge_color=cfg.font_edge_color,
+                    font_edge_width=cfg.font_edge_width,
+                    audio_delay_ms=cfg.audio_delay_ms,
+                    clear_delay_ms=cfg.clear_delay_ms,
+                )
+            )
+        if event.kind is SubtitleEventKind.SEGMENTS:
+            return SubtitleSegmentsMessage(data=SubtitleSegmentsData(segments=event.segments or []))
+        if event.kind is SubtitleEventKind.FINISH:
+            return SubtitleFinishMessage()
+        raise ValueError(f"不支持的字幕事件: {event.kind}")
 
-    async def _broadcast(self, message: dict[str, object]) -> None:
-        payload = json.dumps(message, ensure_ascii=False)
+    async def _broadcast(self, message: SubtitleServerMessage) -> None:
+        payload = message.model_dump_json()
         async with self._clients_lock:
             clients = list(self._clients)
         dead: list[WebSocket] = []
@@ -223,11 +227,11 @@ class SubtitleService(AsyncServiceLifecycleMixin):
                 while True:
                     raw = await websocket.receive_text()
                     try:
-                        msg = json.loads(raw)
-                    except json.JSONDecodeError:
+                        request = SubtitleClientRequest.model_validate_json(raw)
+                    except ValidationError:
                         continue
-                    if isinstance(msg, dict) and msg.get("type") == "ping":
-                        await websocket.send_text(json.dumps({"type": "pong"}))
+                    if request.type == "ping":
+                        await websocket.send_text(SubtitlePongMessage().model_dump_json())
             except WebSocketDisconnect:
                 pass
             except Exception:
@@ -285,4 +289,3 @@ class SubtitleService(AsyncServiceLifecycleMixin):
                 await task
         async with self._clients_lock:
             self._clients.clear()
-

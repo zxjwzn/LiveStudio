@@ -1,7 +1,6 @@
-"""TTS 发声 oneshot 控制器
+"""TTS 发声 oneshot 控制器。
 
-并列 speak 配置: kind + 各供应商 speak 配置(fish_audio 等)。
-execute 按 kind 取激活 speak 配置合并为 opts,校验 kind 已注册,调用 tts_source.speak。
+控制器把运行时文本和供应商配置合并为 ``TtsSpeakRequest``，再交给 TTS 源。
 """
 
 from __future__ import annotations
@@ -58,21 +57,20 @@ class TTSpeakController(AnimationController[TTSpeakControllerSettings]):
             return
         text = text.strip()
 
-        opts = self.config.as_speak_opts()
-        # kwargs 覆盖已知 speak 字段(kind 不可覆盖;未知键忽略)
-        for key, value in kwargs.items():
-            if key in ("text", "kind") or value is None:
-                continue
-            if key in opts:
-                opts[key] = value
+        subtitle = kwargs.get("subtitle", text)
+        if not isinstance(subtitle, str) or not subtitle.strip():
+            logger.warning("TTSpeak 未收到合法 subtitle,跳过")
+            return
+        request = self.config.create_speak_request(
+            text=text,
+            subtitle=subtitle.strip(),
+            overrides=kwargs,
+        )
 
         router = self._tts_router()
         tts_cfg = getattr(getattr(router, "config", None), "tts", None)
-        if tts_cfg is not None:
-            # 校验 kind 已注册(连接槽并列,缺密钥由引擎报错)
-            kind = str(opts.get("kind", "fish_audio"))
-            if kind not in TTS_ENGINES:
-                raise RuntimeError(f"未知 TTS 供应商 kind={kind!r}(未在 TTS_ENGINES 注册)")
+        if tts_cfg is not None and request.kind not in TTS_ENGINES:
+            raise RuntimeError(f"未知 TTS 供应商 kind={request.kind!r}(未在 TTS_ENGINES 注册)")
 
         try:
             active = router.active_source_kind
@@ -81,7 +79,7 @@ class TTSpeakController(AnimationController[TTSpeakControllerSettings]):
         if active is not AudioSourceKind.TTS and router.is_started:
             await router.switch_source(AudioSourceKind.TTS)
 
-        await router.tts_source.speak(text, **opts)
+        await router.tts_source.speak(request)
 
     async def stop(self) -> None:
         if isinstance(self._audio_stream, AudioStreamRouter):

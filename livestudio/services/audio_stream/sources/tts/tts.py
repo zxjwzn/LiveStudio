@@ -26,12 +26,13 @@ from collections.abc import Awaitable, Callable
 import numpy as np
 from numpy.typing import NDArray
 
+from livestudio.services.subtitle import SubtitleStream
 from livestudio.utils.log import logger
 
 from ...base import AudioStreamSource
 from ...models import AudioChunk, AudioSourceKind
 from .config import TTSAudioStreamConfig
-from .engines import TtsAudioOutput, make_engine
+from .engines import TtsAudioOutput, TtsEngine, TtsSpeakRequest, TtsSubtitleOutput, make_engine
 
 # 与 MouthSyncController.update_interval / 麦克风 ~60fps 对齐
 _FRAME_HZ = 60
@@ -52,11 +53,13 @@ class TTSAudioStreamSource(AudioStreamSource):
         self,
         config: TTSAudioStreamConfig,
         *,
+        subtitle_stream: SubtitleStream | None = None,
         on_interrupt: Callable[[], None] | None = None,
         on_prepare: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         super().__init__()
         self.config = config
+        self._subtitle_stream = subtitle_stream
         self._on_interrupt = on_interrupt
         self._on_prepare = on_prepare
         self._idle_task: asyncio.Task[None] | None = None
@@ -71,6 +74,7 @@ class TTSAudioStreamSource(AudioStreamSource):
         self._speak_listeners: list[tuple[SpeakAnchorCallback, SpeakAnchorCallback]] = []
         self._utterance_start_fired = False
         self._utterance_end_fired = False
+        self._subtitle_active = False
 
     def set_on_interrupt(self, on_interrupt: Callable[[], None] | None) -> None:
         self._on_interrupt = on_interrupt
@@ -174,7 +178,7 @@ class TTSAudioStreamSource(AudioStreamSource):
             )
             await asyncio.sleep(delay)
 
-    async def speak(self, text: str, **opts: object) -> None:
+    async def speak(self, request: TtsSpeakRequest) -> None:
         """触发发声:先准备播放设备,再取消旧发声,启动合成+呈现。"""
 
         await self.stop_speaking()
@@ -183,7 +187,10 @@ class TTSAudioStreamSource(AudioStreamSource):
         self._idle_event.clear()
         self._utterance_start_fired = False
         self._utterance_end_fired = False
-        self._synth_task = asyncio.ensure_future(self._synthesize(text, **opts))
+        if self._subtitle_stream is not None:
+            self._subtitle_stream.begin(request.subtitle)
+            self._subtitle_active = True
+        self._synth_task = asyncio.ensure_future(self._synthesize(request))
         self._present_task = asyncio.ensure_future(self._present())
 
     async def stop_speaking(self) -> None:
@@ -203,6 +210,7 @@ class TTSAudioStreamSource(AudioStreamSource):
         self._idle_event.set()
         # 若呈现未跑到 finally(极端),仍保证 end
         self._fire_speak_end()
+        self._finish_subtitle()
         if self._on_interrupt is not None:
             self._on_interrupt()
 
@@ -240,20 +248,22 @@ class TTSAudioStreamSource(AudioStreamSource):
                 await self._audio_q.put(piece)
                 self._queued_frames += n
 
-    def _engine_for_opts(self, opts: dict[str, object]):
-        """按 opts.kind 选并列连接槽并查注册表构造引擎(lazy,缺省 fish_audio)。"""
+    def _engine_for_request(self, request: TtsSpeakRequest) -> TtsEngine:
+        """按请求中的 kind 选择连接槽并构造引擎。"""
 
-        kind = opts.get("kind", "fish_audio")
-        kind_s = kind if isinstance(kind, str) and kind else "fish_audio"
-        conn = getattr(self.config, kind_s)  # 并列连接槽,取代 connection_for_kind
-        return make_engine(kind_s, conn, sample_rate=self.config.samplerate, channels=self.config.channels)
+        connection = getattr(self.config, request.kind)
+        return make_engine(request.kind, connection, sample_rate=self.config.samplerate, channels=self.config.channels)
 
-    async def _synthesize(self, text: str, **opts: object) -> None:
+    async def _synthesize(self, request: TtsSpeakRequest) -> None:
         """引擎迭代:音频入队。"""
 
         try:
-            engine = self._engine_for_opts(dict(opts))
-            async with contextlib.aclosing(engine.synthesize(text, **opts)) as gen:
+            engine = self._engine_for_request(request)
+            if self._subtitle_stream is not None:
+                fallback = engine.make_fallback_subtitle_output(request.subtitle)
+                if fallback is not None:
+                    self._subtitle_stream.publish_segments(fallback.segments)
+            async with contextlib.aclosing(engine.synthesize(request)) as gen:
                 async for output in gen:
                     if isinstance(output, TtsAudioOutput):
                         if output.frames <= 0:
@@ -268,6 +278,8 @@ class TTSAudioStreamSource(AudioStreamSource):
                             pad = np.zeros((total, channels - frame.shape[1]), dtype=np.float32)
                             frame = np.concatenate([frame, pad], axis=1)
                         await self._enqueue_audio(frame)
+                    elif isinstance(output, TtsSubtitleOutput) and self._subtitle_stream is not None:
+                        self._subtitle_stream.publish_segments(output.segments)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -354,4 +366,11 @@ class TTSAudioStreamSource(AudioStreamSource):
                     await asyncio.sleep(sleep_for)
         finally:
             self._fire_speak_end()
+            self._finish_subtitle()
             self._idle_event.set()
+
+    def _finish_subtitle(self) -> None:
+        if not self._subtitle_active or self._subtitle_stream is None:
+            return
+        self._subtitle_active = False
+        self._subtitle_stream.finish()

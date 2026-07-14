@@ -1,6 +1,5 @@
 """表演时间线:草稿事件组 + FIFO 队列 + 锚点调度"""
 
-from .host import AppPerformanceHost
 from .models import (
     AnchorPhase,
     DraftSnapshot,
@@ -10,16 +9,16 @@ from .models import (
     EventType,
     JobSnapshot,
     JobState,
+    PerformanceEvent,
     QueueSnapshot,
     RemoveJobResult,
     StartRef,
     TimelineEvent,
 )
-from .service import PerformanceHost, PerformanceService
+from .service import PerformanceEventListener, PerformanceService
 
 __all__ = [
     "AnchorPhase",
-    "AppPerformanceHost",
     "DraftSnapshot",
     "EnqueueResult",
     "EventRuntime",
@@ -27,7 +26,8 @@ __all__ = [
     "EventType",
     "JobSnapshot",
     "JobState",
-    "PerformanceHost",
+    "PerformanceEvent",
+    "PerformanceEventListener",
     "PerformanceService",
     "QueueSnapshot",
     "RemoveJobResult",

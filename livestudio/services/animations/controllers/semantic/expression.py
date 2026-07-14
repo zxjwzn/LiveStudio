@@ -40,7 +40,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
     生命周期:
       过渡(au_priority) → 保持 → **fire end** → 清 EMOTION native → 回归(neutral_priority)
 
-    end 锚点语义(与 MCP 文档一致):「开始回中性时」,脸上可能仍在回落。
+    end 锚点语义为「开始回中性时」，脸上可能仍在回落。
     因此 end 在 hold 退出后立刻触发,恢复在后台继续,不阻塞时间线 Job。
 
     hold_duration=None: 外部释放模式。release_hold() 只 set 信号,不 cancel _drive、
