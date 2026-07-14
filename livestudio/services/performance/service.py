@@ -32,6 +32,7 @@ from .models import (
 _FINISHED_LIMIT = 20
 
 PerformanceEventListener = Callable[[PerformanceEvent], Awaitable[None] | None]
+Handler = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 @dataclass
@@ -84,6 +85,7 @@ class PerformanceService:
         self._pending: list[_Job] = []
         self._finished: list[JobSnapshot] = []
         self._listeners: list[PerformanceEventListener] = []
+        self._handlers: dict[str, Handler] = {}
         self._lock = asyncio.Lock()
 
     def subscribe(self, listener: PerformanceEventListener) -> Callable[[], None]:
@@ -97,6 +99,25 @@ class PerformanceService:
                 self._listeners.remove(listener)
 
         return _unsubscribe
+
+    def register_handler(self, name: str, handler: Handler) -> Callable[[], None]:
+        """注册动作处理器:命中事件 name 时,调度器在 START 与 END 之间 await handler(payload)。
+
+        handler 返回即该事件的 END(自然结束),适用于自终止、时长未知的动作;handler 体
+        无需感知 Performance。handler 抛异常 -> 事件 FAILED(仍补 END 锚,避免依赖方卡死);
+        Job 取消 -> handler 被取消、事件 CANCELLED。若事件同时声明了 end_anchor,handler
+        优先生效(end_anchor 被忽略)。重复注册同名 handler 会覆盖旧值。返回取消注册函数。
+        """
+
+        key = name.strip() if isinstance(name, str) else ""
+        if not key:
+            raise ValueError("handler name 不能为空")
+        self._handlers[key] = handler
+
+        def _unregister() -> None:
+            self._handlers.pop(key, None)
+
+        return _unregister
 
     def add_event(
         self,
@@ -435,6 +456,9 @@ class PerformanceService:
 
         if event.type is EventType.WAIT:
             await _wait_or_cancel(float(event.payload["seconds"]), job.cancel_event)
+        elif event.name is not None and event.name in self._handlers:
+            handler = self._handlers[event.name]
+            await _await_or_cancel(handler(dict(event.payload)), job.cancel_event)
         elif event.end is not None:
             fire_at = await self._wait_for_ref(job, event.end)
             wait_more = fire_at - time.perf_counter()
@@ -550,6 +574,40 @@ async def _wait_or_cancel(seconds: float, cancel_event: asyncio.Event) -> None:
             raise asyncio.CancelledError
         except TimeoutError:
             continue
+
+
+async def _await_or_cancel(awaitable: Awaitable[None], cancel_event: asyncio.Event) -> None:
+    """Await a registered handler; raise CancelledError if cancel_event fires first.
+
+    handler 的异常会原样抛出(由 _run_event 映射为 FAILED)。cancel_event 先到则取消
+    handler 并抛 CancelledError(由 _run_event 映射为 CANCELLED)。任一出口都取消并收尾
+    残留的 Future,避免 task 泄漏与 "destroyed while pending" 告警。
+    """
+
+    task: asyncio.Task[None] = asyncio.ensure_future(awaitable)
+    wait_task: asyncio.Task[bool] = asyncio.ensure_future(cancel_event.wait())
+    try:
+        done, _ = await asyncio.wait({task, wait_task}, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        await _abort(wait_task)
+        await _abort(task)
+        raise
+    await _abort(wait_task)
+    if task in done:
+        # 自然完成(或抛异常):交由 result() 抛出,沿用 _run_event 的 FAILED/COMPLETED 路径
+        _ = task.result()
+        return
+    await _abort(task)
+    raise asyncio.CancelledError
+
+
+async def _abort(fut: asyncio.Future[Any]) -> None:
+    """取消并收尾一个 Future;丢弃其收尾异常(仅用于正在放弃的句柄)。"""
+
+    if not fut.done():
+        fut.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await fut
 
 
 def _validate_graph(events: list[TimelineEvent]) -> list[str]:

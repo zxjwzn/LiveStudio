@@ -15,7 +15,7 @@ from .models import (
     StartRef,
     TimelineEvent,
 )
-from .service import PerformanceEventListener, PerformanceService
+from .service import Handler, PerformanceEventListener, PerformanceService
 
 __all__ = [
     "AnchorPhase",
@@ -24,6 +24,7 @@ __all__ = [
     "EventRuntime",
     "EventStatus",
     "EventType",
+    "Handler",
     "JobSnapshot",
     "JobState",
     "PerformanceEvent",
