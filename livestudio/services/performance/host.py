@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from livestudio.services.animations.constants import EXPRESSION_CONTROLLER
+from livestudio.services.animations.constants import EXPRESSION_CONTROLLER, TTS_SPEAK_CONTROLLER
+from livestudio.services.performance.handle import ActionHandle, EventActionHandle
 
 if TYPE_CHECKING:
     from livestudio.app.base import BasePlatformApp
 
 
 class AppPerformanceHost:
-    """实现 PerformanceHost 协议:调 app 公开能力 + 绑定底层锚点。"""
+    """实现 PerformanceHost 协议:调领域 API 并返回 ActionHandle。
+
+    speak/emotion 均 **await 控制器 execute**(非 start 火忘),再取 current_session。
+    若走 app.speak→execute_controller→start,会话尚未创建 host 会拿到 None,
+    退回瞬时 Handle 导致 speak 时长为 0、队列瞬间抢跑互相打断。
+    """
 
     def __init__(self, app: BasePlatformApp[Any, Any]) -> None:
         self._app = app
@@ -24,12 +29,33 @@ class AppPerformanceHost:
             raise RuntimeError("音频路由未提供 tts_source")
         return tts
 
-    def _expression_controller(self) -> Any | None:
+    def _controller(self, name: str) -> Any | None:
         runtime = self._app.animation_manager.get_runtime(self._app.platform.name)
-        return runtime.controllers.get(EXPRESSION_CONTROLLER)
+        return runtime.controllers.get(name)
 
-    async def launch_speak(self, text: str) -> None:
-        await self._app.speak(text)
+    def _expression_controller(self) -> Any | None:
+        return self._controller(EXPRESSION_CONTROLLER)
+
+    def _ttspeak_controller(self) -> Any | None:
+        return self._controller(TTS_SPEAK_CONTROLLER)
+
+    async def launch_speak(self, text: str, *, subtitle: str | None = None) -> ActionHandle:
+        ctrl = self._ttspeak_controller()
+        if ctrl is None:
+            raise RuntimeError("TTSpeak 控制器未就绪")
+        kwargs: dict[str, object] = {"text": text}
+        if subtitle is not None:
+            kwargs["subtitle"] = subtitle
+        # 必须 await execute:切源/字幕/tts.speak 都在其中;返回后 current_session 已挂上
+        await ctrl.execute(**kwargs)
+        tts = self._tts_source()
+        session = getattr(tts, "current_session", None)
+        if session is not None and hasattr(session, "wait_started"):
+            return session  # type: ignore[return-value]
+        handle = EventActionHandle()
+        handle.mark_started()
+        handle.mark_ended()
+        return handle
 
     async def stop_speak(self) -> None:
         await self._app.stop_speaking()
@@ -41,15 +67,25 @@ class AppPerformanceHost:
         intensity: float = 1.0,
         transition_duration: float | None = None,
         hold_duration: float | None | object = ...,
-    ) -> None:
-        # hold_duration: ...=未指定(用配置); None=外部释放; float=秒数
+    ) -> ActionHandle:
+        ctrl = self._expression_controller()
+        if ctrl is None:
+            raise RuntimeError("表情控制器未就绪")
         kwargs: dict[str, object] = {
+            "emotion": emotion,
             "intensity": intensity,
             "transition_duration": transition_duration,
         }
         if hold_duration is not ...:
             kwargs["hold_duration"] = hold_duration
-        await self._app.play_emotion(emotion, **kwargs)  # type: ignore[arg-type]
+        await ctrl.execute(**kwargs)
+        session = getattr(ctrl, "current_session", None)
+        if session is not None and hasattr(session, "wait_started"):
+            return session  # type: ignore[return-value]
+        handle = EventActionHandle()
+        handle.mark_started()
+        handle.mark_ended()
+        return handle
 
     async def cancel_play_emotion(self) -> None:
         """协作结束表情 hold(幂等)。只发 release 信号,恢复由控制器后台完成。"""
@@ -57,7 +93,13 @@ class AppPerformanceHost:
         ctrl = self._expression_controller()
         if ctrl is None:
             return
-        await ctrl.release_hold()
+        session = getattr(ctrl, "current_session", None)
+        if session is not None and hasattr(session, "cancel"):
+            await session.cancel()
+            return
+        release = getattr(ctrl, "release_hold", None)
+        if release is not None:
+            await release()
 
     async def launch_set_native_expression(self, name: str, active: bool) -> None:
         setter = getattr(self._app, "set_native_expression", None)
@@ -70,21 +112,3 @@ class AppPerformanceHost:
         if clearer is None:
             raise RuntimeError("当前平台不支持原生表情")
         await clearer()
-
-    def bind_speak_anchors(
-        self,
-        on_start: Callable[[], None],
-        on_end: Callable[[], None],
-    ) -> Callable[[], None]:
-        tts = self._tts_source()
-        return tts.bind_speak_anchors(on_start, on_end)
-
-    def bind_emotion_anchors(
-        self,
-        on_start: Callable[[], None],
-        on_end: Callable[[], None],
-    ) -> Callable[[], None]:
-        ctrl = self._expression_controller()
-        if ctrl is None:
-            raise RuntimeError("表情控制器未就绪")
-        return ctrl.bind_emotion_anchors(on_start, on_end)

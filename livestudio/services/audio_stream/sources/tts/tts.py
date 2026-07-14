@@ -10,9 +10,10 @@
   调度: 每 1/60s 从 _audio_q 取满一帧 -> _publish_chunk
   stop/打断: 取消任务 -> 清空队列 -> on_interrupt(flush 播放缓冲)
 
-锚点(供表演时间线):
-  speak.start = 呈现层首次上总线
-  speak.end   = 呈现任务结束(正常或取消);不是 SSE 断开
+会话生命周期(SpeakSession,供调度 await,不注入回调):
+  started = 呈现层首次把**非静音占位**的引擎 PCM 帧推上总线
+            (等合成入队前的零帧不算 start)
+  ended   = 呈现任务结束(正常或取消);不是 SSE 断开
 
 路由器只转发当前激活源:TTS 须为激活源才能驱动唇形/播放。
 """
@@ -31,7 +32,8 @@ from livestudio.utils.log import logger
 from ...base import AudioStreamSource
 from ...models import AudioChunk, AudioSourceKind
 from .config import TTSAudioStreamConfig
-from .engines import TtsAudioOutput, make_engine
+from .engines import TtsAudioOutput, TtsSpeakRequest, make_engine
+from .session import SpeakSession
 
 # 与 MouthSyncController.update_interval / 麦克风 ~60fps 对齐
 _FRAME_HZ = 60
@@ -39,10 +41,8 @@ _FRAME_SECONDS = 1.0 / _FRAME_HZ
 # 内部合成队列上限(帧数≈秒);满则阻塞合成,形成反压,避免无界内存
 _AUDIO_QUEUE_MAX_FRAMES = _FRAME_HZ * 120
 # 流式获取卡死看门狗:合成未完成且超过此时长无新音频入队,视为网络卡死,
-# cancel 合成并补发 speak.end,避免时间线(speak 事件 + 绑它的 play_emotion hold)永久挂起
+# cancel 合成并结束当前会话,避免时间线(speak 事件 + 绑它的 play_emotion hold)永久挂起
 _STREAM_STALL_SECONDS = 3.0
-
-SpeakAnchorCallback = Callable[[], None]
 
 
 class TTSAudioStreamSource(AudioStreamSource):
@@ -67,51 +67,18 @@ class TTSAudioStreamSource(AudioStreamSource):
         self._audio_q: asyncio.Queue[NDArray[np.float32]] = asyncio.Queue()
         self._queued_frames = 0
         self._queue_space = asyncio.Condition()
-        # 表演时间线锚点监听:(on_start, on_end);start/end 各至多触发一次/句
-        self._speak_listeners: list[tuple[SpeakAnchorCallback, SpeakAnchorCallback]] = []
-        self._utterance_start_fired = False
-        self._utterance_end_fired = False
+        # 当前发声会话(领域生命周期;至多一个)
+        self._session: SpeakSession | None = None
+
+    @property
+    def current_session(self) -> SpeakSession | None:
+        return self._session
 
     def set_on_interrupt(self, on_interrupt: Callable[[], None] | None) -> None:
         self._on_interrupt = on_interrupt
 
     def set_on_prepare(self, on_prepare: Callable[[], Awaitable[None]] | None) -> None:
         self._on_prepare = on_prepare
-
-    def bind_speak_anchors(
-        self,
-        on_start: SpeakAnchorCallback,
-        on_end: SpeakAnchorCallback,
-    ) -> Callable[[], None]:
-        """订阅 speak 呈现 start/end;返回 unbind。"""
-
-        pair = (on_start, on_end)
-        self._speak_listeners.append(pair)
-
-        def _unbind() -> None:
-            with contextlib.suppress(ValueError):
-                self._speak_listeners.remove(pair)
-
-        return _unbind
-
-    def _fire_speak_start(self) -> None:
-        if self._utterance_start_fired:
-            return
-        self._utterance_start_fired = True
-        for on_start, _ in list(self._speak_listeners):
-            with contextlib.suppress(Exception):
-                on_start()
-
-    def _fire_speak_end(self) -> None:
-        if self._utterance_end_fired:
-            return
-        # 未 start 过不发 end,避免 stop_speaking 空转时向新订阅者伪造起止
-        if not self._utterance_start_fired:
-            return
-        self._utterance_end_fired = True
-        for _, on_end in list(self._speak_listeners):
-            with contextlib.suppress(Exception):
-                on_end()
 
     async def _do_start(self) -> None:
         self._idle_task = asyncio.ensure_future(self._idle_loop())
@@ -174,17 +141,27 @@ class TTSAudioStreamSource(AudioStreamSource):
             )
             await asyncio.sleep(delay)
 
-    async def speak(self, text: str, **opts: object) -> None:
-        """触发发声:先准备播放设备,再取消旧发声,启动合成+呈现。"""
+    async def speak(
+        self,
+        text: str,
+        request: TtsSpeakRequest | None = None,
+    ) -> SpeakSession:
+        """触发发声:先准备播放设备,再取消旧发声,启动合成+呈现。
+
+        ``request`` 为 pydantic 请求(kind + 供应商发声参数);缺省用默认 kind。
+        返回本句 ``SpeakSession``;调用方可 await ``wait_started`` / ``wait_ended``。
+        """
 
         await self.stop_speaking()
         if self._on_prepare is not None:
             await self._on_prepare()
         self._idle_event.clear()
-        self._utterance_start_fired = False
-        self._utterance_end_fired = False
-        self._synth_task = asyncio.ensure_future(self._synthesize(text, **opts))
+        session = SpeakSession(self)
+        self._session = session
+        speak_req = request if request is not None else TtsSpeakRequest()
+        self._synth_task = asyncio.ensure_future(self._synthesize(text, speak_req))
         self._present_task = asyncio.ensure_future(self._present())
+        return session
 
     async def stop_speaking(self) -> None:
         """取消合成与呈现,清空内部队列,冲刷播放残留。"""
@@ -201,8 +178,11 @@ class TTSAudioStreamSource(AudioStreamSource):
                     await task
         await self._clear_audio_queue()
         self._idle_event.set()
-        # 若呈现未跑到 finally(极端),仍保证 end
-        self._fire_speak_end()
+        # 若呈现未跑到 finally(极端),仍保证已 started 的会话 ended
+        session = self._session
+        if session is not None:
+            session.mark_ended()
+            self._session = None
         if self._on_interrupt is not None:
             self._on_interrupt()
 
@@ -240,20 +220,20 @@ class TTSAudioStreamSource(AudioStreamSource):
                 await self._audio_q.put(piece)
                 self._queued_frames += n
 
-    def _engine_for_opts(self, opts: dict[str, object]):
-        """按 opts.kind 选并列连接槽并查注册表构造引擎(lazy,缺省 fish_audio)。"""
+    def _engine_for_request(self, request: TtsSpeakRequest):
+        """按 request.kind 选并列连接槽并查注册表构造引擎。"""
 
-        kind = opts.get("kind", "fish_audio")
-        kind_s = kind if isinstance(kind, str) and kind else "fish_audio"
-        conn = getattr(self.config, kind_s)  # 并列连接槽,取代 connection_for_kind
+        kind_s = request.kind or "fish_audio"
+        conn = getattr(self.config, kind_s)  # 并列连接槽
         return make_engine(kind_s, conn, sample_rate=self.config.samplerate, channels=self.config.channels)
 
-    async def _synthesize(self, text: str, **opts: object) -> None:
+    async def _synthesize(self, text: str, request: TtsSpeakRequest) -> None:
         """引擎迭代:音频入队。"""
 
         try:
-            engine = self._engine_for_opts(dict(opts))
-            async with contextlib.aclosing(engine.synthesize(text, **opts)) as gen:
+            engine = self._engine_for_request(request)
+            provider_req = request.provider_request()
+            async with contextlib.aclosing(engine.synthesize(text, request=provider_req)) as gen:
                 async for output in gen:
                     if isinstance(output, TtsAudioOutput):
                         if output.frames <= 0:
@@ -278,6 +258,9 @@ class TTSAudioStreamSource(AudioStreamSource):
 
         SSE 间隙插静音、句尾零填充时与上一帧做短 crossfade,避免有声/0 硬切爆破音。
         节拍用墙钟截止时间漂移补偿:每帧截止 += delay,实际睡眠 = 截止 - 当前。
+
+        SpeakSession.started 仅在「本帧来自引擎队列 PCM」(含句尾零填充)时标记;
+        合成尚未产出、present 插的纯静音占位帧不触发 started。
         """
 
         samplerate, channels, block_frames = self._frame_params()
@@ -288,13 +271,14 @@ class TTSAudioStreamSource(AudioStreamSource):
         loop = asyncio.get_running_loop()
         next_deadline = loop.time()
         last_audio_time = loop.time()
+        session = self._session
         try:
             while True:
-                # 看门狗:合成未完成且超过 _STREAM_STALL_SECONDS 无新音频 -> 视为卡死,补发 end
+                # 看门狗:合成未完成且超过 _STREAM_STALL_SECONDS 无新音频 -> 视为卡死
                 synth_done = self._synth_task is None or self._synth_task.done()
                 if not synth_done and (loop.time() - last_audio_time) > _STREAM_STALL_SECONDS:
                     logger.warning(
-                        "TTS 流式获取超过 {}s 无数据,视为卡死,补发 speak.end",
+                        "TTS 流式获取超过 {}s 无数据,视为卡死,结束 speak 会话",
                         _STREAM_STALL_SECONDS,
                     )
                     synth = self._synth_task
@@ -321,14 +305,18 @@ class TTSAudioStreamSource(AudioStreamSource):
                 if carry.shape[0] == 0 and synth_done:
                     return
 
+                from_engine = False
                 if carry.shape[0] >= block_frames:
                     frame = np.ascontiguousarray(carry[:block_frames])
                     carry = carry[block_frames:]
+                    from_engine = True
                 elif carry.shape[0] > 0 and synth_done:
                     pad = np.zeros((block_frames - carry.shape[0], channels), dtype=np.float32)
                     frame = np.ascontiguousarray(np.concatenate([carry, pad], axis=0))
                     carry = np.zeros((0, channels), dtype=np.float32)
+                    from_engine = True
                 else:
+                    # 合成尚未产出:插静音占位,保持总线节拍;不标记 started
                     frame = np.zeros((block_frames, channels), dtype=np.float32)
 
                 prev_e = float(np.max(np.abs(last[-1]))) if last.size else 0.0
@@ -346,12 +334,17 @@ class TTSAudioStreamSource(AudioStreamSource):
                         source=AudioSourceKind.TTS,
                     ),
                 )
-                self._fire_speak_start()
+                # 仅第一帧「引擎 PCM 上总线」记 start;前置静音占位不算
+                if from_engine and session is not None:
+                    session.mark_started()
 
                 next_deadline += delay
                 sleep_for = next_deadline - loop.time()
                 if sleep_for > 0:
                     await asyncio.sleep(sleep_for)
         finally:
-            self._fire_speak_end()
+            if session is not None:
+                session.mark_ended()
+                if self._session is session:
+                    self._session = None
             self._idle_event.set()

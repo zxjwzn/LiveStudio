@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Callable
 
 from livestudio.services.animations.constants import EMOTION_NATIVE_SCOPE
 from livestudio.services.animations.runtime import PlatformAnimationRuntime
@@ -29,6 +28,7 @@ from ..base import AnimationController
 from ..config import ExpressionControllerSettings
 from ..constants import EXPRESSION_AU_PRIORITY, EXPRESSION_NEUTRAL_PRIORITY
 from ..models import AnimationType
+from .emotion_session import EmotionSession
 
 # 外部释放 hold 时超长占权时长;实际由 release 时 duration=0 同优先级瞬时 tween 收口。
 _EXTERNAL_HOLD_SECONDS = 24 * 3600.0
@@ -38,16 +38,18 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
     """解算并下发情绪表情。
 
     生命周期:
-      过渡(au_priority) → 保持 → **fire end** → 清 EMOTION native → 回归(neutral_priority)
+      过渡(au_priority) → 保持 → **session.ended** → 清 EMOTION native → 回归(neutral_priority)
 
-    end 锚点语义(与 MCP 文档一致):「开始回中性时」,脸上可能仍在回落。
-    因此 end 在 hold 退出后立刻触发,恢复在后台继续,不阻塞时间线 Job。
+    ended 语义(与 MCP 文档一致):「开始回中性时」,脸上可能仍在回落。
+    因此 ended 在 hold 退出后立刻触发,恢复在后台继续,不阻塞时间线 Job。
 
     hold_duration=None: 外部释放模式。release_hold() 只 set 信号,不 cancel _drive、
-    不等待恢复——恢复仍由同一 _drive 在 fire end 之后自然跑完。
+    不等待恢复——恢复仍由同一 _drive 在 mark_ended 之后自然跑完。
 
     新表情/仪表盘连点: start() 可重入,硬打断上一段后立刻开新表情。
     硬打断 cancel _drive,快照后异步清理(因原 _drive 已不能继续)。
+
+    调用方通过返回的 ``EmotionSession`` await wait_started / wait_ended,无需注入回调。
     """
 
     def __init__(
@@ -71,9 +73,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         self._cleanup_task: asyncio.Task[None] | None = None
         self._active_semantic_targets: list[ResolvedSemanticTarget] = []
         self._active_native_triggers: list = []
-        self._emotion_listeners: list[tuple[Callable[[], None], Callable[[], None]]] = []
-        self._emotion_start_fired = False
-        self._emotion_end_fired = False
+        self._session: EmotionSession | None = None
         self._hold_release = asyncio.Event()
 
     @property
@@ -83,6 +83,10 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
     @property
     def solver(self) -> ExpressionSolver:
         return self._solver
+
+    @property
+    def current_session(self) -> EmotionSession | None:
+        return self._session
 
     def _resolvable_units(self, units: list[ExpressionUnit]) -> list[ExpressionUnit]:
         adapter = self.runtime.platform.semantic_adapter
@@ -128,39 +132,18 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
                 await task
         await self._cancel_finishing()
 
-    def bind_emotion_anchors(
-        self,
-        on_start: Callable[[], None],
-        on_end: Callable[[], None],
-    ) -> Callable[[], None]:
-        pair = (on_start, on_end)
-        self._emotion_listeners.append(pair)
-
-        def _unbind() -> None:
-            with contextlib.suppress(ValueError):
-                self._emotion_listeners.remove(pair)
-
-        return _unbind
-
-    def _fire_emotion_start(self) -> None:
-        if self._emotion_start_fired:
+    def _mark_session_ended(self, *, force: bool = False) -> None:
+        session = self._session
+        if session is None:
             return
-        self._emotion_start_fired = True
-        for on_start, _ in list(self._emotion_listeners):
-            with contextlib.suppress(Exception):
-                on_start()
-
-    def _fire_emotion_end(self) -> None:
-        if self._emotion_end_fired:
-            return
-        if not self._emotion_start_fired:
-            return
-        self._emotion_end_fired = True
-        for _, on_end in list(self._emotion_listeners):
-            with contextlib.suppress(Exception):
-                on_end()
+        session.mark_ended(force=force)
+        if self._session is session and session.ended:
+            # 保留引用直到被新会话替换,便于 launch 后立刻取 current_session
+            pass
 
     async def execute(self, **kwargs: object) -> None:
+        """解算并启动表情;会话见 ``current_session``。"""
+
         emotion = self._coerce_emotion(kwargs.get("emotion"))
         if emotion is None:
             logger.warning("表情控制器未收到合法 emotion，跳过")
@@ -179,9 +162,9 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             hold_duration = self._coerce_duration(kwargs.get("hold_duration"), self.config.hold_duration)
 
         await self._cancel_finishing()
-        self._emotion_start_fired = False
-        self._emotion_end_fired = False
         self._hold_release = asyncio.Event()
+        session = EmotionSession(self)
+        self._session = session
 
         selected = self._solver.solve(ExpressionRequest(emotion=emotion, intensity=intensity))
         self._active_semantic_targets = list(selected.semantic_targets)
@@ -192,14 +175,14 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             fade_time=transition_duration,
             scope=EMOTION_NATIVE_SCOPE,
         )
-        self._fire_emotion_start()
+        session.mark_started()
 
         if selected.semantic_targets or selected.native_triggers or hold_duration is None:
             self._finishing_task = asyncio.create_task(
                 self._drive(selected, transition_duration, hold_duration),
             )
         else:
-            self._fire_emotion_end()
+            session.mark_ended()
 
         logger.info(
             "表情解算: 情绪={}, AU={}, 语义目标={}, 原生触发={}, hold={}",
@@ -213,7 +196,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
     async def release_hold(self) -> None:
         """协作结束外部 hold:只发信号。
 
-        不 cancel _drive、不等待恢复。_drive 在 hold 退出后先 fire end(时间线可完成
+        不 cancel _drive、不等待恢复。_drive 在 hold 退出后先 mark_ended(时间线可完成
         事件/Job),再继续清 native + priority-0 回归。
         """
 
@@ -225,16 +208,16 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         transition_duration: float,
         hold_duration: float | None,
     ) -> None:
-        """过渡 → 保持 → fire end → 清 native → priority-0 回归。"""
+        """过渡 → 保持 → mark_ended → 清 native → priority-0 回归。"""
 
         try:
             await self._play_hold_phase(selected, transition_duration, hold_duration)
             # hold 结束 = 表演语义结束;恢复不阻塞时间线
-            self._fire_emotion_end()
+            self._mark_session_ended()
             await self._restore_phase(selected, transition_duration)
         except asyncio.CancelledError:
             # 硬打断:end 若未发则补发;参数清理由 _cancel_finishing 快照负责
-            self._fire_emotion_end()
+            self._mark_session_ended()
             raise
         finally:
             if self._finishing_task is asyncio.current_task():
@@ -279,7 +262,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         selected: SelectedExpression,
         transition_duration: float,
     ) -> None:
-        """清 EMOTION native + AU 回归静息。在 fire end 之后调用。"""
+        """清 EMOTION native + AU 回归静息。在 session.ended 之后调用。"""
 
         if selected.native_triggers:
             await self.runtime.platform.apply_native_expressions(
@@ -305,7 +288,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
         self._active_semantic_targets = []
 
     async def _hold_until_release(self, targets: list[ResolvedSemanticTarget]) -> None:
-        """超长 tween 占权;release 后瞬时同优先级收口,再返回(由 _drive 发 end 并恢复)。"""
+        """超长 tween 占权;release 后瞬时同优先级收口,再返回(由 _drive mark_ended 并恢复)。"""
 
         hold_task = asyncio.create_task(
             self._tween_targets(targets, _EXTERNAL_HOLD_SECONDS, easing="linear"),
@@ -395,7 +378,7 @@ class ExpressionController(AnimationController[ExpressionControllerSettings]):
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
-        self._fire_emotion_end()
+        self._mark_session_ended()
         self._active_native_triggers = []
         self._active_semantic_targets = []
         if natives or driven:

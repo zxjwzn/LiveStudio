@@ -61,12 +61,15 @@ def test_base_defines_builtin_verbs() -> None:
     assert all(meta.builtin for meta in metas.values())
 
 
-def test_vtubestudio_keeps_only_native_expressions() -> None:
-    """VTubeStudioToolset 只直接定义 3 个 native expressions @tool(非 builtin),不重声明通用动词。"""
+def test_vtubestudio_has_no_platform_specific_tools() -> None:
+    """VTubeStudioToolset 不再声明平台特有 @tool;原生表情经 add_event / list_native_expressions。"""
 
     metas = _tool_meta_map(VTubeStudioToolset)
-    assert set(metas) == {"list_native_expressions", "set_native_expression", "clear_native_expressions"}
-    assert all(not meta.builtin for meta in metas.values())
+    assert metas == {}
+    # 继承基类通用动词仍可用
+    toolset_methods = set(_tool_meta_map(PlatformToolset))
+    assert "list_native_expressions" in toolset_methods
+    assert "add_event" in toolset_methods
     assert not (UNIVERSAL_VERBS & set(metas))
 
 
@@ -90,9 +93,14 @@ def test_timeline_tool_descriptions_document_contract() -> None:
     enq_desc = by_name["enqueue_draft"].description or ""
     rm_desc = by_name["remove_job"].description or ""
     assert "speak" in add_desc and "play_emotion" in add_desc
-    assert "start_anchor" in add_desc or "锚点" in add_desc
+    assert "subtitle" in add_desc
+    assert "embarrassed" in add_desc  # Fish 语调标签
+    assert "每句" in add_desc and "标签" in add_desc  # 每句必须打标签
+    assert "拆" in add_desc  # 长句拆多 speak
+    assert "语气词" in add_desc
+    assert "anchor" in add_desc  # 启动锚点
     assert "enqueue_draft" in add_desc
-    assert "pending" in enq_desc or "排队" in enq_desc
+    assert "running" in enq_desc
     assert "delay" in enq_desc
     assert "打断" in rm_desc or "取消" in rm_desc
 
@@ -355,4 +363,86 @@ async def test_emotion_end_until_speak() -> None:
     assert terminal["job"]["state"] == "completed"
     assert app.perf_host.speaks == ["hi"]
     assert app.perf_host.emotions == ["joy"]
+
+
+async def test_enqueue_speak_with_subtitle_forwards_to_host() -> None:
+    """speak.params.subtitle 经时间线到达 host.launch_speak(subtitle=...)。
+
+    与 TTSpeak 设计对齐:合成 text 与字幕 subtitle 分离;缺省 subtitle 不传则 host 收到 None
+    (表示与 text 相同,由 TTSpeak 解析)。
+    """
+
+    app = _FakeApp()
+    toolset = _FakeToolset(app)
+    await toolset.call(
+        "add_event",
+        {
+            "event_type": "speak",
+            "params": {"text": "hello audio", "subtitle": "你好字幕"},
+            "event_id": "s",
+        },
+    )
+    draft = _as_dict(await toolset.call("get_draft", {}))
+    assert draft["valid"] is True
+    assert draft["events"][0]["params"]["subtitle"] == "你好字幕"
+
+    enq = _as_dict(await toolset.call("enqueue_draft", {}))
+    assert enq["ok"] is True
+    terminal = await _wait_job_terminal(toolset, enq["job_id"])
+    assert terminal["job"]["state"] == "completed"
+    assert app.perf_host.speaks == ["hello audio"]
+    assert app.perf_host.subtitles == ["你好字幕"]
+
+
+async def test_speak_params_reject_non_string_subtitle() -> None:
+    """speak.subtitle 类型错误时 add_event 记入 errors,不写入草稿。"""
+
+    toolset = _FakeToolset(_FakeApp())
+    bad = _as_dict(
+        await toolset.call(
+            "add_event",
+            {"event_type": "speak", "params": {"text": "a", "subtitle": 1}},
+        ),
+    )
+    assert bad["valid"] is False
+    assert any("subtitle" in err for err in bad["errors"])
+
+
+async def test_list_native_expressions_universal() -> None:
+    """通用动词 list_native_expressions 读 app.native_expressions。"""
+
+    app = _FakeApp()
+    toolset = _FakeToolset(app)
+    result = await toolset.call("list_native_expressions", {})
+    assert result == ["Smile", "Cry"]
+
+
+async def test_add_event_native_expression_via_timeline() -> None:
+    """原生表情仅经时间线 add_event,不再有独立 set/clear 工具。"""
+
+    app = _FakeApp()
+    toolset = _FakeToolset(app)
+    await toolset.call(
+        "add_event",
+        {
+            "event_type": "set_native_expression",
+            "params": {"name": "Smile", "active": True},
+            "event_id": "n1",
+        },
+    )
+    await toolset.call(
+        "add_event",
+        {
+            "event_type": "clear_native_expressions",
+            "params": {},
+            "event_id": "n2",
+            "start_anchor": "n1",
+            "start_phase": "end",
+        },
+    )
+    enq = _as_dict(await toolset.call("enqueue_draft", {}))
+    assert enq["ok"] is True
+    terminal = await _wait_job_terminal(toolset, enq["job_id"])
+    assert terminal["job"]["state"] == "completed"
+    assert app.perf_host.natives == [("Smile", True), ("*", False)]
 

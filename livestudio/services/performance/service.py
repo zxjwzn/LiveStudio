@@ -4,9 +4,9 @@
 - 唯一添加入口 add_event(写入草稿);enqueue_draft(delay) 快照入队
 - Job 串行:不覆盖 running;remove_job 取消/删除
 - 时间模型为相对锚点 + 运行期回填,不预编译 TTS 总时长
-- speak.end = 呈现结束(由 host 回报),不是 HTTP 断开
-- 通用 end 约束:到点 force-release;事件 end 由能力锚点回报
-  恢复/回落可在事件 completed 之后后台继续(不阻塞 Job)
+- 未知时长动作经 ActionHandle(wait_started/wait_ended) 暴露生命周期
+- speak.end = 呈现结束(handle.ended),不是 HTTP 断开
+- 通用 end 约束:到点 force-release;恢复/回落可在事件 completed 后后台继续
 """
 
 from __future__ import annotations
@@ -15,12 +15,13 @@ import asyncio
 import contextlib
 import itertools
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from livestudio.utils.log import logger
 
+from .handle import ActionHandle
 from .models import (
     AnchorPhase,
     DraftSnapshot,
@@ -42,10 +43,14 @@ _FINISHED_LIMIT = 20
 
 
 class PerformanceHost(Protocol):
-    """底层表演能力 + 锚点订阅(由 app 实现)。"""
+    """底层表演能力(由 app 实现)。
 
-    async def launch_speak(self, text: str) -> None:
-        """启动 TTS(不阻塞到播完)。"""
+    未知时长动作通过返回 ``ActionHandle`` 暴露生命周期;
+    调度器只 await handle,不向能力层注入回调。
+    """
+
+    async def launch_speak(self, text: str, *, subtitle: str | None = None) -> ActionHandle:
+        """启动 TTS(不阻塞到播完);返回会话句柄。subtitle=None 表示字幕与 text 相同。"""
         ...
 
     async def stop_speak(self) -> None:
@@ -59,7 +64,7 @@ class PerformanceHost(Protocol):
         intensity: float = 1.0,
         transition_duration: float | None = None,
         hold_duration: float | None = None,
-    ) -> None:
+    ) -> ActionHandle:
         """启动表情 oneshot。hold_duration=None 表示保持到被 cancel。"""
         ...
 
@@ -73,22 +78,6 @@ class PerformanceHost(Protocol):
 
     async def launch_clear_native_expressions(self) -> None:
         """瞬时:清除原生表情。"""
-        ...
-
-    def bind_speak_anchors(
-        self,
-        on_start: Callable[[], None],
-        on_end: Callable[[], None],
-    ) -> Callable[[], None]:
-        """订阅下一次/当前 speak 的 start/end;返回 unbind。"""
-        ...
-
-    def bind_emotion_anchors(
-        self,
-        on_start: Callable[[], None],
-        on_end: Callable[[], None],
-    ) -> Callable[[], None]:
-        """订阅下一次/当前 play_emotion 的 start/end;返回 unbind。"""
         ...
 
 
@@ -568,13 +557,14 @@ class PerformanceService:
 
     async def _execute_speak(self, job: _Job, event: TimelineEvent, runtime: EventRuntime) -> None:
         params = event.params
-        await self._run_anchored_action(
+        subtitle = params.get("subtitle")
+        subtitle_s = subtitle if isinstance(subtitle, str) else None
+        await self._run_handle_action(
             job,
             event,
             runtime,
-            bind=self._host.bind_speak_anchors,
-            launch=lambda: self._host.launch_speak(str(params["text"])),
-            release=self._host.stop_speak,
+            launch=lambda: self._host.launch_speak(str(params["text"]), subtitle=subtitle_s),
+            global_release=self._host.stop_speak,
         )
 
     async def _execute_emotion(self, job: _Job, event: TimelineEvent, runtime: EventRuntime) -> None:
@@ -589,53 +579,32 @@ class PerformanceService:
         elif "hold_duration" in params:
             kwargs["hold_duration"] = float(params["hold_duration"])
 
-        await self._run_anchored_action(
+        await self._run_handle_action(
             job,
             event,
             runtime,
-            bind=self._host.bind_emotion_anchors,
             launch=lambda: self._host.launch_play_emotion(str(params["emotion"]), **kwargs),
-            release=self._host.cancel_play_emotion,
+            global_release=self._host.cancel_play_emotion,
         )
 
-    async def _run_anchored_action(
+    async def _run_handle_action(
         self,
         job: _Job,
         event: TimelineEvent,
         runtime: EventRuntime,
         *,
-        bind: Callable[[Callable[[], None], Callable[[], None]], Callable[[], None]],
-        launch: Callable[[], Any],
-        release: Callable[[], Any],
+        launch: Callable[[], Awaitable[ActionHandle]],
+        global_release: Callable[[], Awaitable[None]],
     ) -> None:
-        """通用:订阅 start/end 锚点 → 可选 end 约束 force-release → launch → 等 end。
+        """通用:launch → await handle 生命周期 → 可选 end 约束 force-release。
 
-        适用于任何「异步表演 + 锚点回报」的 type。
+        适用于任何「异步表演 + ActionHandle」的 type。
         force-release 只结束表演态;收尾由能力后台完成。
-        start/end 必须由底层能力通过 bind 回调上报,调度器不伪造。
+        start/end 时刻由 handle 反映的领域生命周期决定,调度器不伪造。
         """
 
-        started = asyncio.Event()
-        ended = asyncio.Event()
-
-        def _on_start() -> None:
-            if not started.is_set():
-                t = time.monotonic()
-                self._mark_anchor(job, event.id, AnchorPhase.START, t)
-                runtime.t_start = t
-                started.set()
-
-        def _on_end() -> None:
-            if not started.is_set():
-                _on_start()
-            if not ended.is_set():
-                t = time.monotonic()
-                self._mark_anchor(job, event.id, AnchorPhase.END, t)
-                runtime.t_end = t
-                ended.set()
-
-        unbind = bind(_on_start, _on_end)
         force_task: asyncio.Task[None] | None = None
+        handle: ActionHandle | None = None
         try:
             if job.cancel_event.is_set():
                 runtime.status = EventStatus.CANCELLED
@@ -643,27 +612,43 @@ class PerformanceService:
             if event.end is not None:
                 # 先挂 force 再 launch,避免 end 锚点极早就绪时竞态
                 force_task = asyncio.create_task(
-                    self._force_release_when(job, event, release),
+                    self._force_release_when(job, event, lambda: self._cancel_handle(handle, global_release)),
                     name=f"perf-end-{event.id}",
                 )
-            result = launch()
-            if asyncio.iscoroutine(result):
-                await result
-            while not ended.is_set():
+            handle = await launch()
+            # started
+            while not handle.started:
                 if job.cancel_event.is_set():
-                    rel = release()
-                    if asyncio.iscoroutine(rel):
-                        await rel
+                    await self._cancel_handle(handle, global_release)
+                    runtime.status = EventStatus.CANCELLED
+                    self._ensure_anchors_from_handle(job, event, runtime, handle)
+                    return
+                try:
+                    await asyncio.wait_for(handle.wait_started(), timeout=0.1)
+                except TimeoutError:
+                    continue
+            t0 = time.monotonic()
+            self._mark_anchor(job, event.id, AnchorPhase.START, t0)
+            runtime.t_start = t0
+
+            # ended
+            while not handle.ended:
+                if job.cancel_event.is_set():
+                    await self._cancel_handle(handle, global_release)
                     with contextlib.suppress(TimeoutError):
-                        await asyncio.wait_for(ended.wait(), timeout=1.0)
-                    if not ended.is_set():
-                        _on_end()
+                        await asyncio.wait_for(handle.wait_ended(), timeout=1.0)
+                    t1 = time.monotonic()
+                    self._mark_anchor(job, event.id, AnchorPhase.END, t1)
+                    runtime.t_end = t1
                     runtime.status = EventStatus.CANCELLED
                     return
                 try:
-                    await asyncio.wait_for(ended.wait(), timeout=0.1)
+                    await asyncio.wait_for(handle.wait_ended(), timeout=0.1)
                 except TimeoutError:
                     continue
+            t1 = time.monotonic()
+            self._mark_anchor(job, event.id, AnchorPhase.END, t1)
+            runtime.t_end = t1
             if runtime.status is not EventStatus.CANCELLED:
                 runtime.status = EventStatus.COMPLETED
         finally:
@@ -671,13 +656,39 @@ class PerformanceService:
                 force_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await force_task
-            unbind()
+
+    @staticmethod
+    async def _cancel_handle(
+        handle: ActionHandle | None,
+        global_release: Callable[[], Awaitable[None]],
+    ) -> None:
+        if handle is not None:
+            with contextlib.suppress(Exception):
+                await handle.cancel()
+            return
+        with contextlib.suppress(Exception):
+            await global_release()
+
+    def _ensure_anchors_from_handle(
+        self,
+        job: _Job,
+        event: TimelineEvent,
+        runtime: EventRuntime,
+        handle: ActionHandle,
+    ) -> None:
+        now = time.monotonic()
+        if handle.started and (event.id, AnchorPhase.START) not in job.anchors:
+            self._mark_anchor(job, event.id, AnchorPhase.START, now)
+            runtime.t_start = now
+        if handle.ended or handle.started:
+            self._mark_anchor(job, event.id, AnchorPhase.END, now)
+            runtime.t_end = now
 
     async def _force_release_when(
         self,
         job: _Job,
         event: TimelineEvent,
-        release: Callable[[], Any],
+        release: Callable[[], Awaitable[None]],
     ) -> None:
         """等到 end 约束到点后调用 release。
 
@@ -694,9 +705,7 @@ class PerformanceService:
                 await _wait_or_cancel(wait_s, job.cancel_event)
             if job.cancel_event.is_set():
                 return
-            result = release()
-            if asyncio.iscoroutine(result):
-                await result
+            await release()
         except asyncio.CancelledError:
             return
 

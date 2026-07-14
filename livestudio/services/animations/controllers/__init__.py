@@ -19,6 +19,7 @@ from .semantic import (
     MouthExpressionController,
     MouthSyncController,
     TTSpeakController,
+    TTSpeakRequest,
 )
 
 __all__ = [
@@ -40,4 +41,5 @@ __all__ = [
     "MouthSyncControllerSettings",
     "TTSpeakController",
     "TTSpeakControllerSettings",
+    "TTSpeakRequest",
 ]

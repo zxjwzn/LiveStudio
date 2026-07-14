@@ -1,49 +1,9 @@
-from collections.abc import Mapping
-from typing import Any, Final
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from livestudio.services.audio_stream.sources.tts.engines import FishAudioSpeakConfig
-from livestudio.services.audio_stream.sources.tts.engines.types import TtsProviderKind
-
-# 已从控制器配置中移除的字段名。旧 YAML 落盘时仍可能含这些键,加载前在此剥离,
-# 以兼容历史配置;各子类仍保持 ``extra="forbid"`` 拦截其它未知键(如手误拼写)。
-# 迁移垫片,确认无历史配置后可删。
-_DEPRECATED_CONTROLLER_FIELDS: Final[frozenset[str]] = frozenset(
-    {
-        # 通用
-        "enabled",
-        "priority",
-        "au_priority",
-        "neutral_priority",
-        # gaze 已固化为模块常量的字段
-        "head_follow_ratio",
-        "head_roll_ratio",
-        "head_pitch_ratio",
-        "head_follow_delay",
-        "head_follow_duration",
-        "min_saccade_duration",
-        "max_saccade_duration",
-        "reach_min_scale",
-        "min_fixation",
-        "max_fixation",
-        "center_bias",
-        "center_micro_chance",
-        "micro_gaze_x_amplitude",
-        "micro_gaze_y_amplitude",
-        "min_micro_duration",
-        "max_micro_duration",
-        "min_micro_fixation",
-        "max_micro_fixation",
-        "balance_window",
-        "drift_chance",
-        "min_drift_duration",
-        "max_drift_duration",
-        "dart_chance",
-        "min_dart_fixation",
-        "max_dart_fixation",
-    }
-)
+from livestudio.services.audio_stream.sources.tts.engines.fish_audio import FishAudioSpeakConfig
+from livestudio.services.audio_stream.sources.tts.engines.types import TtsProviderKind, TtsSpeakRequest
 
 
 class ControllerSettings(BaseModel):
@@ -54,16 +14,6 @@ class ControllerSettings(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _strip_deprecated_fields(cls, data: Any) -> Any:
-        """剥离历史配置中已移除的字段键,兼容旧 YAML。"""
-
-        if isinstance(data, dict):
-            for key in _DEPRECATED_CONTROLLER_FIELDS:
-                data.pop(key, None)
-        return data
 
 
 class BlinkControllerSettings(ControllerSettings):
@@ -250,8 +200,9 @@ class ExpressionControllerSettings(ControllerSettings):
 class TTSpeakControllerSettings(ControllerSettings):
     """TTS 发声 oneshot:kind 选中激活供应商,各供应商 speak 配置并列(未用也留配置)。
 
-    文本不进配置,运行时传入。密钥在全局 audio_stream.tts.<供应商>;
-    音色等发声参数在各供应商 speak 配置(如 fish_audio),由 kind 选中激活家。
+    合成/字幕文本运行时经 ``TTSpeakRequest`` 传入。
+    全局连接与 model/latency/speed 在 audio_stream.tts.<供应商>;
+    本配置仅保留 per-model 音色与字幕推送速率。
     """
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SPEAKERS"})
@@ -262,36 +213,21 @@ class TTSpeakControllerSettings(ControllerSettings):
     )
     fish_audio: FishAudioSpeakConfig = Field(
         default_factory=FishAudioSpeakConfig,
-        description="Fish Audio 发声参数(模型/说话人/延迟/语速)",
+        description="Fish Audio 发声参数(仅 reference_id/音色)",
+    )
+    subtitle_chars_per_second: float = Field(
+        default=8.0,
+        gt=0.0,
+        le=60.0,
+        description="字幕逐字推送速率(字/秒);仅影响字幕总线,不改变 TTS 音频",
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_flat_fields(cls, data: Any) -> Any:
-        """旧配置顶层 model/reference_id/extra -> fish_audio 子对象(迁移垫片)。"""
+    def as_speak_request(self) -> TtsSpeakRequest:
+        """构造引擎侧 ``TtsSpeakRequest``(kind + 激活供应商发声参数)。"""
 
-        if not isinstance(data, dict) or "fish_audio" in data:
-            return data
-        flat: dict[str, object] = {}
-        for key in ("model", "reference_id"):
-            if key in data:
-                flat[key] = data[key]
-        extra = data.get("extra")
-        if isinstance(extra, Mapping):
-            for key, value in extra.items():
-                if isinstance(key, str):
-                    flat[key] = value
-        if not flat:
-            return data
-        data = {k: v for k, v in data.items() if k not in ("model", "reference_id", "extra")}
-        data["fish_audio"] = flat
-        return data
-
-    def as_speak_opts(self) -> dict[str, object]:
-        """展开为 speak(**opts):kind + 激活供应商 speak 配置字段。"""
-
-        active = getattr(self, self.kind)
-        return {"kind": self.kind, **active.model_dump()}
+        if self.kind == "fish_audio":
+            return TtsSpeakRequest(kind=self.kind, fish_audio=self.fish_audio)
+        return TtsSpeakRequest(kind=self.kind)
 
 
 class AnimationControllerSettingsConfig(BaseModel):

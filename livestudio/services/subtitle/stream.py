@@ -4,24 +4,36 @@
 消费者(网页 WS)订阅。发送频率由生产者控制,流只扇出(满则丢最旧,不调度)。
 """
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
 from dataclasses import dataclass
-from typing import Literal
+from enum import StrEnum
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(slots=True)
-class SubtitleSegment:
+
+class SubtitleEventKind(StrEnum):
+    """字幕总线事件类型"""
+
+    BEGIN = "begin"
+    SEGMENTS = "segments"
+    FINISH = "finish"
+
+
+class SubtitleSegment(BaseModel):
     """一段字幕(词/字)及其在完整音频里的全局时间(秒)"""
+
+    model_config = ConfigDict(extra="forbid")
 
     text: str
     start: float
     end: float
 
 
-@dataclass(slots=True)
-class SubtitleEvent:
+class SubtitleEvent(BaseModel):
     """字幕总线事件
 
     - ``begin``:一次发声开始;``text`` 全文
@@ -29,7 +41,9 @@ class SubtitleEvent:
     - ``finish``:发声结束(正常或被取消/被新发声取代)
     """
 
-    kind: Literal["begin", "segments", "finish"]
+    model_config = ConfigDict(extra="forbid")
+
+    kind: SubtitleEventKind
     text: str | None = None
     segments: list[SubtitleSegment] | None = None
 
@@ -79,20 +93,18 @@ class SubtitleStream:
             with contextlib.suppress(asyncio.QueueFull):
                 queue.put_nowait(event)
 
-    # --- 生产者 API(由 TTS 源调用)---
-
     def begin(self, text: str) -> None:
         """一次发声开始:广播 begin(全文)"""
 
-        self._publish(SubtitleEvent(kind="begin", text=text))
+        self._publish(SubtitleEvent(kind=SubtitleEventKind.BEGIN, text=text))
 
     def publish_segments(self, segments: list[SubtitleSegment]) -> None:
         """广播增量字幕段(仅新增段)"""
 
         if segments:
-            self._publish(SubtitleEvent(kind="segments", segments=list(segments)))
+            self._publish(SubtitleEvent(kind=SubtitleEventKind.SEGMENTS, segments=list(segments)))
 
     def finish(self) -> None:
         """发声结束:广播 finish"""
 
-        self._publish(SubtitleEvent(kind="finish"))
+        self._publish(SubtitleEvent(kind=SubtitleEventKind.FINISH))

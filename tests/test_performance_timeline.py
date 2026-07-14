@@ -3,37 +3,66 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 
-from livestudio.services.performance import EventStatus, JobState, PerformanceService
+from livestudio.services.performance import EventActionHandle, EventStatus, JobState, PerformanceService
+
+
+class _HostSpeakHandle(EventActionHandle):
+    def __init__(self, host: RecordingHost) -> None:
+        super().__init__()
+        self._host = host
+
+    async def cancel(self) -> None:
+        await self._host.stop_speak()
+
+
+class _HostEmotionHandle(EventActionHandle):
+    def __init__(self, host: RecordingHost) -> None:
+        super().__init__()
+        self._host = host
+
+    async def cancel(self) -> None:
+        await self._host.cancel_play_emotion()
 
 
 class RecordingHost:
-    """可脚本化的 host:speak/emotion 用事件模拟锚点。"""
+    """可脚本化的 host:speak/emotion 返回 ActionHandle 模拟生命周期。"""
 
     def __init__(self) -> None:
         self.speaks: list[str] = []
+        self.subtitles: list[str] = []
         self.emotions: list[str] = []
         self.natives: list[tuple[str, bool]] = []
-        self._speak_start: Callable[[], None] | None = None
-        self._speak_end: Callable[[], None] | None = None
-        self._emotion_start: Callable[[], None] | None = None
-        self._emotion_end: Callable[[], None] | None = None
         self._speak_auto = True
         self._emotion_auto = True
+        self._active_speak: EventActionHandle | None = None
+        self._active_emotion: EventActionHandle | None = None
+        self._emotion_hold_open = False
+        self._emotion_restore_done: asyncio.Event | None = None
 
-    async def launch_speak(self, text: str) -> None:
+    async def launch_speak(self, text: str, *, subtitle: str | None = None) -> EventActionHandle:
         self.speaks.append(text)
+        if subtitle is not None:
+            self.subtitles.append(subtitle)
+        handle = _HostSpeakHandle(self)
+        self._active_speak = handle
         if self._speak_auto:
-            if self._speak_start:
-                self._speak_start()
-            await asyncio.sleep(0.05)
-            if self._speak_end:
-                self._speak_end()
+
+            async def _run() -> None:
+                handle.mark_started()
+                await asyncio.sleep(0.05)
+                handle.mark_ended()
+                if self._active_speak is handle:
+                    self._active_speak = None
+
+            asyncio.create_task(_run())
+        return handle
 
     async def stop_speak(self) -> None:
-        if self._speak_end:
-            self._speak_end()
+        handle = self._active_speak
+        if handle is not None:
+            handle.mark_ended()
+            self._active_speak = None
 
     async def launch_play_emotion(
         self,
@@ -42,73 +71,58 @@ class RecordingHost:
         intensity: float = 1.0,
         transition_duration: float | None = None,
         hold_duration: float | None | object = ...,
-    ) -> None:
-        """与真实 ExpressionController 一致: launch 快返回;无限保持靠 cancel 结束。
-
-        end 语义 = 开始回中性(不阻塞在恢复上)。cancel 只发信号,end 在短任务里触发。
-        """
+    ) -> EventActionHandle:
+        """与真实 ExpressionController 一致: launch 快返回;无限保持靠 cancel 结束。"""
 
         _ = (intensity, transition_duration)
         self.emotions.append(emotion)
+        handle = _HostEmotionHandle(self)
+        self._active_emotion = handle
         if not self._emotion_auto:
-            return
-        if self._emotion_start:
-            self._emotion_start()
+            return handle
+        handle.mark_started()
         if hold_duration is None:
-            # 无限保持:不阻塞 launch;cancel 后 fire end,恢复可后台继续
             self._emotion_hold_open = True
             self._emotion_restore_done = asyncio.Event()
-            return
-        await asyncio.sleep(0.03)
-        if self._emotion_end:
-            self._emotion_end()
-        # 模拟 end 后后台恢复
-        self._emotion_restore_done = asyncio.Event()
-        self._emotion_restore_done.set()
+            return handle
+
+        async def _run() -> None:
+            await asyncio.sleep(0.03)
+            handle.mark_ended()
+            if self._active_emotion is handle:
+                self._active_emotion = None
+            self._emotion_restore_done = asyncio.Event()
+            self._emotion_restore_done.set()
+
+        asyncio.create_task(_run())
+        return handle
 
     async def cancel_play_emotion(self) -> None:
-        """只释放 hold;end 立即 fire;恢复可在后台。"""
+        """只释放 hold;end 立即 mark;恢复可在后台。"""
 
-        if getattr(self, "_emotion_hold_open", False):
+        handle = self._active_emotion
+        if self._emotion_hold_open:
             self._emotion_hold_open = False
-            if self._emotion_end:
-                self._emotion_end()
-            # 后台模拟恢复耗时,不阻塞 cancel 返回
+            if handle is not None:
+                handle.mark_ended()
+                self._active_emotion = None
+
             async def _restore() -> None:
                 await asyncio.sleep(0.05)
-                if getattr(self, "_emotion_restore_done", None) is not None:
+                if self._emotion_restore_done is not None:
                     self._emotion_restore_done.set()
 
             asyncio.create_task(_restore())
             return
-        if self._emotion_end:
-            self._emotion_end()
+        if handle is not None:
+            handle.mark_ended()
+            self._active_emotion = None
 
     async def launch_set_native_expression(self, name: str, active: bool) -> None:
         self.natives.append((name, active))
 
     async def launch_clear_native_expressions(self) -> None:
         self.natives.append(("*", False))
-
-    def bind_speak_anchors(self, on_start, on_end):
-        self._speak_start = on_start
-        self._speak_end = on_end
-
-        def _unbind() -> None:
-            self._speak_start = None
-            self._speak_end = None
-
-        return _unbind
-
-    def bind_emotion_anchors(self, on_start, on_end):
-        self._emotion_start = on_start
-        self._emotion_end = on_end
-
-        def _unbind() -> None:
-            self._emotion_start = None
-            self._emotion_end = None
-
-        return _unbind
 
 
 def test_add_event_validates_and_binds() -> None:
@@ -197,7 +211,6 @@ async def test_queue_serial_second_job_waits() -> None:
     r2 = await svc.enqueue_draft()
     assert r1.state is JobState.RUNNING
     assert r2.state is JobState.PENDING
-    # 完成两者
     for _ in range(100):
         q = svc.list_jobs(include_finished=True)
         finished_ids = {j.job_id for j in q.finished}
@@ -282,6 +295,7 @@ async def test_clear_draft() -> None:
     svc.clear_draft()
     assert svc.get_draft().events == []
 
+
 async def test_end_constraint_emotion_until_speak_end() -> None:
     """通用 end 约束:表情 start=speak.start, end=speak.end,撑满语音。"""
 
@@ -313,7 +327,6 @@ async def test_end_constraint_emotion_until_speak_end() -> None:
     snap = svc.get_job(r.job_id)  # type: ignore[arg-type]
     assert snap is not None
     assert snap.state is JobState.COMPLETED
-    # 两个事件都应 completed
     by_id = {e.id: e for e in snap.events}
     assert by_id["s"].status is EventStatus.COMPLETED
     assert by_id["e"].status is EventStatus.COMPLETED
@@ -360,6 +373,5 @@ async def test_force_release_completes_event_before_restore() -> None:
     assert snap.state is JobState.COMPLETED
     by_id = {e.id: e for e in snap.events}
     assert by_id["e"].status is EventStatus.COMPLETED
-    # Job 完成后恢复才可能仍在进行;这里允许 restore 稍后完成
-    if getattr(host, "_emotion_restore_done", None) is not None:
+    if host._emotion_restore_done is not None:
         await asyncio.wait_for(host._emotion_restore_done.wait(), timeout=1.0)

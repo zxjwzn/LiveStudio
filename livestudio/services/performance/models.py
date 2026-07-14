@@ -141,7 +141,12 @@ def validate_event_params(event_type: EventType, params: dict[str, Any]) -> dict
         text = params.get("text")
         if not isinstance(text, str) or not text.strip():
             raise ValueError("speak 需要非空 params.text")
-        return {"text": text.strip()}
+        out: dict[str, Any] = {"text": text.strip()}
+        if "subtitle" in params and params["subtitle"] is not None:
+            if not isinstance(params["subtitle"], str):
+                raise ValueError("speak.subtitle 须为字符串")
+            out["subtitle"] = params["subtitle"]
+        return out
 
     if event_type is EventType.PLAY_EMOTION:
         emotion = params.get("emotion")

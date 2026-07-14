@@ -774,9 +774,9 @@ async def test_external_hold_release_runs_neutral_priority() -> None:
         ),
         _joy_return_profile(),
     )
-    ends: list[str] = []
-    controller.bind_emotion_anchors(lambda: None, lambda: ends.append("end"))
     await controller.execute(emotion=EmotionKind.JOY, hold_duration=None)
+    session = controller.current_session
+    assert session is not None
     for _ in range(5):
         await asyncio.sleep(0)
     smile_mid = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
@@ -786,10 +786,10 @@ async def test_external_hold_release_runs_neutral_priority() -> None:
     await controller.release_hold()
     # end 应很快触发(不依赖恢复完成)
     for _ in range(20):
-        if ends:
+        if session.ended:
             break
         await asyncio.sleep(0)
-    assert ends == ["end"]
+    assert session.ended
     await _drain(controller)
     smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]
     assert any(r.end_value == 0.5 and r.priority == EXPRESSION_NEUTRAL_PRIORITY for r in smile)
@@ -827,15 +827,19 @@ async def test_end_fires_before_restore_completes() -> None:
         _joy_return_profile(),
     )
 
-    def on_end() -> None:
+    await controller.execute(emotion=EmotionKind.JOY, hold_duration=0.0)
+    session = controller.current_session
+    assert session is not None
+
+    async def watch_end() -> None:
+        await session.wait_ended()
         ends.append("end")
-        # end 触发时,回归要么还没开始,要么已开始但未完成
         restore_seen_before_end["value"] = True
         restore_may_finish.set()
 
-    controller.bind_emotion_anchors(lambda: None, on_end)
-    await controller.execute(emotion=EmotionKind.JOY, hold_duration=0.0)
+    watcher = asyncio.create_task(watch_end())
     await _drain(controller)
+    await watcher
     assert ends == ["end"]
     assert restore_seen_before_end["value"]
     smile = [r for r in platform.requests if r.action_parameter_name == SemanticAction.MOUTH_SMILE.value]

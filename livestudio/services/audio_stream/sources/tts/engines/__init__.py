@@ -18,11 +18,12 @@ from .fish_audio import (
     FishAudioConnectionConfig,
     FishAudioEngine,
     FishAudioSpeakConfig,
+    FishAudioSpeakRequest,
 )
-from .types import TtsProviderKind
+from .types import TtsProviderKind, TtsSpeakRequest
 
-# 供应商注册表:kind -> 引擎工厂。新增供应商在此登记一行,并同步三处:
-#   TtsProviderKind Literal、TTSAudioStreamConfig 连接槽、TTSpeakControllerSettings speak 配置
+# 供应商注册表:kind -> 引擎工厂。新增供应商在此登记一行,并同步:
+#   TtsProviderKind、TTSAudioStreamConfig 连接槽、TTSpeakControllerSettings speak 配置
 TTS_ENGINES: dict[str, Callable[..., TtsEngine]] = {
     "fish_audio": FishAudioEngine,
 }
@@ -41,13 +42,15 @@ def make_engine(kind: str, connection: object, *, sample_rate: int, channels: in
 
 
 __all__ = [
+    "TTS_ENGINES",
     "FishAudioConnectionConfig",
     "FishAudioEngine",
     "FishAudioSpeakConfig",
-    "TTS_ENGINES",
+    "FishAudioSpeakRequest",
     "TtsAudioOutput",
     "TtsEngine",
     "TtsOutput",
     "TtsProviderKind",
+    "TtsSpeakRequest",
     "make_engine",
 ]

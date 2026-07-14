@@ -28,10 +28,10 @@ class ToolInfo:
 
 @dataclass(frozen=True, slots=True)
 class ToolGroup:
-    """一组工具:固有工具,或某平台的工具集"""
+    """一组工具:通用动词,或某平台的工具集"""
 
-    title: str  # 分组标题(如 "固有工具" / 平台展示名)
-    subtitle: str  # 分组副标题(平台说明;固有工具为固定说明)
+    title: str  # 分组标题(如 "通用工具" / 平台展示名)
+    subtitle: str  # 分组副标题
     tools: list[ToolInfo]
 
 
@@ -41,9 +41,11 @@ class McpBridge(QObject):
     configApplied = Signal(str, int)  # 应用成功后的 host, port
     errorOccurred = Signal(str)
 
-    # 固有工具分组的固定文案(与平台无关)。
-    _BUILTIN_TITLE = "固有工具"
-    _BUILTIN_SUBTITLE = "始终可用：平台管理(列出/切换)与通用控制(连接、待机动画、情绪等)；通用控制需先切到某平台后生效。"
+    _UNIVERSAL_TITLE = "通用工具"
+    _UNIVERSAL_SUBTITLE = (
+        "连接、待机动画、情绪与表演时间线(add_event → enqueue_draft)。"
+        "无需切换平台;登记的平台能力直接可用。"
+    )
 
     def __init__(self, server: LiveStudioMcpServer, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -65,21 +67,26 @@ class McpBridge(QObject):
         return self._server.is_started
 
     def tool_groups(self) -> list[ToolGroup]:
-        """全部工具分组:固有工具一组 + 每个平台一组。供视图一次性渲染。"""
+        """全部工具分组:通用动词一组 + 每个平台特有工具一组。"""
 
         groups = [
             ToolGroup(
-                title=self._BUILTIN_TITLE,
-                subtitle=self._BUILTIN_SUBTITLE,
+                title=self._UNIVERSAL_TITLE,
+                subtitle=self._UNIVERSAL_SUBTITLE,
                 tools=[ToolInfo(tool.name, tool.description or "") for tool in self._server.builtin_tools()],
             )
         ]
         for name, description, tools in self._server.platform_tools():
+            # platform_tools 现含通用+特有;展示时只列特有,避免与通用组重复
+            universal_names = {t.name for t in self._server.builtin_tools()}
+            specific = [t for t in tools if t.name not in universal_names]
+            if not specific:
+                continue
             groups.append(
                 ToolGroup(
                     title=name,
                     subtitle=description,
-                    tools=[ToolInfo(tool.name, tool.description or "") for tool in tools],
+                    tools=[ToolInfo(tool.name, tool.description or "") for tool in specific],
                 )
             )
         return groups

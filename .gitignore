@@ -21,5 +21,9 @@ docs/
 # GUI generated assets (中文字体从系统字体目录自动拷贝，不入库)
 livestudio/gui/assets/fonts/
 
+# 字幕/前端字体资源(二进制大文件不入库;保留目录与 README)
+resources/fonts/*
+!resources/fonts/README.md
+
 # 本地 IDE MCP 客户端配置(指向本机服务,因机器而异;同目录 launch.json/settings.json 仍共享入库)
 .vscode/mcp.json

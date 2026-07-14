@@ -276,26 +276,30 @@ class BasePlatformApp(AsyncServiceLifecycleMixin, ABC, Generic[TPlatform, TModel
             kwargs["hold_duration"] = hold_duration  # may be None = infinite
         await runtime.execute_controller(EXPRESSION_CONTROLLER, **kwargs)
 
-    async def speak(self, text: str, **opts: object) -> None:
-        """触发一次 TTS 发声,经 TTSpeak 控制器(配置驱动音色/连接校验/切源/合成)。
+    async def speak(self, text: str, *, subtitle: str | None = None) -> None:
+        """触发一次 TTS 发声,经 TTSpeak 控制器(配置驱动音色/连接校验/切源/合成/字幕)。
 
-        文本校验在此抛错供 MCP 即时反馈;音色合并、连接槽校验、切源、调 tts_source 全部
-        收敛到 ``TTSpeakController.execute``,本方法仅作平台无关公开入口(供 MCP/GUI 调用),
-        不再直连 tts_source。需已连接并加载模型(控制器就绪)。
+        文本校验在此抛错供 MCP 即时反馈;切源、调 tts_source、字幕推送全部收敛到
+        ``TTSpeakController.execute``。需已连接并加载模型(控制器就绪)。
 
         Args:
-            text: 要朗读的文本(非空)。
-            **opts: 可选覆盖激活供应商 speak 配置字段(如 Fish 的 model/reference_id/latency/speed),透传给控制器 execute。
+            text: 合成文本(非空)。
+            subtitle: 字幕全文; ``None`` 表示与 text 相同; 空串表示不推字幕。
         """
 
         if not isinstance(text, str):
             raise TypeError("speak 文本须为 str")
         if not text.strip():
             raise ValueError("speak 文本不能为空")
+        if subtitle is not None and not isinstance(subtitle, str):
+            raise TypeError("subtitle 须为 str 或 None")
         runtime = self.animation_manager.get_runtime(self.platform.name)
         if TTS_SPEAK_CONTROLLER not in runtime.controllers:
             raise RuntimeError("TTSpeak 控制器未就绪(请先连接并加载模型)")
-        await runtime.execute_controller(TTS_SPEAK_CONTROLLER, text=text.strip(), **opts)
+        payload: dict[str, object] = {"text": text.strip()}
+        if subtitle is not None:
+            payload["subtitle"] = subtitle
+        await runtime.execute_controller(TTS_SPEAK_CONTROLLER, **payload)
 
     async def stop_speaking(self) -> None:
         """停止进行中的 TTS 发声(幂等),经 TTSpeak 控制器。"""

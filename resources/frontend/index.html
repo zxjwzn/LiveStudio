@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时字幕</title>
+    <style>
+        html, body {
+            background-color: transparent;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+            font-family: sans-serif;
+        }
+
+        #subtitle-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            user-select: none;
+        }
+
+        #subtitle-text {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 20px;
+            color: white;
+            font-size: 3vw;
+            text-align: center;
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        #connection-status {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #888888;
+            font-size: 2.5vw;
+            text-align: center;
+            display: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="subtitle-container">
+        <p id="subtitle-text"></p>
+    </div>
+    <div id="connection-status">未连接到字幕</div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const subtitleTextElement = document.getElementById("subtitle-text");
+            const subtitleContainer = document.getElementById("subtitle-container");
+            const connectionStatus = document.getElementById("connection-status");
+
+            /** @type {WebSocket|null} */
+            let ws = null;
+            /** @type {AbortController|null} */
+            let currentDisplayTask = null;
+            /** @type {ReturnType<typeof setTimeout>|null} */
+            let autoClearTimeout = null;
+            /** @type {ReturnType<typeof setInterval>|null} */
+            let heartbeatInterval = null;
+            /** @type {ReturnType<typeof requestAnimationFrame>|null} */
+            let rafId = null;
+
+            let forceFinish = false;
+            /** @type {object|null} */
+            let currentMessageData = null;
+            /** @type {{text:string,start:number,end:number}[]} */
+            let segments = [];
+            let audioDelayMs = 120;
+            let clearDelayMs = 2000;
+            /** @type {number|null} performance.now() origin for segment clock */
+            let clockOrigin = null;
+            let waitingForNewMessage = false;
+            const loadedFonts = new Map();
+
+            showConnectionStatus();
+            connect();
+
+            function showConnectionStatus() {
+                connectionStatus.style.display = "block";
+                subtitleTextElement.textContent = "";
+            }
+
+            function hideConnectionStatus() {
+                connectionStatus.style.display = "none";
+            }
+
+            function connect() {
+                const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+                const host = window.location.host;
+                ws = new WebSocket(`${protocol}//${host}/ws/subtitles`);
+
+                ws.onopen = () => {
+                    console.log("字幕 WebSocket 已连接");
+                    hideConnectionStatus();
+                    startHeartbeat();
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        if (!message || typeof message !== "object") return;
+                        switch (message.type) {
+                            case "pong":
+                                return;
+                            case "begin":
+                                handleBeginMessage(message.data || {});
+                                return;
+                            case "segments":
+                                handleSegmentsMessage(message.data || {});
+                                return;
+                            case "finish":
+                                handleFinishMessage();
+                                return;
+                            default:
+                                return;
+                        }
+                    } catch (error) {
+                        console.error("解析消息失败:", error);
+                    }
+                };
+
+                ws.onclose = () => {
+                    console.log("字幕 WebSocket 已断开，尝试 3 秒后重连...");
+                    showConnectionStatus();
+                    stopHeartbeat();
+                    stopClock();
+                    if (currentDisplayTask) currentDisplayTask.abort();
+                    setTimeout(connect, 3000);
+                };
+
+                ws.onerror = (error) => {
+                    console.error("WebSocket 错误:", error);
+                    showConnectionStatus();
+                    try { ws && ws.close(); } catch (_) {}
+                };
+            }
+
+            function startHeartbeat() {
+                stopHeartbeat();
+                heartbeatInterval = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: "ping" }));
+                    }
+                }, 30000);
+            }
+
+            function stopHeartbeat() {
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                }
+            }
+
+            function clearAutoClearTimeout() {
+                if (autoClearTimeout) {
+                    clearTimeout(autoClearTimeout);
+                    autoClearTimeout = null;
+                }
+            }
+
+            function stopClock() {
+                if (rafId != null) {
+                    cancelAnimationFrame(rafId);
+                    rafId = null;
+                }
+            }
+
+            function scheduleClear() {
+                clearAutoClearTimeout();
+                waitingForNewMessage = true;
+                autoClearTimeout = setTimeout(() => {
+                    if (!waitingForNewMessage) return;
+                    subtitleTextElement.textContent = "";
+                    currentMessageData = null;
+                    segments = [];
+                    clockOrigin = null;
+                    waitingForNewMessage = false;
+                    stopClock();
+                }, Math.max(0, clearDelayMs));
+            }
+
+            function handleBeginMessage(data) {
+                waitingForNewMessage = false;
+                clearAutoClearTimeout();
+                stopClock();
+                if (currentDisplayTask) currentDisplayTask.abort();
+
+                forceFinish = false;
+                currentMessageData = data;
+                segments = [];
+                audioDelayMs = typeof data.audio_delay_ms === "number" ? data.audio_delay_ms : 120;
+                clearDelayMs = typeof data.clear_delay_ms === "number" ? data.clear_delay_ms : 2000;
+                // clock starts after audio_delay so display aligns with speaker
+                clockOrigin = performance.now() + audioDelayMs;
+
+                currentDisplayTask = new AbortController();
+                prepareStyleAndShow(data, currentDisplayTask.signal).catch((err) => {
+                    if (err && err.name === "AbortError") {
+                        if (forceFinish) showCompleteTextAndWaitToClear();
+                        return;
+                    }
+                    console.error("显示任务出错:", err);
+                });
+            }
+
+            function handleSegmentsMessage(data) {
+                const list = (data && data.segments) || [];
+                for (const s of list) {
+                    if (!s || typeof s.text !== "string") continue;
+                    segments.push({
+                        text: s.text,
+                        start: Number(s.start) || 0,
+                        end: Number(s.end) || 0,
+                    });
+                }
+                if (clockOrigin == null) {
+                    clockOrigin = performance.now() + audioDelayMs;
+                }
+                if (rafId == null && currentMessageData) {
+                    rafId = requestAnimationFrame(tickSegments);
+                }
+            }
+
+            function handleFinishMessage() {
+                forceFinish = true;
+                if (currentDisplayTask) currentDisplayTask.abort();
+                if (currentMessageData) showCompleteTextAndWaitToClear();
+            }
+
+            function showCompleteTextAndWaitToClear() {
+                if (!currentMessageData) return;
+                if (segments.length) {
+                    subtitleTextElement.textContent = segments.map((s) => s.text).join("");
+                } else {
+                    subtitleTextElement.textContent = currentMessageData.text || "";
+                }
+                checkAndAdjustLayout();
+                stopClock();
+                scheduleClear();
+            }
+
+            function visibleTextAt(tSec) {
+                if (!segments.length) return currentMessageData ? (currentMessageData.text || "") : "";
+                let out = "";
+                for (const s of segments) {
+                    if (tSec + 1e-6 >= s.start) out += s.text;
+                }
+                return out;
+            }
+
+            function tickSegments() {
+                rafId = null;
+                if (clockOrigin == null || !currentMessageData) return;
+                const tSec = (performance.now() - clockOrigin) / 1000;
+                const text = visibleTextAt(tSec);
+                if (subtitleTextElement.textContent !== text) {
+                    subtitleTextElement.textContent = text;
+                    checkAndAdjustLayout();
+                }
+                rafId = requestAnimationFrame(tickSegments);
+            }
+
+            async function prepareStyleAndShow(data, signal) {
+                subtitleTextElement.textContent = "";
+                const fontName = await loadFont(data.font_path);
+                if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+
+                subtitleTextElement.style.fontFamily = fontName;
+                if (typeof data.font_size === "number" && data.font_size > 0) {
+                    subtitleTextElement.style.fontSize = `${data.font_size}px`;
+                }
+                if (data.font_color) {
+                    subtitleTextElement.style.color = data.font_color;
+                }
+                applyTextStroke(data.font_edge_color, data.font_edge_width);
+
+                // 有 segments 时按时间轴显示; 无 segments 时按字速回退(默认 8 字/秒)
+                // 先等 audio_delay, 再开始
+                const delay = Math.max(0, audioDelayMs);
+                if (delay > 0) await sleep(delay, signal);
+
+                if (segments.length) {
+                    if (rafId == null) rafId = requestAnimationFrame(tickSegments);
+                    // 保持任务存活直到 abort/finish
+                    await waitAbort(signal);
+                    return;
+                }
+
+                const text = data.text || "";
+                const speed = 8;
+                const interval = 1000 / speed;
+                for (const char of text) {
+                    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+                    subtitleTextElement.textContent += char;
+                    checkAndAdjustLayout();
+                    await sleep(interval, signal);
+                }
+                scheduleClear();
+            }
+
+            function applyTextStroke(edgeColor, edgeWidth) {
+                if (!edgeWidth || edgeWidth <= 0) {
+                    subtitleTextElement.style.webkitTextStroke = "";
+                    subtitleTextElement.style.textStroke = "";
+                    // 保留轻微阴影以便透明底可读
+                    subtitleTextElement.style.textShadow = "2px 2px 4px rgba(0, 0, 0, 0.7)";
+                    return;
+                }
+                const strokeColor = edgeColor || "#000000";
+                subtitleTextElement.style.webkitTextStroke = `${edgeWidth}px ${strokeColor}`;
+                subtitleTextElement.style.textStroke = `${edgeWidth}px ${strokeColor}`;
+                subtitleTextElement.style.textShadow = "none";
+            }
+
+            function checkAndAdjustLayout() {
+                let currentFontSize = parseFloat(window.getComputedStyle(subtitleTextElement).fontSize);
+                while (
+                    subtitleTextElement.scrollHeight > subtitleContainer.clientHeight &&
+                    currentFontSize > 10
+                ) {
+                    currentFontSize -= 1;
+                    subtitleTextElement.style.fontSize = `${currentFontSize}px`;
+                }
+            }
+
+            async function loadFont(fontPath) {
+                if (!fontPath) return "sans-serif";
+                // 仅允许 resources/fonts 下的纯文件名(禁止路径穿越)
+                const raw = String(fontPath).replace(/\\/g, "/");
+                const base = raw.split("/").pop() || "";
+                if (!base || base !== raw || base.includes("..")) {
+                    console.warn("拒绝不安全的 font_path:", fontPath);
+                    return "sans-serif";
+                }
+                if (loadedFonts.has(base)) return loadedFonts.get(base);
+
+                const cleanFontName = base.split(".").slice(0, -1).join(".") || base;
+                const fontUrl = `/fonts/${encodeURIComponent(base)}`;
+                const fontFace = new FontFace(cleanFontName, `url(${fontUrl})`);
+                try {
+                    await fontFace.load();
+                    document.fonts.add(fontFace);
+                    loadedFonts.set(base, cleanFontName);
+                    console.log(`字体已加载: /fonts/${base} as '${cleanFontName}'`);
+                    return cleanFontName;
+                } catch (error) {
+                    console.error(`加载字体失败: /fonts/${base}`, error);
+                    return "sans-serif";
+                }
+            }
+
+            function sleep(ms, signal) {
+                return new Promise((resolve, reject) => {
+                    if (signal && signal.aborted) {
+                        reject(new DOMException("Aborted", "AbortError"));
+                        return;
+                    }
+                    const timer = setTimeout(resolve, ms);
+                    if (signal) {
+                        const onAbort = () => {
+                            clearTimeout(timer);
+                            reject(new DOMException("Aborted", "AbortError"));
+                        };
+                        signal.addEventListener("abort", onAbort, { once: true });
+                    }
+                });
+            }
+
+            function waitAbort(signal) {
+                return new Promise((_, reject) => {
+                    if (signal.aborted) {
+                        reject(new DOMException("Aborted", "AbortError"));
+                        return;
+                    }
+                    signal.addEventListener(
+                        "abort",
+                        () => reject(new DOMException("Aborted", "AbortError")),
+                        { once: true },
+                    );
+                });
+            }
+        });
+    </script>
+</body>
+</html>

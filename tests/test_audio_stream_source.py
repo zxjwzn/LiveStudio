@@ -821,3 +821,36 @@ async def test_tts_present_does_not_burst_whole_utterance(monkeypatch) -> None:
     assert 4 <= non_silent <= 20
     await source.stop_speaking()
     await source.stop()
+
+async def test_speak_session_starts_on_first_engine_pcm_not_silence(monkeypatch) -> None:
+    """SpeakSession.started 在引擎 PCM 上总线时才置位,合成前静音占位不算。"""
+
+    gate = asyncio.Event()
+    frames = 800  # 两帧 @24k/60
+
+    class _GatedEngine:
+        def __init__(self, *, sample_rate: int = 24000, channels: int = 1) -> None:
+            self.sample_rate = sample_rate
+            self.channels = channels
+
+        async def synthesize(self, _text: str, **_opts: object):
+            await gate.wait()
+            data = np.full((frames, 1), 0.4, dtype=np.float32)
+            yield TtsAudioOutput(data=data, frames=frames)
+
+    monkeypatch.setattr(
+        tts_module,
+        "make_engine",
+        lambda _kind, _conn, **kw: _GatedEngine(**kw),
+    )
+    source = TTSAudioStreamSource(TTSAudioStreamConfig(samplerate=24000))
+    await source.start()
+    session = await source.speak("gate")
+    # present 会先推静音占位,但 started 仍应 false
+    await asyncio.sleep(0.08)
+    assert not session.started
+    gate.set()
+    await asyncio.wait_for(session.wait_started(), timeout=1.0)
+    assert session.started
+    await source.stop_speaking()
+    await source.stop()

@@ -9,36 +9,44 @@ from __future__ import annotations
 from typing import Any
 
 from livestudio.mcp.toolset import PlatformToolset, tool
-from livestudio.services.performance import PerformanceService
+from livestudio.services.performance import EventActionHandle, PerformanceService
 
 
 class _FakeHost:
-    """PerformanceHost 桩:speak/emotion 自动触发 start/end 锚点,供 MCP 端到端测。"""
+    """PerformanceHost 桩:speak/emotion 返回 ActionHandle,供 MCP 端到端测。"""
 
     def __init__(self) -> None:
         import asyncio
 
         self.asyncio = asyncio
         self.speaks: list[str] = []
+        self.subtitles: list[str | None] = []
         self.emotions: list[str] = []
         self.natives: list[tuple[str, bool]] = []
-        self._speak_start = None
-        self._speak_end = None
-        self._emotion_start = None
-        self._emotion_end = None
-        self._emotion_hold_event = None
+        self._active_speak: EventActionHandle | None = None
+        self._active_emotion: EventActionHandle | None = None
+        self._emotion_hold_open = False
 
-    async def launch_speak(self, text: str) -> None:
+    async def launch_speak(self, text: str, *, subtitle: str | None = None) -> EventActionHandle:
         self.speaks.append(text)
-        if self._speak_start:
-            self._speak_start()
-        await self.asyncio.sleep(0.03)
-        if self._speak_end:
-            self._speak_end()
+        self.subtitles.append(subtitle)
+        handle = EventActionHandle()
+        self._active_speak = handle
+
+        async def _run() -> None:
+            handle.mark_started()
+            await self.asyncio.sleep(0.03)
+            handle.mark_ended()
+            if self._active_speak is handle:
+                self._active_speak = None
+
+        self.asyncio.create_task(_run())
+        return handle
 
     async def stop_speak(self) -> None:
-        if self._speak_end:
-            self._speak_end()
+        if self._active_speak is not None:
+            await self._active_speak.cancel()
+            self._active_speak = None
 
     async def launch_play_emotion(
         self,
@@ -47,54 +55,42 @@ class _FakeHost:
         intensity: float = 1.0,
         transition_duration: float | None = None,
         hold_duration: float | None | object = ...,
-    ) -> None:
+    ) -> EventActionHandle:
         _ = (intensity, transition_duration)
         self.emotions.append(emotion)
-        self._emotion_hold = hold_duration
-        if self._emotion_start:
-            self._emotion_start()
+        handle = EventActionHandle()
+        self._active_emotion = handle
+        handle.mark_started()
         if hold_duration is None:
             # 无限保持:快返回;cancel 发 end,恢复后台
             self._emotion_hold_open = True
-            return
-        await self.asyncio.sleep(0.02)
-        if self._emotion_end:
-            self._emotion_end()
+            return handle
+
+        async def _run() -> None:
+            await self.asyncio.sleep(0.02)
+            handle.mark_ended()
+            if self._active_emotion is handle:
+                self._active_emotion = None
+
+        self.asyncio.create_task(_run())
+        return handle
 
     async def cancel_play_emotion(self) -> None:
-        if getattr(self, "_emotion_hold_open", False):
+        if self._emotion_hold_open:
             self._emotion_hold_open = False
-            if self._emotion_end:
-                self._emotion_end()
+            if self._active_emotion is not None:
+                self._active_emotion.mark_ended()
+                self._active_emotion = None
             return
-        if self._emotion_end:
-            self._emotion_end()
+        if self._active_emotion is not None:
+            self._active_emotion.mark_ended()
+            self._active_emotion = None
 
     async def launch_set_native_expression(self, name: str, active: bool) -> None:
         self.natives.append((name, active))
 
     async def launch_clear_native_expressions(self) -> None:
         self.natives.append(("*", False))
-
-    def bind_speak_anchors(self, on_start, on_end):
-        self._speak_start = on_start
-        self._speak_end = on_end
-
-        def _unbind() -> None:
-            self._speak_start = None
-            self._speak_end = None
-
-        return _unbind
-
-    def bind_emotion_anchors(self, on_start, on_end):
-        self._emotion_start = on_start
-        self._emotion_end = on_end
-
-        def _unbind() -> None:
-            self._emotion_start = None
-            self._emotion_end = None
-
-        return _unbind
 
 
 # 基类固有通用动词名(connect/disconnect/待机动画/控制器/模型/情绪只读 + 时间线)。
@@ -107,6 +103,7 @@ UNIVERSAL_VERBS = {
     "list_controllers",
     "set_controller",
     "list_emotions",
+    "list_native_expressions",
     "add_event",
     "remove_event",
     "get_draft",
@@ -149,6 +146,9 @@ class _FakeApp:
 
     def available_emotions(self) -> list[str]:
         return ["joy", "neutral"]
+
+    def native_expressions(self) -> list[str]:
+        return ["Smile", "Cry"]
 
     def performance_add_event(
         self,

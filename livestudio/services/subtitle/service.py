@@ -4,6 +4,10 @@
 浏览器(OBS 源)。独立 uvicorn + Starlette,生命周期与 MCP 同构:传输跑在专用任务,
 避免 anyio cancel scope 跨任务退出。
 
+静态资源(与动画模板同属 RESOURCE_DIR):
+  resources/frontend/index.html
+  resources/fonts/*   → 挂载为 /fonts (只读,无任意 path 参数)
+
 协议(服务端 → 浏览器):
   {"type":"begin","data":{text, font_*, audio_delay_ms, clear_delay_ms}}
   {"type":"segments","data":{"segments":[{"text","start","end"}, ...]}}
@@ -15,29 +19,44 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 from pathlib import Path
 
 import uvicorn
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
-from starlette.routing import Route, WebSocketRoute
+from starlette.responses import FileResponse, HTMLResponse, Response
+from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from livestudio.config import ConfigManager
 from livestudio.services.lifecycle import AsyncServiceLifecycleMixin
 from livestudio.utils.log import logger
-from livestudio.utils.paths import PROJECT_ROOT, config_path
+from livestudio.utils.paths import PROJECT_ROOT, config_path, resource_path
 
 from .config import SubtitleConfig
-from .stream import SubtitleEvent, SubtitleStream, SubtitleSubscription
+from .protocol import (
+    SubtitleBeginData,
+    SubtitleBeginMessage,
+    SubtitleFinishMessage,
+    SubtitleMessageType,
+    SubtitlePingMessage,
+    SubtitlePongMessage,
+    SubtitleSegmentsData,
+    SubtitleSegmentsMessage,
+    SubtitleServerMessage,
+    SubtitleWireSegment,
+)
+from .stream import SubtitleEvent, SubtitleEventKind, SubtitleStream, SubtitleSubscription
 
 _GRACEFUL_SHUTDOWN_TIMEOUT = 1
+# 与动画模板同属 RESOURCE_DIR
 _HTML_CANDIDATES = (
-    PROJECT_ROOT / "docs" / "index.html",
+    resource_path("frontend", "index.html"),
     Path(__file__).resolve().parent / "static" / "index.html",
+    PROJECT_ROOT / "docs" / "index.html",
 )
+_FONTS_DIR = resource_path("fonts")
 
 
 class SubtitleService(AsyncServiceLifecycleMixin):
@@ -90,7 +109,6 @@ class SubtitleService(AsyncServiceLifecycleMixin):
             await self._stop_relay()
             logger.info("字幕服务已按配置停用传输")
             return
-        # 已启用:确保中继与传输在跑(可能从 disabled 切来,或改 host/port)
         if self._relay_task is None or self._relay_task.done():
             await self._start_relay()
         await self._restart_transport()
@@ -147,36 +165,36 @@ class SubtitleService(AsyncServiceLifecycleMixin):
         except Exception:
             logger.exception("字幕中继任务异常")
 
-    def _event_to_message(self, event: SubtitleEvent) -> dict[str, object] | None:
+    def _event_to_message(self, event: SubtitleEvent) -> SubtitleServerMessage | None:
         cfg = self.config
-        if event.kind == "begin":
-            return {
-                "type": "begin",
-                "data": {
-                    "text": event.text or "",
-                    "font_path": cfg.font_path,
-                    "font_size": cfg.font_size,
-                    "font_color": cfg.font_color,
-                    "font_edge_color": cfg.font_edge_color,
-                    "font_edge_width": cfg.font_edge_width,
-                    "audio_delay_ms": cfg.audio_delay_ms,
-                    "clear_delay_ms": cfg.clear_delay_ms,
-                },
-            }
-        if event.kind == "segments":
+        if event.kind is SubtitleEventKind.BEGIN:
+            return SubtitleBeginMessage(
+                data=SubtitleBeginData(
+                    text=event.text or "",
+                    font_path=cfg.font_path,
+                    font_size=cfg.font_size,
+                    font_color=cfg.font_color,
+                    font_edge_color=cfg.font_edge_color,
+                    font_edge_width=cfg.font_edge_width,
+                    audio_delay_ms=cfg.audio_delay_ms,
+                    clear_delay_ms=cfg.clear_delay_ms,
+                ),
+            )
+        if event.kind is SubtitleEventKind.SEGMENTS:
             segs = event.segments or []
-            return {
-                "type": "segments",
-                "data": {
-                    "segments": [{"text": s.text, "start": s.start, "end": s.end} for s in segs],
-                },
-            }
-        if event.kind == "finish":
-            return {"type": "finish"}
+            return SubtitleSegmentsMessage(
+                data=SubtitleSegmentsData(
+                    segments=[
+                        SubtitleWireSegment(text=s.text, start=s.start, end=s.end) for s in segs
+                    ],
+                ),
+            )
+        if event.kind is SubtitleEventKind.FINISH:
+            return SubtitleFinishMessage()
         return None
 
-    async def _broadcast(self, message: dict[str, object]) -> None:
-        payload = json.dumps(message, ensure_ascii=False)
+    async def _broadcast(self, message: SubtitleServerMessage) -> None:
+        payload = message.model_dump_json()
         async with self._clients_lock:
             clients = list(self._clients)
         dead: list[WebSocket] = []
@@ -192,28 +210,14 @@ class SubtitleService(AsyncServiceLifecycleMixin):
 
     def _build_app(self) -> Starlette:
         service = self
+        fonts_dir = _FONTS_DIR
+        fonts_dir.mkdir(parents=True, exist_ok=True)
 
         async def index(_request: Request) -> Response:
             for path in _HTML_CANDIDATES:
                 if path.is_file():
                     return FileResponse(path, media_type="text/html; charset=utf-8")
             return HTMLResponse("<h1>subtitle page missing</h1>", status_code=404)
-
-        async def font_file(request: Request) -> Response:
-            raw = request.query_params.get("path", "")
-            if not raw:
-                return PlainTextResponse("missing path", status_code=400)
-            path = Path(raw).expanduser()
-            if not path.is_file():
-                return PlainTextResponse("not found", status_code=404)
-            suffix = path.suffix.lower()
-            media = {
-                ".ttf": "font/ttf",
-                ".otf": "font/otf",
-                ".woff": "font/woff",
-                ".woff2": "font/woff2",
-            }.get(suffix, "application/octet-stream")
-            return FileResponse(path, media_type=media)
 
         async def websocket_endpoint(websocket: WebSocket) -> None:
             await websocket.accept()
@@ -223,11 +227,11 @@ class SubtitleService(AsyncServiceLifecycleMixin):
                 while True:
                     raw = await websocket.receive_text()
                     try:
-                        msg = json.loads(raw)
-                    except json.JSONDecodeError:
+                        msg = SubtitlePingMessage.model_validate_json(raw)
+                    except Exception:
                         continue
-                    if isinstance(msg, dict) and msg.get("type") == "ping":
-                        await websocket.send_text(json.dumps({"type": "pong"}))
+                    if msg.type is SubtitleMessageType.PING:
+                        await websocket.send_text(SubtitlePongMessage().model_dump_json())
             except WebSocketDisconnect:
                 pass
             except Exception:
@@ -239,7 +243,8 @@ class SubtitleService(AsyncServiceLifecycleMixin):
         return Starlette(
             routes=[
                 Route("/", endpoint=index),
-                Route("/fonts", endpoint=font_file),
+                # 只挂载 resources/fonts,禁止任意 path 读盘
+                Mount("/fonts", app=StaticFiles(directory=str(fonts_dir)), name="fonts"),
                 WebSocketRoute("/ws/subtitles", endpoint=websocket_endpoint),
             ],
         )
@@ -285,4 +290,3 @@ class SubtitleService(AsyncServiceLifecycleMixin):
                 await task
         async with self._clients_lock:
             self._clients.clear()
-

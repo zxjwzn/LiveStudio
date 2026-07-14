@@ -87,12 +87,12 @@ async def test_speak_delegates_to_ttspeak_controller() -> None:
     assert runtime.executed == [(TTS_SPEAK_CONTROLLER, {"text": "你好"})]
 
 
-async def test_speak_strips_text_and_forwards_opts() -> None:
-    """文本去空白;opts(model 等)透传给控制器 execute。"""
+async def test_speak_strips_text_and_forwards_subtitle() -> None:
+    """文本去空白;subtitle 透传给控制器 execute。"""
 
     app, runtime = _make_app()
-    await app.speak("  hi  ", model="s2.1-pro")  # type: ignore[call-arg]
-    assert runtime.executed == [(TTS_SPEAK_CONTROLLER, {"text": "hi", "model": "s2.1-pro"})]
+    await app.speak("  hi  ", subtitle="字幕")
+    assert runtime.executed == [(TTS_SPEAK_CONTROLLER, {"text": "hi", "subtitle": "字幕"})]
 
 
 async def test_speak_empty_raises() -> None:

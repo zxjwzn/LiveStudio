@@ -15,9 +15,12 @@ from livestudio.services.audio_stream.sources.tts.engines import (
 )
 
 
-def test_global_tts_config_has_fish_slot() -> None:
+def test_global_tts_config_has_fish_slot_with_global_params() -> None:
     cfg = TTSAudioStreamConfig()
     assert isinstance(cfg.fish_audio, FishAudioConnectionConfig)
+    assert cfg.fish_audio.model == "s2.1-pro-free"
+    assert cfg.fish_audio.latency == "balanced"
+    assert cfg.fish_audio.speed == 1.0
 
 
 def test_make_engine_fish() -> None:
@@ -42,32 +45,22 @@ def test_tts_engines_registry_has_fish() -> None:
 def test_tts_speak_settings_structured() -> None:
     s = TTSpeakControllerSettings(
         kind="fish_audio",
-        fish_audio=FishAudioSpeakConfig(model="s1", reference_id="v", speed=1.5),
+        fish_audio=FishAudioSpeakConfig(reference_id="v"),
     )
-    opts = s.as_speak_opts()
-    assert opts["kind"] == "fish_audio"
-    assert opts["model"] == "s1"
-    assert opts["reference_id"] == "v"
-    assert opts["speed"] == 1.5
-    assert opts["latency"] == "balanced"  # 默认值
+    req = s.as_speak_request()
+    assert req.kind == "fish_audio"
+    assert req.fish_audio.reference_id == "v"
+    assert set(FishAudioSpeakConfig.model_fields) == {"reference_id"}
 
 
-def test_tts_speak_settings_migrates_flat_fields() -> None:
-    """旧配置顶层 model/reference_id/extra -> fish_audio 子对象(迁移垫片)。
-
-    用 model_validate(dict) 模拟真实配置加载(旧字段非声明字段,经 before-validator 消化)。
-    """
-    s = TTSpeakControllerSettings.model_validate({
-        "kind": "fish_audio",
-        "model": "s1",
-        "reference_id": "v",
-        "extra": {"speed": 1.5, "latency": "low"},
-    })
-    assert s.fish_audio.model == "s1"
-    assert s.fish_audio.reference_id == "v"
-    assert s.fish_audio.speed == 1.5
-    assert s.fish_audio.latency == "low"
-    opts = s.as_speak_opts()
-    assert opts["model"] == "s1"
-    assert opts["speed"] == 1.5
-    assert opts["latency"] == "low"
+def test_tts_speak_settings_rejects_unknown_fields() -> None:
+    with pytest.raises(Exception):
+        TTSpeakControllerSettings.model_validate({
+            "kind": "fish_audio",
+            "fish_audio": {
+                "reference_id": "v",
+                "model": "s1",
+                "latency": "low",
+                "speed": 1.5,
+            },
+        })

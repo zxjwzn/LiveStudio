@@ -16,8 +16,8 @@ from .toolset import PlatformToolset
 class PlatformToolsetRegistration:
     """一个平台的 MCP 登记项:登记名 + 工具集。
 
-    name 为 switch_platform 的目标标识,须与工具集 platform_name 含义一致(由装配点保证);
-    server 以登记顺序构建 list_platforms 列表。
+    name 为平台标识(与 toolset.platform_name 一致,由装配点保证);
+    server 按工具名路由到所属平台。
     """
 
     name: str

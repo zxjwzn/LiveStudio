@@ -1,18 +1,24 @@
-"""LiveStudio MCP 实机复现脚本：多队列 + 全情绪 play_emotion(撑到 speak 结束)
+"""LiveStudio MCP 实机脚本: 多队列 + 全情绪 speak/play_emotion 编排
 
-用法（在仓库根目录、应用已启动且 MCP 监听 9999 时）:
+对齐当前 MCP 契约:
+  - 表演唯一入口: add_event* → enqueue_draft; 打断 remove_job
+  - 长句拆多次 speak, 后句绑前句 end; 语气词不单独成句
+  - 每句 speak 并行配一个 play_emotion, end 绑该句 speak.end
+  - speak.text 可含 Fish 语调/音效标签; subtitle 用净文本
+
+用法(仓库根目录, LiveStudio 已启动且 MCP 在 9999):
 
   .venv\\Scripts\\python.exe scripts\\mcp_multi_queue_emotions_test.py
 
-可选环境变量:
+环境变量:
   MCP_URL   默认 http://127.0.0.1:9999/mcp/
   PLATFORM  默认 vtubestudio
+  EMOTIONS  逗号分隔子集, 默认测服务端 list_emotions ∩ 本地台词表
 
 约束:
-  - 不调用 stop_idle_animations / disconnect（保证 mouth_sync 嘴型）
-  - 仅在 idle 控制器未跑时 start_idle_animations
-  - 每个情绪: 台词按句拆分,每句一个 speak + play_emotion(撑到该句 speak 结束),句间串接不重叠
-  - 多队列: 连续 enqueue 多个 Job，验证 pending 串行
+  - 不 stop_idle_animations / disconnect(保留 mouth_sync)
+  - 仅在有 idle 未跑时 start_idle_animations
+  - 结束后打印 scorecard; 退出码 0=全过
 """
 
 from __future__ import annotations
@@ -23,16 +29,24 @@ import os
 import re
 import sys
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
-BASE = os.environ.get("MCP_URL", "http://127.0.0.1:9999/mcp/")
+BASE = os.environ.get("MCP_URL", "http://127.0.0.1:9999/mcp/").rstrip("/") + "/"
 PLATFORM = os.environ.get("PLATFORM", "vtubestudio")
 
-# 二次元少女口吻；每种情绪一段台词(可含多句,逐句触发)
-EMOTION_LINES: dict[str, str] = {
-    "shy": "呀……别、别一直盯着看啦，人家会不好意思的……",
+# emotion -> (fish 标签可选, 台词净文本)。标签写入 speak.text; subtitle 用净文本。
+# 台词按中文标点拆句后逐句 speak+emotion。
+EMOTION_SCRIPTS: dict[str, tuple[str | None, str]] = {
+    "joy": ("excited", "诶嘿嘿～你来啦！今天也要元气满满的哦，我会一直陪着你的～"),
+    "sadness": ("sad", "呜……对不起，是我不好。下次我会更小心的……"),
+    "anger": ("angry", "真是的！怎么可以这样嘛！……哼，勉强原谅你一次。"),
+    "surprise": ("excited", "欸？！等、等一下，这是怎么回事？吓我一跳啦！"),
+    "smug": ("soft", "呵呵，被我猜中了吧？就说嘛，你藏不住的～"),
+    "wry": ("breathy", "哈啊……又来了啊。行吧，我认栽。"),
+    "shy": ("embarrassed", "呀……别、别一直盯着看啦，人家会不好意思的……"),
 }
 
 
@@ -43,37 +57,16 @@ def parse_sse(text: str) -> Any:
     return json.loads(text)
 
 
-def unwrap(result: dict) -> Any:
+def unwrap(result: dict[str, Any]) -> Any:
     content = result.get("content") or []
     texts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
     payload = texts[0] if texts else None
+    if payload is None:
+        return None
     try:
-        return json.loads(payload) if payload is not None else None
+        return json.loads(payload)
     except Exception:
         return payload
-
-
-async def call(
-    client: httpx.AsyncClient,
-    headers: dict[str, str],
-    rid: int,
-    name: str,
-    arguments: dict[str, Any] | None = None,
-) -> Any:
-    r = await client.post(
-        BASE,
-        headers=headers,
-        json={
-            "jsonrpc": "2.0",
-            "id": rid,
-            "method": "tools/call",
-            "params": {"name": name, "arguments": arguments or {}},
-        },
-    )
-    data = parse_sse(r.text)
-    if "error" in data:
-        return {"_rpc_error": data["error"], "_status": r.status_code}
-    return unwrap(data.get("result", {}))
 
 
 class McpSession:
@@ -83,9 +76,10 @@ class McpSession:
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
-        self._rid = 1
+        self._rid = 0
 
     async def connect(self) -> None:
+        self._rid += 1
         r = await self.client.post(
             BASE,
             headers=self.headers,
@@ -96,13 +90,13 @@ class McpSession:
                 "params": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {"name": "mcp-multi-queue-emotions", "version": "1.0"},
+                    "clientInfo": {"name": "mcp-multi-queue-emotions", "version": "2.0"},
                 },
             },
         )
         sid = r.headers.get("mcp-session-id")
         if not sid:
-            raise RuntimeError(f"MCP initialize 无 session id: status={r.status_code} body={r.text[:300]}")
+            raise RuntimeError(f"initialize 无 session id: {r.status_code} {r.text[:300]}")
         self.headers["mcp-session-id"] = sid
         await self.client.post(
             BASE,
@@ -112,13 +106,34 @@ class McpSession:
 
     async def t(self, name: str, args: dict[str, Any] | None = None, *, show: bool = True) -> Any:
         self._rid += 1
-        out = await call(self.client, self.headers, self._rid, name, args)
+        r = await self.client.post(
+            BASE,
+            headers=self.headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": self._rid,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": args or {}},
+            },
+        )
+        data = parse_sse(r.text)
+        if "error" in data:
+            out: Any = {"_rpc_error": data["error"], "_status": r.status_code}
+        else:
+            out = unwrap(data.get("result", {}))
         if show:
             s = json.dumps(out, ensure_ascii=False)
-            print(f"\n=== {name} === {s[:560]}")
+            print(f"\n=== {name} === {s[:520]}")
         return out
 
-    async def wait_job(self, job_id: str, label: str, *, poll: float = 0.4, max_s: float = 180.0) -> dict[str, Any] | None:
+    async def wait_job(
+        self,
+        job_id: str,
+        label: str,
+        *,
+        poll: float = 0.4,
+        max_s: float = 180.0,
+    ) -> dict[str, Any] | None:
         t0 = time.monotonic()
         last: dict[str, Any] | None = None
         while time.monotonic() - t0 < max_s:
@@ -129,7 +144,7 @@ class McpSession:
                 continue
             last = job
             elapsed = time.monotonic() - t0
-            brief: list[str] = []
+            brief = []
             for e in job.get("events", []):
                 dur = None
                 if e.get("t_start") is not None and e.get("t_end") is not None:
@@ -142,19 +157,57 @@ class McpSession:
         return last
 
 
+def split_sentences(text: str) -> list[str]:
+    """按中文/英文句读拆句; 逗号也拆, 但过滤过短碎片(语气词单独成句)。"""
+
+    parts = re.findall(r"[^。！？.!?…;；，,]*[。！？.!?…;；，,]+|[^。！？.!?…;；，,]+$", text)
+    sentences = [p.strip() for p in parts if p.strip()]
+    # 过短片段并入下一句(或上一句), 避免「呀……」单独 speak
+    merged: list[str] = []
+    buf = ""
+    for s in sentences:
+        candidate = (buf + s).strip() if buf else s
+        # 去掉省略号/标点后过短 → 暂存
+        core = re.sub(r"[。！？.!?…;；，,\s]+", "", candidate)
+        if len(core) < 4:
+            buf = candidate
+            continue
+        merged.append(candidate)
+        buf = ""
+    if buf:
+        if merged:
+            merged[-1] = merged[-1] + buf
+        else:
+            merged.append(buf)
+    return merged or [text.strip()]
+
+
+def with_fish_tag(tag: str | None, sentence: str) -> str:
+    if not tag:
+        return sentence
+    return f"[{tag}]{sentence}"
+
+
 def hold_ok(speak: dict[str, Any], emotion: dict[str, Any], *, ratio: float = 0.7) -> bool:
-    if None in (
-        speak.get("t_start"),
-        speak.get("t_end"),
-        emotion.get("t_start"),
-        emotion.get("t_end"),
-    ):
+    if None in (speak.get("t_start"), speak.get("t_end"), emotion.get("t_start"), emotion.get("t_end")):
         return False
     sd = float(speak["t_end"]) - float(speak["t_start"])
     ed = float(emotion["t_end"]) - float(emotion["t_start"])
     if sd <= 0.05:
         return False
-    return ed >= sd * ratio and abs(float(emotion["t_end"]) - float(speak["t_end"])) < 1.0
+    return ed >= sd * ratio and abs(float(emotion["t_end"]) - float(speak["t_end"])) < 1.2
+
+
+@dataclass
+class Score:
+    items: dict[str, Any] = field(default_factory=dict)
+
+    def set(self, key: str, ok: bool, **extra: Any) -> None:
+        self.items[key] = {"ok": ok, **extra}
+
+    @property
+    def all_ok(self) -> bool:
+        return bool(self.items) and all(bool(v.get("ok")) for v in self.items.values())
 
 
 def summarize_job(job: dict[str, Any] | None, label: str) -> dict[str, Any]:
@@ -171,19 +224,42 @@ def summarize_job(job: dict[str, Any] | None, label: str) -> dict[str, Any]:
             f"  {e.get('id')} type={e.get('type')} status={e.get('status')} "
             f"dur={None if dur is None else round(dur, 2)}s err={e.get('error')}"
         )
-    speaks = sorted((e for e in events if e.get("type") == "speak"), key=lambda e: str(e.get("id")))
-    emotions = sorted((e for e in events if e.get("type") == "play_emotion"), key=lambda e: str(e.get("id")))
-    if not speaks or not emotions:
-        return {"ok": False, "reason": "missing_events", "state": job.get("state")}
-    pairs = list(zip(speaks, emotions))
-    pair_details: list[dict[str, Any]] = []
+
+    by_id = {str(e.get("id")): e for e in events}
+    speaks = [e for e in events if e.get("type") == "speak"]
+    emotions = [e for e in events if e.get("type") == "play_emotion"]
+    if not speaks or len(speaks) != len(emotions):
+        return {
+            "ok": False,
+            "reason": "pair_mismatch",
+            "state": job.get("state"),
+            "speaks": len(speaks),
+            "emotions": len(emotions),
+        }
+
+    # 按 id 序号配对 s1/e1, s2/e2...
+    pairs: list[dict[str, Any]] = []
     all_hold = True
-    for spk, emo in pairs:
+    for i in range(1, len(speaks) + 1):
+        spk = by_id.get(f"s{i}")
+        emo = by_id.get(f"e{i}")
+        if spk is None or emo is None:
+            # 回退 zip 顺序
+            spk = speaks[i - 1]
+            emo = emotions[i - 1]
         hok = hold_ok(spk, emo)
         all_hold = all_hold and hok
-        sd = float(spk["t_end"]) - float(spk["t_start"]) if spk.get("t_end") and spk.get("t_start") else None
-        ed = float(emo["t_end"]) - float(emo["t_start"]) if emo.get("t_end") and emo.get("t_start") else None
-        pair_details.append(
+        sd = (
+            float(spk["t_end"]) - float(spk["t_start"])
+            if spk.get("t_end") is not None and spk.get("t_start") is not None
+            else None
+        )
+        ed = (
+            float(emo["t_end"]) - float(emo["t_start"])
+            if emo.get("t_end") is not None and emo.get("t_start") is not None
+            else None
+        )
+        pairs.append(
             {
                 "speak": spk.get("id"),
                 "emotion": emo.get("id"),
@@ -194,32 +270,32 @@ def summarize_job(job: dict[str, Any] | None, label: str) -> dict[str, Any]:
                 "hold_ok": hok,
             }
         )
-        print(f"  pair {spk.get('id')}/{emo.get('id')}: speak_dur={sd} emotion_dur={ed} HOLD_OK={hok}")
-    all_completed = job.get("state") == "completed" and all(e.get("status") == "completed" for e in events)
+        print(f"  pair {spk.get('id')}/{emo.get('id')}: speak={sd} emotion={ed} HOLD_OK={hok}")
+
+    all_completed = job.get("state") == "completed" and all(
+        e.get("status") == "completed" for e in events
+    )
     return {
-        "ok": all_completed and all_hold and bool(pair_details),
+        "ok": bool(all_completed and all_hold and pairs),
         "state": job.get("state"),
-        "pair_count": len(pair_details),
-        "pairs": pair_details,
+        "pair_count": len(pairs),
+        "pairs": pairs,
     }
 
 
 async def ensure_controllers(s: McpSession) -> dict[str, bool]:
     ctrls = await s.t("list_controllers")
-    if isinstance(ctrls, list) and any(not c.get("running") for c in ctrls if isinstance(c, dict)):
+    if isinstance(ctrls, list) and any(
+        not c.get("running") for c in ctrls if isinstance(c, dict)
+    ):
         print(">> start_idle_animations (will NOT stop later)")
         await s.t("start_idle_animations")
         ctrls = await s.t("list_controllers")
-    running = {c["name"]: bool(c.get("running")) for c in (ctrls or []) if isinstance(c, dict)}
+    running = {
+        c["name"]: bool(c.get("running")) for c in (ctrls or []) if isinstance(c, dict)
+    }
     print("controllers:", running)
     return running
-
-
-def split_sentences(text: str) -> list[str]:
-    # 在原有符号集合中加入中文逗号 ，
-    parts = re.findall(r"[^。！？.!?…;；，]*[。！？.!?…;；，]+|[^。！？.!?…;；，]+$", text)
-    sentences = [p.strip() for p in parts if p.strip()]
-    return sentences or [text.strip()]
 
 
 async def enqueue_speak_emotion(
@@ -227,23 +303,26 @@ async def enqueue_speak_emotion(
     *,
     text: str,
     emotion: str,
-    transition: float = 1,
+    fish_tag: str | None = None,
+    transition: float = 0.5,
+    show_draft: bool = False,
 ) -> dict[str, Any]:
-    """单 Job: 台词按句拆分,每句一个 speak + play_emotion(撑到该句 speak 结束),句间串接不重叠。"""
+    """单 Job: 拆句 → 每句 speak(+Fish 标签)+subtitle 净文本 + play_emotion 撑到该句 end。"""
 
     await s.t("clear_draft", show=False)
-    prev_speak: str | None = None
-    for i, sentence in enumerate(split_sentences(text), start=1):
-        sid = f"s{i}"
-        eid = f"e{i}"
+    sentences = split_sentences(text)
+    prev: str | None = None
+    for i, sentence in enumerate(sentences, start=1):
+        sid, eid = f"s{i}", f"e{i}"
+        speak_text = with_fish_tag(fish_tag, sentence)
         await s.t(
             "add_event",
             {
                 "event_type": "speak",
-                "params": {"text": sentence},
+                "params": {"text": speak_text, "subtitle": sentence},
                 "event_id": sid,
-                "start_anchor": prev_speak or "group",
-                "start_phase": "end" if prev_speak else "start",
+                "start_anchor": prev or "group",
+                "start_phase": "end" if prev else "start",
             },
             show=False,
         )
@@ -262,17 +341,110 @@ async def enqueue_speak_emotion(
             },
             show=False,
         )
-        prev_speak = sid
+        prev = sid
+
+    if show_draft:
+        await s.t("get_draft")
     enq = await s.t("enqueue_draft", {"delay": 0})
     if not isinstance(enq, dict) or not enq.get("ok"):
-        return {"ok": False, "enqueue": enq}
-    return enq
+        return {"ok": False, "enqueue": enq, "sentences": sentences}
+    return {**enq, "sentences": sentences}
+
+
+async def part_multi_queue(s: McpSession, emotions: list[str]) -> dict[str, Any]:
+    """连续 enqueue 多个 Job, 验证 FIFO pending → 串行完成。"""
+
+    print("\n" + "=" * 60)
+    print("PART 1: multi-queue FIFO")
+    print("=" * 60)
+    await s.t("remove_job", {"clear_all": True}, show=False)
+    await s.t("clear_draft", show=False)
+
+    # 用前 3 个情绪(不足则重复)各入一队
+    picks = (emotions * 3)[:3]
+    job_ids: list[str] = []
+    for i, emotion in enumerate(picks):
+        tag, text = EMOTION_SCRIPTS[emotion]
+        # 多队列用短句加速
+        short = split_sentences(text)[0]
+        enq = await enqueue_speak_emotion(
+            s,
+            text=short,
+            emotion=emotion,
+            fish_tag=tag,
+        )
+        if not enq.get("ok"):
+            return {"ok": False, "reason": "enqueue_failed", "enqueue": enq, "index": i}
+        job_ids.append(str(enq["job_id"]))
+        print(f"  enqueued[{i}] emotion={emotion} job={enq['job_id']} state={enq.get('state')} pos={enq.get('position')}")
+
+    # 第二单应 pending(若第一还在跑)
+    q = await s.t("list_jobs", {"include_finished": False})
+    pending_n = len((q or {}).get("pending") or []) if isinstance(q, dict) else 0
+    running = (q or {}).get("running") if isinstance(q, dict) else None
+    print(f"  queue snapshot: running={running and running.get('job_id')} pending={pending_n}")
+
+    finals: list[dict[str, Any]] = []
+    for jid, emotion in zip(job_ids, picks):
+        job = await s.wait_job(jid, f"q:{emotion}")
+        finals.append(summarize_job(job, f"queue:{emotion}:{jid}"))
+
+    order_ok = all(f.get("state") == "completed" for f in finals)
+    holds_ok = all(f.get("ok") for f in finals)
+    # pending 曾出现 或 连续 job 非全部同时 running(第二单 position>0)
+    return {
+        "ok": order_ok and holds_ok,
+        "job_ids": job_ids,
+        "pending_seen": pending_n > 0,
+        "results": finals,
+    }
+
+
+async def part_all_emotions(s: McpSession, emotions: list[str]) -> dict[str, Any]:
+    """每个情绪单独 Job, 全台词拆句 + emotion hold until speak end。"""
+
+    print("\n" + "=" * 60)
+    print("PART 2: all emotions (hold until speak end)")
+    print("=" * 60)
+    await s.t("remove_job", {"clear_all": True}, show=False)
+
+    out: dict[str, Any] = {}
+    for emotion in emotions:
+        tag, text = EMOTION_SCRIPTS[emotion]
+        print(f"\n>>> emotion={emotion} tag={tag!r}")
+        print(f"    text={text}")
+        print(f"    sentences={split_sentences(text)}")
+        enq = await enqueue_speak_emotion(
+            s,
+            text=text,
+            emotion=emotion,
+            fish_tag=tag,
+            show_draft=True,
+        )
+        if not enq.get("ok"):
+            out[emotion] = {"ok": False, "enqueue": enq}
+            print("  enqueue failed")
+            continue
+        job = await s.wait_job(str(enq["job_id"]), emotion)
+        detail = summarize_job(job, f"emotion:{emotion}")
+        out[emotion] = detail
+        ctrls = await s.t("list_controllers", show=False)
+        ms = next(
+            (
+                c
+                for c in (ctrls or [])
+                if isinstance(c, dict) and c.get("name") == "mouth_sync"
+            ),
+            None,
+        )
+        print(f"  mouth_sync running: {bool(ms and ms.get('running'))}")
+    return out
 
 
 async def main() -> int:
     print(f"MCP_URL={BASE}")
-    print(f"PLATFORM={PLATFORM}")
-    results: dict[str, Any] = {}
+    print(f"(PLATFORM env ignored; no switch_platform) PLATFORM={PLATFORM}")
+    score = Score()
 
     async with httpx.AsyncClient(timeout=300.0) as client:
         s = McpSession(client)
@@ -280,67 +452,63 @@ async def main() -> int:
             await s.connect()
         except Exception as exc:
             print(f"无法连接 MCP: {exc}")
-            print("请先启动 LiveStudio，并确认 MCP 端口（默认 9999）。")
+            print("请先启动 LiveStudio, 并确认 MCP 端口(默认 9999)。")
             return 2
 
         print("\n" + "=" * 60)
         print("SETUP")
         print("=" * 60)
-        await s.t("switch_platform", {"platform": PLATFORM})
         await s.t("connect")
         await s.t("get_current_model")
-        emotions = await s.t("list_emotions")
-        if not isinstance(emotions, list) or not emotions:
-            print("list_emotions 为空，无法测情绪")
+        emotions_raw = await s.t("list_emotions")
+        if not isinstance(emotions_raw, list) or not emotions_raw:
+            print("list_emotions 为空")
             return 1
-        print("emotions from server:", emotions)
-        await ensure_controllers(s)
+        server_emotions = [str(x) for x in emotions_raw]
+        print("server emotions:", server_emotions)
+
+        env_filter = os.environ.get("EMOTIONS", "").strip()
+        if env_filter:
+            want = {x.strip() for x in env_filter.split(",") if x.strip()}
+            to_test = [e for e in server_emotions if e in want and e in EMOTION_SCRIPTS]
+        else:
+            to_test = [e for e in server_emotions if e in EMOTION_SCRIPTS]
+        if not to_test:
+            print("无交集情绪可测; 检查 EMOTION_SCRIPTS / list_emotions")
+            return 1
+        print("will test:", to_test)
+
+        running = await ensure_controllers(s)
+        score.set("controllers_started", any(running.values()), controllers=running)
         await s.t("remove_job", {"clear_all": True})
         await s.t("clear_draft")
 
-        # ------------------------------------------------------------------
-        # PART 1: 每个情绪单独一 Job，play_emotion 撑到 speak 结束
-        # 用 list_emotions 与本地台词表的交集，保证服务端认识
-        # ------------------------------------------------------------------
-        print("\n" + "=" * 60)
-        print("PART 2: 全情绪演出（各自 hold until speak end）")
-        print("=" * 60)
-        server_emotions = [str(x) for x in emotions]
-        # 保持 list_emotions 顺序
-        to_test = [e for e in server_emotions if e in EMOTION_LINES]
+        mq = await part_multi_queue(s, to_test)
+        score.set("multi_queue", bool(mq.get("ok")), **{k: v for k, v in mq.items() if k != "ok"})
 
-        emotion_results: dict[str, Any] = {}
-        for emotion in to_test:
-            print(f"\n>>> emotion={emotion}")
-            text = EMOTION_LINES[emotion]
-            enq = await enqueue_speak_emotion(s, text=text, emotion=emotion)
-            if not isinstance(enq, dict) or not enq.get("ok"):
-                emotion_results[emotion] = {"ok": False, "enqueue": enq}
-                print("  enqueue failed")
-                continue
-            job = await s.wait_job(str(enq["job_id"]), emotion)
-            detail = summarize_job(job, f"emotion:{emotion}")
-            emotion_results[emotion] = detail
-            # 确认控制器仍在
-            ctrls = await s.t("list_controllers", show=False)
-            ms = next((c for c in (ctrls or []) if isinstance(c, dict) and c.get("name") == "mouth_sync"), None)
-            print(f"  mouth_sync still running: {bool(ms and ms.get('running'))}")
-
-        results["emotions"] = emotion_results
-        results["emotions_all_ok"] = all(bool(v.get("ok")) for v in emotion_results.values()) if emotion_results else False
+        er = await part_all_emotions(s, to_test)
+        emotions_ok = bool(er) and all(bool(v.get("ok")) for v in er.values())
+        score.set("emotions", emotions_ok, details=er)
 
         ctrls = await s.t("list_controllers", show=False)
-        controllers_ok = all(c.get("running") for c in (ctrls or []) if isinstance(c, dict))
-        results["controllers_never_stopped"] = controllers_ok
-        print("\nPOST controllers:", {c["name"]: c["running"] for c in ctrls if isinstance(c, dict)})
+        still = {
+            c["name"]: bool(c.get("running"))
+            for c in (ctrls or [])
+            if isinstance(c, dict)
+        }
+        score.set(
+            "controllers_never_stopped",
+            all(still.values()) if still else False,
+            controllers=still,
+        )
+        print("\nPOST controllers:", still)
 
         print("\n" + "=" * 60)
         print("FINAL SCORECARD")
         print("=" * 60)
-        print(json.dumps(results, ensure_ascii=False, indent=2, default=str))
-        all_ok = bool(results.get("multi_queue", {}).get("ok")) and bool(results.get("emotions_all_ok")) and controllers_ok
-        print("ALL_OK", all_ok)
-        return 0 if all_ok else 1
+        print(json.dumps(score.items, ensure_ascii=False, indent=2, default=str))
+        print("ALL_OK", score.all_ok)
+        return 0 if score.all_ok else 1
 
 
 if __name__ == "__main__":

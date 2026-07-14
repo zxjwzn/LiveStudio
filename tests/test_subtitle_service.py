@@ -7,9 +7,13 @@ from __future__ import annotations
 import asyncio
 
 from livestudio.services.subtitle import (
+    SubtitleBeginMessage,
     SubtitleConfig,
     SubtitleEvent,
+    SubtitleEventKind,
+    SubtitleFinishMessage,
     SubtitleSegment,
+    SubtitleSegmentsMessage,
     SubtitleService,
     SubtitleStream,
 )
@@ -24,33 +28,29 @@ def test_event_to_message_begin_includes_style() -> None:
         font_color="#FF0000",
         audio_delay_ms=200,
         clear_delay_ms=1500,
-        font_path="C:/fonts/a.ttf",
+        font_path="msyh.ttf",
     )
-    msg = service._event_to_message(SubtitleEvent(kind="begin", text="你好"))
-    assert msg is not None
-    assert msg["type"] == "begin"
-    data = msg["data"]
-    assert isinstance(data, dict)
-    assert data["text"] == "你好"
-    assert data["font_size"] == 60
-    assert data["font_color"] == "#FF0000"
-    assert data["audio_delay_ms"] == 200
-    assert data["clear_delay_ms"] == 1500
-    assert data["font_path"] == "C:/fonts/a.ttf"
+    msg = service._event_to_message(SubtitleEvent(kind=SubtitleEventKind.BEGIN, text="你好"))
+    assert isinstance(msg, SubtitleBeginMessage)
+    assert msg.type == "begin"
+    assert msg.data.text == "你好"
+    assert msg.data.font_size == 60
+    assert msg.data.font_color == "#FF0000"
+    assert msg.data.audio_delay_ms == 200
+    assert msg.data.clear_delay_ms == 1500
+    assert msg.data.font_path == "msyh.ttf"
 
 
 def test_event_to_message_segments_and_finish() -> None:
     service = SubtitleService(SubtitleStream())
     segs = [SubtitleSegment(text="a", start=0.0, end=0.2)]
-    msg = service._event_to_message(SubtitleEvent(kind="segments", segments=segs))
-    assert msg is not None
-    assert msg["type"] == "segments"
-    data = msg["data"]
-    assert isinstance(data, dict)
-    assert data["segments"] == [{"text": "a", "start": 0.0, "end": 0.2}]
+    msg = service._event_to_message(SubtitleEvent(kind=SubtitleEventKind.SEGMENTS, segments=segs))
+    assert isinstance(msg, SubtitleSegmentsMessage)
+    assert msg.type == "segments"
+    assert msg.data.model_dump() == {"segments": [{"text": "a", "start": 0.0, "end": 0.2}]}
 
-    fin = service._event_to_message(SubtitleEvent(kind="finish"))
-    assert fin == {"type": "finish"}
+    fin = service._event_to_message(SubtitleEvent(kind=SubtitleEventKind.FINISH))
+    assert fin == SubtitleFinishMessage()
 
 
 async def test_relay_broadcasts_to_stream_subscriber_mapping() -> None:
@@ -58,9 +58,9 @@ async def test_relay_broadcasts_to_stream_subscriber_mapping() -> None:
 
     stream = SubtitleStream()
     service = SubtitleService(stream)
-    received: list[dict[str, object]] = []
+    received: list[object] = []
 
-    async def capture(message: dict[str, object]) -> None:
+    async def capture(message: object) -> None:
         received.append(message)
 
     service._broadcast = capture  # type: ignore[method-assign]
@@ -73,8 +73,9 @@ async def test_relay_broadcasts_to_stream_subscriber_mapping() -> None:
     finally:
         await service._stop_relay()
 
-    assert [m["type"] for m in received] == ["begin", "segments", "finish"]
-    assert received[0]["data"]["text"] == "hello"  # type: ignore[index]
+    assert [getattr(m, "type", None) for m in received] == ["begin", "segments", "finish"]
+    assert isinstance(received[0], SubtitleBeginMessage)
+    assert received[0].data.text == "hello"
 
 
 async def test_apply_config_disabled_stops_transport(tmp_path) -> None:

@@ -1,7 +1,7 @@
-"""Fish Audio TTS 引擎(SSE 流式 + 逐词对齐)
+"""Fish Audio TTS 引擎(SSE 流式)
 
-全局连接: ``FishAudioConnectionConfig``(api_key/endpoint)
-发声参数: ``FishAudioSpeakConfig``(model/reference_id/latency/speed),由控制器展平为 opts 传入
+全局连接: ``FishAudioConnectionConfig``(api_key/endpoint + model/latency/speed)
+发声参数: ``FishAudioSpeakConfig``(仅 reference_id, 随模型/控制器)
 
 取消契约: httpx 流式连接放在独立 reader 任务里,本生成器只从队列 yield。外层 aclose/
 取消时只 cancel reader;httpx 的 anyio cancel scope 在 reader 任务内 enter/exit,避免
@@ -31,7 +31,10 @@ _READER_QUEUE_MAXSIZE = 32
 
 
 class FishAudioConnectionConfig(BaseModel):
-    """Fish Audio 连接配置(全局 TTS 源槽位;密钥/端点)"""
+    """Fish Audio 连接与全局发声参数(全局 TTS 源槽位)。
+
+    密钥/端点 + 模型档位/延迟/语速;音色(reference_id)随模型控制器。
+    """
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SPEAKERS"})
 
@@ -44,23 +47,9 @@ class FishAudioConnectionConfig(BaseModel):
         description="TTS SSE 端点 URL(默认官方 with-timestamp 流)",
         json_schema_extra={"hidden": True},
     )
-
-
-class FishAudioSpeakConfig(BaseModel):
-    """Fish Audio 发声参数(per-model 音色:模型档位 / 说话人 / 延迟 / 语速)。
-
-    与 ``FishAudioConnectionConfig`` 分工:连接(api_key/endpoint)全局,发声参数随模型。
-    """
-
-    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SPEAKERS"})
-
     model: str = Field(
         default="s2.1-pro-free",
         description="Fish 模型/档位标识(如 s2.1-pro-free)",
-    )
-    reference_id: str | None = Field(
-        default=None,
-        description="音色/说话人 ID(fish.audio 控制台获取)",
     )
     latency: Literal["low", "balanced", "normal"] = Field(
         default="balanced",
@@ -74,8 +63,30 @@ class FishAudioSpeakConfig(BaseModel):
     )
 
 
+class FishAudioSpeakConfig(BaseModel):
+    """Fish Audio 发声参数(per-model:仅音色/说话人)。
+
+    model/latency/speed 在全局 ``FishAudioConnectionConfig``。
+    """
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"icon": "SPEAKERS"})
+
+    reference_id: str | None = Field(
+        default=None,
+        description="音色/说话人 ID(fish.audio 控制台获取)",
+    )
+
+
+class FishAudioSpeakRequest(BaseModel):
+    """单次 Fish 合成请求(运行时,由控制器/调用方构造)。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reference_id: str | None = None
+
+
 class FishAudioEngine(TtsEngine):
-    """Fish Audio 流式 TTS 引擎(PCM 音频 + 逐词 alignment 字幕)"""
+    """Fish Audio 流式 TTS 引擎(PCM 音频)"""
 
     def __init__(
         self,
@@ -87,11 +98,14 @@ class FishAudioEngine(TtsEngine):
         super().__init__(sample_rate=sample_rate, channels=channels)
         self._config = config
 
-    async def synthesize(self, text: str, **opts: object) -> AsyncGenerator[TtsOutput, None]:
+    async def synthesize(
+        self,
+        text: str,
+        request: BaseModel | None = None,
+    ) -> AsyncGenerator[TtsOutput, None]:
         """合成文本:httpx 在独立 reader 任务,本生成器只从队列 yield。
 
-        取消/aclose 时 finally 取消 reader;httpx ``async with`` 在 reader 任务内退出,
-        避免跨任务 cancel scope 与 ignored GeneratorExit。
+        ``request`` 须为 ``FishAudioSpeakRequest``(或 None);model/latency/speed 来自全局连接。
         """
 
         if not self._config.api_key:
@@ -99,10 +113,18 @@ class FishAudioEngine(TtsEngine):
         if not text:
             return
 
-        model = _as_str(opts.get("model"), "s2.1-pro-free")
-        reference_id = _as_optional_str(opts.get("reference_id"))
-        latency = _as_str(opts.get("latency"), "balanced")
-        speed = _as_float(opts.get("speed"), 1.0)
+        if request is None:
+            speak = FishAudioSpeakRequest()
+        elif isinstance(request, FishAudioSpeakRequest):
+            speak = request
+        else:
+            raise TypeError(
+                f"FishAudioEngine.synthesize 需要 FishAudioSpeakRequest, 收到 {type(request).__name__}",
+            )
+        model = self._config.model
+        latency = self._config.latency
+        speed = self._config.speed
+        reference_id = speak.reference_id
 
         headers = {
             "Authorization": f"Bearer {self._config.api_key}",
@@ -193,23 +215,3 @@ def _put_sentinel(
             queue.get_nowait()
         with contextlib.suppress(asyncio.QueueFull):
             queue.put_nowait(item)
-
-
-def _as_str(value: object, default: str) -> str:
-    return value if isinstance(value, str) and value else default
-
-
-def _as_optional_str(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
-
-
-def _as_float(value: object, default: float) -> float:
-    if isinstance(value, bool):
-        return default
-    if isinstance(value, (int, float)):
-        return float(value)
-    return default

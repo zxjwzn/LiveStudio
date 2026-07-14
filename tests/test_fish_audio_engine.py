@@ -1,4 +1,4 @@
-"""测试 Fish Audio 引擎(mock httpx SSE):音频解码 + 字幕去重/全局时间 + opts 覆盖"""
+"""测试 Fish Audio 引擎(mock httpx SSE):音频解码 + 全局连接参数 + request 音色"""
 
 # ruff: noqa: SLF001
 
@@ -13,8 +13,9 @@ import pytest
 
 import livestudio.services.audio_stream.sources.tts.engines.fish_audio as fish_audio_module
 from livestudio.services.audio_stream.sources.tts.engines.fish_audio import (
-    FishAudioEngine,
     FishAudioConnectionConfig,
+    FishAudioEngine,
+    FishAudioSpeakRequest,
 )
 
 
@@ -52,7 +53,9 @@ async def test_fish_audio_engine_empty_text_yields_nothing(monkeypatch) -> None:
     assert outputs == []
 
 
-async def test_fish_audio_engine_opts_override_payload(monkeypatch) -> None:
+async def test_fish_audio_engine_uses_global_and_request(monkeypatch) -> None:
+    """model/latency/speed 来自连接配置;reference_id 来自 request。"""
+
     captured: dict[str, object] = {}
 
     def _handler(request: httpx.Request) -> httpx.Response:
@@ -69,13 +72,26 @@ async def test_fish_audio_engine_opts_override_payload(monkeypatch) -> None:
         return original(*args, **kwargs)
 
     monkeypatch.setattr(fish_audio_module.httpx, "AsyncClient", _factory)
-    engine = FishAudioEngine(FishAudioConnectionConfig(api_key="test"), sample_rate=24000, channels=1)
-    _ = [o async for o in engine.synthesize("hi", model="s1", reference_id="voice-1", latency="low", speed=1.5)]
+    engine = FishAudioEngine(
+        FishAudioConnectionConfig(
+            api_key="test",
+            model="s1",
+            latency="low",
+            speed=1.5,
+        ),
+        sample_rate=24000,
+        channels=1,
+    )
+    _ = [
+        o
+        async for o in engine.synthesize(
+            "hi",
+            FishAudioSpeakRequest(reference_id="voice-1"),
+        )
+    ]
     assert captured["headers_model"] == "s1"
     body = captured["json"]
     assert isinstance(body, dict)
     assert body["reference_id"] == "voice-1"
     assert body["latency"] == "low"
     assert body["prosody"]["speed"] == 1.5
-
-
