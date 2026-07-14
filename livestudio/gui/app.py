@@ -33,8 +33,7 @@ from livestudio.gui.views.platform_view import PlatformView
 from livestudio.gui.views.playback_view import PlaybackView
 from livestudio.gui.views.settings_view import SettingsView
 from livestudio.gui.views.subtitle_view import SubtitleView
-from livestudio.mcp import LiveStudioMcpServer, PlatformToolsetRegistration
-from livestudio.mcp.platforms import VTubeStudioToolset
+from livestudio.mcp import LiveStudioMcpServer
 from livestudio.services import AudioStreamRouter
 from livestudio.services.animations import AnimationManager
 from livestudio.services.subtitle import SubtitleService
@@ -45,31 +44,20 @@ def _build_platform_registrations(
     *,
     animation_manager: AnimationManager,
     audio_router: AudioStreamRouter,
-) -> tuple[list[PlatformRegistration], list[PlatformToolsetRegistration]]:
-    """平台登记单一入口:构造各平台后端 app,成对登记 GUI 桥接与 MCP 工具集。
-
-    后端 app 是 GUI 桥接与 MCP 工具集共享的同一实例(MCP 不另建后端,只调 app 公开方法)。
-    新增平台只需在此再 append 一对登记 —— ServiceBridge 与 MCP server 都按各自列表自动覆盖。
-    """
+) -> list[PlatformRegistration]:
+    """构造平台后端及其 GUI 桥接登记。"""
 
     vtubestudio_app = VTubeStudioApp(
         animation_manager=animation_manager,
         audio_stream=audio_router,
     )
-    platform_registrations = [
+    return [
         PlatformRegistration(
             name="VTubeStudioApp",
             app=vtubestudio_app,
             bridge=VTubeStudioPlatformBridge(vtubestudio_app),
         ),
     ]
-    mcp_registrations = [
-        PlatformToolsetRegistration(
-            name=vtubestudio_app.platform.name,
-            toolset=VTubeStudioToolset(vtubestudio_app),
-        ),
-    ]
-    return platform_registrations, mcp_registrations
 
 
 class GuiApplication:
@@ -83,12 +71,11 @@ class GuiApplication:
         # 各平台后端 app + GUI 桥接在工厂集中登记,新增平台只改工厂。
         self.audio_router = AudioStreamRouter()
         self.animation_manager = AnimationManager()
-        self._platforms, mcp_registrations = _build_platform_registrations(
+        self._platforms = _build_platform_registrations(
             animation_manager=self.animation_manager,
             audio_router=self.audio_router,
         )
-        # MCP 服务与 GUI 共享同一批后端 app(只调 app 公开方法,不另建后端)。
-        self._mcp_server = LiveStudioMcpServer(platforms=mcp_registrations)
+        self._mcp_server = LiveStudioMcpServer()
         self._subtitle_service = SubtitleService(self.audio_router.subtitle_stream)
         self._service_bridge: ServiceBridge | None = None
         self._audio_view: AudioView | None = None
@@ -145,12 +132,12 @@ class GuiApplication:
         await self._close_event.wait()
 
     async def _start_mcp_server(self) -> None:
-        """启动 MCP 服务(失败不阻断 GUI:仅记录告警,LLM 控制不可用而已)。"""
+        """启动 MCP 服务，失败时不阻断 GUI。"""
 
         try:
             await self._mcp_server.start()
         except Exception:
-            logger.exception("MCP 服务启动失败，已隔离(GUI 不受影响，LLM 控制不可用)")
+            logger.exception("MCP 服务启动失败，GUI 继续运行")
 
     async def _start_subtitle_service(self) -> None:
         """启动字幕服务(失败不阻断 GUI)。"""

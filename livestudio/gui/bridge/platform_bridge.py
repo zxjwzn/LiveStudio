@@ -14,8 +14,6 @@ from pydantic import BaseModel
 from PySide6.QtCore import QObject, Signal
 from qfluentwidgets import FluentIcon
 
-from livestudio.app.base import PlatformStateEvent, PlatformStateKind
-
 
 class ConnectionState(Enum):
     """平台连接状态(桥接层维护)"""
@@ -213,58 +211,6 @@ class PlatformBridge(QObject):
 
     def clear_native_expressions(self) -> None:
         """取消所有已激活的原生表情(子类覆盖)"""
-
-    # --- app 运行态事件 -> Qt 信号(单一事实源在后端,GUI 与 MCP 共享) ---
-
-    def _on_state_event(self, event: PlatformStateEvent) -> None:
-        """app 运行态变更 -> 同步 GUI 连接徽标与控制器开关。
-
-        GUI 按钮与 MCP 工具都经 app 公开方法变更态,app 广播事件,本方法据此 emit Qt
-        信号,使两条路径都能驱动视图刷新(MCP 路径不再因绕过 bridge 而让 GUI 停在旧态)。
-        """
-
-        if self._should_suppress_state_event(event):
-            return
-        kind = event.kind
-        if kind is PlatformStateKind.CONNECTED:
-            self._set_state(ConnectionState.CONNECTED)
-        elif kind is PlatformStateKind.DISCONNECTED:
-            self._set_state(ConnectionState.DISCONNECTED)
-            self.controllersStateChanged.emit(False)
-        elif kind is PlatformStateKind.CONTROLLERS_STARTED:
-            self.controllersStateChanged.emit(True)
-        elif kind is PlatformStateKind.CONTROLLERS_STOPPED:
-            self.controllersStateChanged.emit(False)
-        elif (
-            kind is PlatformStateKind.CONTROLLER_CHANGED
-            and event.name is not None
-            and event.active is not None
-        ):
-            self.controllerStateChanged.emit(event.name, event.active)
-        elif (
-            kind is PlatformStateKind.NATIVE_EXPRESSION_CHANGED
-            and event.name is not None
-            and event.active is not None
-        ):
-            self._on_native_expression_changed(event.name, event.active)
-
-    def _on_native_expression_changed(self, name: str, active: bool) -> None:
-        """app 原生表情变更 -> emit 信号让仪表盘 chip 同步。
-
-        基类默认仅发信号;维护激活镜像的平台在子类覆盖:先更新镜像再 super 发信号,
-        使刷新(读镜像)不会把 MCP 等非 GUI 来源的激活态回弹。
-        """
-
-        self.nativeExpressionStateChanged.emit(name, active)
-
-    def _should_suppress_state_event(self, _event: PlatformStateEvent) -> bool:
-        """是否抑制本次 app 运行态事件(基类默认不抑制;子类按需覆盖)。
-
-        连接/重连在途时,app 内部 disconnect->connect 步骤会短暂触发 DISCONNECTED,那是
-        编排细节而非真实断开--由在途任务决定终态,子类可覆盖本方法抑制之以避免 UI 闪烁。
-        """
-
-        return False
 
     def _set_state(self, state: ConnectionState) -> None:
         if state is not self._state:

@@ -7,8 +7,11 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from pydantic import ValidationError
 
 from livestudio.services.subtitle import (
+    SubtitleEvent,
+    SubtitleEventKind,
     SubtitleSegment,
     SubtitleStream,
 )
@@ -27,10 +30,23 @@ async def test_subtitle_stream_subscribe_receives_events() -> None:
     while not sub.queue.empty():
         events.append(sub.queue.get_nowait())
 
-    assert [e.kind for e in events] == ["begin", "segments", "finish"]
+    assert [e.kind for e in events] == [
+        SubtitleEventKind.BEGIN,
+        SubtitleEventKind.SEGMENTS,
+        SubtitleEventKind.FINISH,
+    ]
     assert events[0].text == "hello"
-    assert events[1].segments[0].text == "he"
-    assert events[1].segments[0].start == 0.0
+    segments = events[1].segments
+    assert segments is not None
+    assert segments[0].text == "he"
+    assert segments[0].start == 0.0
+
+
+def test_subtitle_event_validates_payload_by_kind() -> None:
+    with pytest.raises(ValidationError):
+        SubtitleEvent(kind=SubtitleEventKind.BEGIN)
+    with pytest.raises(ValidationError):
+        SubtitleEvent(kind=SubtitleEventKind.FINISH, text="unexpected")
 
 
 async def test_subtitle_stream_unsubscribe_stops_delivery() -> None:

@@ -847,7 +847,7 @@ async def test_end_fires_before_restore_completes() -> None:
 
 
 async def test_drive_via_start_path_mimicking_mcp() -> None:
-    """走 start()(=execute_controller=MCP 路径)而非 execute(),验证 _drive 仍跑恢复。"""
+    """走 start()(=execute_controller 路径)而非 execute(),验证 _drive 仍跑恢复。"""
     platform = _ExpressionPlatform()
     controller = ExpressionController(
         _runtime(platform),

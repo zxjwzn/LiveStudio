@@ -6,7 +6,7 @@
 
 from .audio_bridge import AudioController
 from .log_bridge import LogController, LogEntry
-from .mcp_bridge import McpBridge, ToolGroup, ToolInfo
+from .mcp_bridge import McpBridge
 from .platform_bridge import (
     ConnectionState,
     ControllerEntry,
@@ -33,7 +33,5 @@ __all__ = [
     "PlatformRegistration",
     "ServiceBridge",
     "SubtitleBridge",
-    "ToolGroup",
-    "ToolInfo",
     "VTubeStudioPlatformBridge",
 ]

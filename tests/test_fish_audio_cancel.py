@@ -21,8 +21,9 @@ import numpy as np
 
 import livestudio.services.audio_stream.sources.tts.engines.fish_audio as fish_audio_module
 from livestudio.services.audio_stream.sources.tts.engines.fish_audio import (
-    FishAudioEngine,
     FishAudioConnectionConfig,
+    FishAudioEngine,
+    TtsSpeakRequest,
 )
 
 
@@ -81,7 +82,7 @@ async def test_synthesize_aclose_cancels_reader_without_noise(monkeypatch) -> No
     _patch_slow_stream(monkeypatch)
     engine = FishAudioEngine(FishAudioConnectionConfig(api_key="test"), sample_rate=24000, channels=1)
 
-    gen = engine.synthesize("hi")
+    gen = engine.synthesize(TtsSpeakRequest(text="hi", subtitle="hi"))
     first = await gen.__anext__()
     assert first is not None
 
@@ -99,7 +100,7 @@ async def test_synthesize_outer_cancel_via_aclosing_without_noise(monkeypatch) -
     blocked = asyncio.Event()
 
     async def consumer() -> None:
-        async with contextlib.aclosing(engine.synthesize("hi")) as g:
+        async with contextlib.aclosing(engine.synthesize(TtsSpeakRequest(text="hi", subtitle="hi"))) as g:
             async for _ in g:
                 await blocked.wait()
 
@@ -112,4 +113,3 @@ async def test_synthesize_outer_cancel_via_aclosing_without_noise(monkeypatch) -
     noise = await _gc_noise()
     assert "Exception ignored" not in noise, noise
     assert "cancel scope" not in noise, noise
-

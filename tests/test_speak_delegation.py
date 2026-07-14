@@ -108,7 +108,7 @@ async def test_speak_non_str_raises() -> None:
 
 
 async def test_speak_without_controller_raises() -> None:
-    """未加载模型(无 tts_speak 控制器)时给出可操作错误,供 MCP/GUI 反馈。"""
+    """未加载模型(无 tts_speak 控制器)时给出可操作错误。"""
 
     app, runtime = _make_app()
     runtime.controllers.clear()
